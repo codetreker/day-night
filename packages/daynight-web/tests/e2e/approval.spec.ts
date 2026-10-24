@@ -427,7 +427,10 @@ test('task-approval', scenario('task-approval'), async ({ page, api: request, al
     await expectStatus(page, '待审批');
     await expect(detail(page).getByRole('region', { name: '当前未完成的前置', exact: true })).toContainText(prerequisite.title);
     await page.setViewportSize({ width: 320, height: 740 });
-    await detail(page).getByRole('combobox', { name: '语言 / Language', exact: true }).selectOption('en');
+    await page.keyboard.press('Escape');
+    await expect(detail(page)).toHaveCount(0);
+    await fullscreen.getByRole('combobox', { name: '语言 / Language', exact: true }).selectOption('en');
+    await details(page, blocked.id).click();
     await expectStatus(page, 'Proposed');
     await expectCenteredTaskDetail(page, detail(page));
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -797,7 +800,7 @@ test('task-approval-recovery', scenario('task-approval-recovery'), async ({ page
     try {
       await standalone(page, stale.id).click();
       await within(fetched.promise, 'real stale task detail fetch');
-      await expect(detail(page).getByRole('status')).toContainText('正在加载任务详情');
+      await expect(detail(page).getByRole('status')).toHaveAccessibleName('正在加载任务详情');
       await page.keyboard.press('Escape');
       await standalone(page, graphFailure.id).click();
       await expect(detail(page).locator('.task-detail-title')).toHaveText(graphFailure.title);
@@ -920,10 +923,9 @@ test('task-unapproval', scenario('task-unapproval'), async ({ page, allowApprova
     const expectLongTitleReading = async (phase: string): Promise<void> => {
       for (const height of [812, 400]) {
         await page.setViewportSize({ width: 375, height });
-        const heading = detail(page).locator('.task-detail-heading');
-        const title = heading.locator('.task-detail-title');
+        const title = detail(page).locator('.task-detail-title');
         expect(await title.textContent()).toBe(longTitle);
-        await heading.evaluate((element) => { element.scrollTop = 0; });
+        await title.evaluate((element) => { element.scrollTop = 0; });
         await expect.poll(() => detail(page).evaluate((element) => {
           const body = element.querySelector('.task-detail-body')!.getBoundingClientRect();
           const tabs = element.querySelector('.task-detail-tabs')!.getBoundingClientRect();
@@ -937,7 +939,7 @@ test('task-unapproval', scenario('task-unapproval'), async ({ page, allowApprova
         await title.focus();
         await page.keyboard.press('End');
         await page.clock.runFor(300);
-        await expect.poll(() => heading.evaluate((element) => element.scrollTop + element.clientHeight >= element.scrollHeight - 1),
+        await expect.poll(() => title.evaluate((element) => element.scrollTop + element.clientHeight >= element.scrollHeight - 1),
           { message: `${phase}: native keyboard scrolling reaches the complete title` }).toBe(true);
         const readError = detail(page).locator('.task-detail-read-error');
         if (await readError.count() !== 0) {
@@ -1049,7 +1051,11 @@ test('task-unapproval', scenario('task-unapproval'), async ({ page, allowApprova
     const originalInput = await pathDraft.elementHandle();
     if (originalInput === null) throw new Error('The attachment draft input is missing.');
     await page.setViewportSize({ width: 320, height: 740 });
-    await detail(page).getByRole('combobox', { name: '语言 / Language', exact: true }).selectOption('en');
+    await attachments.getByRole('button', { name: '更多操作：plan.md', exact: true }).click();
+    await page.getByRole('menuitem', { name: '删除', exact: true }).click();
+    const localeConfirmation = page.locator('.attachment-delete-dialog');
+    await localeConfirmation.getByRole('combobox', { name: '语言 / Language', exact: true }).selectOption('en');
+    await localeConfirmation.getByRole('button', { name: 'Cancel', exact: true }).click();
     const approve = await expectTitleAction(page, 'Approve task');
     await approve.click();
     const approveDialog = confirmation(page, 'approve', 'en');

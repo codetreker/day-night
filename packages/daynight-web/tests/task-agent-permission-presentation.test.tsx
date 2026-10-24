@@ -1,4 +1,4 @@
-import { fireEvent, screen } from '@testing-library/react';
+import { act, fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../src/api/client';
 import type { TaskDetail } from '../src/api/types';
@@ -90,7 +90,8 @@ describe('automatic execution presentation', () => {
   });
 
   it('distinguishes a confirmed permission change from a conflict that needs another decision', () => {
-    const view = mount({ ...permission, phase: 'confirmed' }, { ...detail, allowAgents: true });
+    const view = mount({ ...permission, phase: 'pending' });
+    view.update({ ...permission, phase: 'confirmed' }, { ...detail, allowAgents: true });
     expect(screen.getByRole('status')).toHaveTextContent('Automatic execution updated.');
     view.update({ ...permission, phase: 'conflict', error: new ApiError('server', 409, 'version_conflict', 'stale-permission') });
     expect(screen.getByText('The task changed. Review its current setting before confirming another change.')).toHaveAttribute('role', 'alert');
@@ -99,6 +100,40 @@ describe('automatic execution presentation', () => {
     expect(screen.queryByRole('button', { name: 'Check actual task' })).toBeNull();
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'zh-CN' } });
     expect(screen.getByText('任务已发生变化，请检查当前设置后重新确认修改。')).toBeVisible();
+  });
+
+  it('expires a newly confirmed success after three seconds without replaying it on refresh or reopen', () => {
+    vi.useFakeTimers();
+    const confirmed = { ...permission, phase: 'confirmed' as const };
+    const view = mount({ ...permission, phase: 'pending' });
+    view.update(confirmed);
+    expect(screen.getByRole('status')).toHaveClass('task-detail-toast');
+    expect(view.container.querySelector(`#${feedbackId}`)).toBeEmptyDOMElement();
+    act(() => vi.advanceTimersByTime(2999));
+    expect(screen.getByRole('status')).toBeVisible();
+    view.update({ ...confirmed });
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.queryByRole('status')).toBeNull();
+    view.update({ ...confirmed }, { ...detail, version: 13n });
+    expect(screen.queryByRole('status')).toBeNull();
+    view.unmount();
+    mount(confirmed);
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('announces each newly confirmed operation and keeps locale changes within the original lifetime', () => {
+    vi.useFakeTimers();
+    const view = mount({ ...permission, phase: 'pending' });
+    view.update({ ...permission, phase: 'confirmed' });
+    act(() => vi.advanceTimersByTime(2000));
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'zh-CN' } });
+    expect(screen.getByRole('status')).toHaveTextContent('自动执行设置已更新。');
+    act(() => vi.advanceTimersByTime(1000));
+    expect(screen.queryByRole('status')).toBeNull();
+    const next = { ...permission, operation: { action: 'allowAgents' as const, allowAgents: false, version: 13n } };
+    view.update({ ...next, phase: 'pending' });
+    view.update({ ...next, phase: 'confirmed' });
+    expect(screen.getByRole('status')).toHaveTextContent('自动执行设置已更新。');
   });
 
   it.each([

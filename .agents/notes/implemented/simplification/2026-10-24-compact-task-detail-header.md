@@ -1,0 +1,76 @@
+# Agent Note: Compact Task Detail Header
+
+Status: implemented
+
+## Problem
+
+Task reading loses vertical space to a generic dialog label, a second task-title
+row, a duplicate ID and a success paragraph that remains after a permission
+change. A second language selector also takes header width while details already
+subscribe to the application locale. The complete ID is already available in Overview, but transferring it to
+another tool requires manual selection. Long task titles and retained read errors
+must still leave the dialog controls and reading panels reachable.
+
+## Decision
+
+The loaded task's actual title is the common header's h2 and the dialog's
+accessible name. Loading and initial failure use their corresponding state
+titles. The complete task title owns bounded native scrolling and keyboard focus;
+approval and close controls stay accessible across supported viewport sizes.
+Task details consume the current application locale through the shared
+`LocaleProvider`; the header contains the title, applicable approval action and
+close control. The body heading retains status, automation controls and actionable
+notices. Overview metadata retains the full selectable ID and a localized Copy
+button that directly writes its exact value with the browser Clipboard API. Copy success and failure belong to the displayed task; failure
+keeps both the ID and a retry available.
+
+A successful automatic-execution setting submission observed by the open detail
+produces a floating status bubble for three seconds. The bubble does not consume
+layout height, move the tabs or change the reading area's available space. Its
+lifetime is presentation state, independent of the task session's confirmed
+mutation. Existing confirmed state on mount, background reads, language changes
+and reopening do not replay success. Pending, refusal, conflict, unknown-result,
+reconciliation and locked feedback retain their existing visible behavior.
+
+This partially supersedes the title/context allocation described by the
+[withdrawal decision](../feature/2026-10-23-task-unapprove.md) while preserving its
+reading-space, error and keyboard guarantees. The
+[centered-dialog decision](../feature/2026-10-22-centered-task-detail-dialog.md)
+continues to own the modal shell. The
+[bilingual-interface decision](../feature/2026-10-22-web-bilingual-interface.md)
+retains the shared locale runtime and the rationale for the original modal
+selector placement; this decision removes the duplicate detail-header selector.
+The [approval decision](../feature/2026-10-22-task-approval-lifecycle.md) owns versioned
+actions, and the
+[automation decision](../architecture/2026-10-23-task-agent-automation.md) owns
+permission semantics. The [Web requirements](../../../../docs/spec/daynight-web.md)
+and [design](../../../../docs/design/daynight-web.md) own current visible behavior
+and component responsibilities.
+
+## Alternatives
+
+**Keep the full title in the body's existing heading context.** That context
+already supports complete keyboard reading alongside retained notices, but it
+leaves a separate generic header and a second title row above the materials.
+Moving the actual title into the header retains complete reading through a
+bounded title scroller while removing that duplication.
+
+**Keep confirmed permission feedback as an inline paragraph.** It provides a
+persistent result but consumes task-reading height after the operation ends.
+The session already preserves the result; a temporary overlay announces success
+without allocating permanent layout space or changing mutation state.
+
+## Consequences
+
+The common header carries task identity with fewer repeated rows, and the ID
+has an explicit transfer action in its metadata owner. Browser clipboard denial
+remains visible and recoverable through retry or manual selection. Very long
+titles require scrolling within their bounded title region while the rest of
+the controls and reading panels remain available.
+
+Success bubbles are observed while the detail is mounted; an operation completed
+while it is closed remains confirmed in the session and does not become a new
+notification on reopening. Presentation timers are cleaned up with the feedback
+component. This changes neither permission confirmation nor request ownership,
+version checking, reconciliation, refresh scheduling, attachment state or modal
+focus restoration.

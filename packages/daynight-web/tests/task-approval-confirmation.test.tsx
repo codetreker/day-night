@@ -38,7 +38,7 @@ const open = async (detail: TaskDetail) => {
   const props: TaskDetailDialogProps = { projectId, taskId, snapshot: snapshot(detail), onClose: vi.fn(), onRestoreFocus: vi.fn(), onRefreshGraph: vi.fn(), onSelectTask: vi.fn() };
   const view = renderWithLocale(<TaskDetailDialog {...props} />, { locale: 'en', container: root });
   await screen.findByRole('heading', { name: detail.title });
-  return { ...view, props, dialog: screen.getByRole('dialog', { name: 'Task details' }) };
+  return { ...view, props, dialog: screen.getByRole('dialog') };
 };
 
 describe.each(['approve', 'unapprove'] as const)('%s task confirmation', (action) => {

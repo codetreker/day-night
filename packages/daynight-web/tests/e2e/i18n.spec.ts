@@ -82,7 +82,7 @@ test.describe('Web language journeys', () => {
     await expect(language(page)).toHaveValue('zh-CN');
     await expect(page.locator('html')).toHaveAttribute('lang', 'zh-CN');
     await trigger.click();
-    const dialog = page.getByRole('dialog', { name: '任务详情', exact: true });
+    const dialog = page.locator('.task-detail-dialog');
     await expect(dialog.locator('.task-detail-title')).toHaveText(task.title);
     await expect(dialog.locator('.task-description')).toHaveText(task.description);
     await page.keyboard.press('Escape');
@@ -184,6 +184,16 @@ test.describe('Web language journeys', () => {
     await pagination.selectOption('1');
     await expect(dialog.locator('.task-detail-pr-title')).toHaveText(['原始 PR 101']);
     const attachments = dialog.locator('.task-attachments');
+    const changeDetailLanguage = async (locale: 'en' | 'zh-CN'): Promise<void> => {
+      await attachments.getByRole('button', { name: /^(More actions: |更多操作：)preview\.html$/ }).click();
+      await page.getByRole('menuitem', { name: /^(Delete|删除)$/, exact: true }).click();
+      const confirmation = dialog.locator('.attachment-delete-dialog');
+      await expect(confirmation).toContainText(htmlPath);
+      await language(confirmation).selectOption(locale);
+      await confirmation.getByRole('button', { name: locale === 'en' ? 'Cancel' : '取消', exact: true }).click();
+      await expect(confirmation).toBeHidden();
+    };
+    await expect(dialog.locator('.task-detail-header').getByRole('combobox')).toHaveCount(0);
     await dialog.getByRole('tab', { name: 'Attachments', exact: true }).click();
     await attachments.locator('.attachment-file').filter({ hasText: htmlPath }).click();
     const frame = attachments.locator('iframe');
@@ -199,9 +209,7 @@ test.describe('Web language journeys', () => {
     const inputElement = await fileInput.elementHandle();
     if (frameElement === null || inputElement === null) throw new Error('Attachment elements are absent.');
     const beforeModalSwitch = [...reads];
-    await language(dialog).focus();
-    await language(dialog).selectOption('zh-CN');
-    await expect(language(dialog)).toBeFocused();
+    await changeDetailLanguage('zh-CN');
     await dialog.getByRole('tab', { name: '概览', exact: true }).click();
     await expect(dialog.getByRole('combobox', { name: '关联 PR 页码', exact: true })).toHaveValue('1');
     await expect(dialog.locator('.task-detail-pr-title')).toHaveText(['原始 PR 101']);
@@ -225,13 +233,14 @@ test.describe('Web language journeys', () => {
       await route.continue();
     });
     const write = async (method: 'PUT' | 'DELETE', locale: 'en' | 'zh-CN', expectedStatus: number): Promise<void> => {
+      if (method === 'PUT') await changeDetailLanguage(locale);
       const current = { method, started: deferred(), release: deferred() };
       hold = current;
       const response = page.waitForResponse((response) => response.url() === uploadUrl && response.request().method() === method);
       const confirmation = dialog.locator('.attachment-delete-dialog');
       if (method === 'PUT') await attachments.locator('button[type=submit]').click();
       else {
-        const english = await language(dialog).inputValue() === 'en';
+        const english = await page.locator('html').getAttribute('lang') === 'en';
         await attachments.getByRole('button', { name: `${english ? 'More actions: ' : '更多操作：'}${uploadPath}`, exact: true }).click();
         await page.getByRole('menuitem', { name: english ? 'Delete' : '删除', exact: true }).click();
         await expect(confirmation).toContainText(uploadPath);
@@ -241,8 +250,8 @@ test.describe('Web language journeys', () => {
         await within(current.started.promise, `pending ${method}`);
         const pendingReads = [...reads];
         const selectedPath = await attachments.locator('.attachment-preview h5').textContent();
-        await language(method === 'DELETE' ? confirmation : dialog).selectOption(locale);
         if (method === 'DELETE') {
+          await language(confirmation).selectOption(locale);
           await expect(confirmation).toHaveAccessibleName(locale === 'en' ? 'Delete attachment?' : '删除附件？');
           await expect(confirmation).toContainText(uploadPath);
           await expect(confirmation.getByRole('button', { name: locale === 'en' ? 'Deleting…' : '正在删除…', exact: true })).toBeDisabled();
@@ -415,7 +424,8 @@ test.describe('Web language journeys', () => {
         await details(page, task.id).click();
         const dialog = page.locator('.task-detail-dialog');
         await expect(dialog.locator('.task-detail-title')).toHaveText(task.title);
-        await expect(language(dialog)).toHaveValue(locale);
+        await expect(dialog.locator('.task-detail-header').getByRole('combobox')).toHaveCount(0);
+        await expect(page.locator('html')).toHaveAttribute('lang', locale);
         const attachments = dialog.locator('.task-attachments');
         await dialog.getByRole('tab', { name: locale === 'en' ? 'Attachments' : '附件', exact: true }).click();
         await attachments.locator('.attachment-file').filter({ hasText: '原始.txt' }).click();

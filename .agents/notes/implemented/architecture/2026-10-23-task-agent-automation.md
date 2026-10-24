@@ -40,7 +40,11 @@ own purpose. Long titles remain above this row, and narrow layouts may wrap
 platform information only within the left group. The control stays right
 aligned with the first status line at its top. Error, unknown-result, locked
 and human-waiting feedback stays near the control without overlapping content
-or causing horizontal overflow.
+or causing horizontal overflow. A newly observed successful submission uses a
+three-second floating status bubble without consuming reading height. The
+[compact-header decision](../simplification/2026-10-24-compact-task-detail-header.md)
+owns its presentation lifetime and the task title in the common header; the
+confirmed mutation remains in the existing session after the bubble disappears.
 
 Both enabling and disabling open a confirmation dialog, and its confirm action
 submits the captured target value and exact version directly. Cancel, Escape

@@ -81,7 +81,7 @@ describe('graph inspection and detail reading integration', () => {
     expect(state.edges.filter((edge) => edge.inspection === 'highlighted')).toHaveLength(4);
     const trigger = within(root.querySelector<HTMLElement>(`.react-flow__node[data-id="${detailNode.id}"]`)!).getByRole('button', { name: `${detail.title}，详情` });
     await user.click(trigger);
-    const dialog = screen.getByRole('dialog', { name: '任务详情' });
+    const dialog = screen.getByRole('dialog');
     await within(dialog).findByRole('heading', { name: 'Delivery notes' });
     expect(root).toHaveAttribute('inert');
     if (status === 'proposed') expect(within(dialog).getByRole('button', { name: '批准任务' })).toBeEnabled();
@@ -90,7 +90,7 @@ describe('graph inspection and detail reading integration', () => {
     const link = within(dialog).getByRole('link', { name: 'Read acceptance guide' });
     expect(link).toHaveAttribute('href', `${attachmentPreviewRoot(graph.project.id, detailNode.id)}docs/guide.md`);
     await user.click(link);
-    expect(screen.getByRole('dialog', { name: '任务详情' })).toBe(dialog);
+    expect(screen.getByRole('dialog')).toBe(dialog);
     expect(within(dialog).getByRole('tab', { name: '附件' })).toHaveAttribute('aria-selected', 'true');
     const preview = within(dialog).getByRole('group', { name: '附件预览' });
     expect(preview).toHaveFocus();
@@ -100,7 +100,7 @@ describe('graph inspection and detail reading integration', () => {
     expect(readAttachmentText).toHaveBeenCalledExactlyOnceWith(graph.project.id, detailNode.id, attachment.path, expect.any(AbortSignal));
     expect(graphSnapshot(root)).toEqual(state);
     await user.click(within(dialog).getByRole('button', { name: '关闭任务详情' }));
-    expect(screen.queryByRole('dialog', { name: '任务详情' })).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
     expect(root).not.toHaveAttribute('inert');
     expect(trigger).toHaveFocus();
     expect(graphSnapshot(view.container)).toEqual(state);

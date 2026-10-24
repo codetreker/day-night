@@ -40,7 +40,9 @@ observed version. Status filtering accepts all four states; generic update has
 no status option. Metadata, PR and attachment writes never advance lifecycle.
 
 The Web detail dialog places Approve / 批准任务 for proposed and Unapprove /
-撤回审批 for todo at the far right of the task-title row, available on both tabs.
+撤回审批 for todo beside the actual task title in its common header, available on
+both tabs. The [compact-header decision](../simplification/2026-10-24-compact-task-detail-header.md)
+owns the bounded title scrolling and persistent header controls.
 Both open action-specific confirmation; only explicit confirmation submits,
 while Cancel and Escape send no mutation. Confirmation retains the reviewed
 action, identity, source status and version and is invalidated by a known change.

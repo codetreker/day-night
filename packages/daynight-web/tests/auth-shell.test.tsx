@@ -697,7 +697,7 @@ describe("authenticated application shell", () => {
       await screen.findByRole("heading", { name: "私有项目" });
       fireEvent.click(screen.getByRole("tab", { name: "独立任务" }));
       fireEvent.click(screen.getByRole("button", { name: /Lifecycle task/ }));
-      let dialog = screen.getByRole("dialog", { name: "任务详情" });
+      let dialog = screen.getByRole("dialog");
       await within(dialog).findByRole("heading", { name: "Lifecycle task" });
       fireEvent.click(within(dialog).getByRole("button", { name: "批准任务" }));
       fireEvent.click(within(screen.getByRole("alertdialog", { name: "批准任务" })).getByRole("button", { name: "确认批准" }));
@@ -711,7 +711,7 @@ describe("authenticated application shell", () => {
       await screen.findByRole("heading", { name: "私有项目" });
       fireEvent.click(screen.getByRole("tab", { name: "独立任务" }));
       fireEvent.click(screen.getByRole("button", { name: /Lifecycle task/ }));
-      dialog = screen.getByRole("dialog", { name: "任务详情" });
+      dialog = screen.getByRole("dialog");
       expect(await within(dialog).findByRole("button", { name: "正在提交…" })).toBeDisabled();
       expect(fetcher.mock.calls.filter(([url]) => url === taskUrl)).toHaveLength(1);
       expect(fetcher.mock.calls.filter(([url]) => url === `${taskUrl}/approve`)).toHaveLength(1);

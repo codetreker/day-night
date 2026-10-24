@@ -1,7 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ApiError } from '../../api/client';
-import { LanguageSelector } from '../../i18n/LanguageSelector';
 import { useI18n } from '../../i18n/LocaleProvider';
 import { useBodyScrollLock } from '../../app/useBodyScrollLock';
 import type { TaskStatus } from '../../api/types';
@@ -14,6 +13,7 @@ import { TaskApproval } from './TaskApproval';
 import { matchesAgentPermissionReview, TaskAgentPermissionConfirmation, TaskAgentPermissionFeedback, TaskAgentPermissionSwitch, type AgentPermissionConfirmation } from './TaskAgentPermission';
 import { matchesApprovalReview, TaskApprovalConfirmation, type ApprovalConfirmation } from './TaskApprovalConfirmation';
 import { TaskDetailReading } from './TaskDetailReading';
+import { TaskId } from './TaskId';
 import { TaskPullRequests } from './TaskPullRequests';
 import '../../styles/task-detail.css';
 
@@ -136,19 +136,20 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
     <div className="task-detail-backdrop" onClick={(event) => { if (event.target === event.currentTarget && !confirmationOpen) onClose(); }}>
       <section className="task-detail-dialog" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={headingId}>
         <header className="task-detail-header">
-          <h2 id={headingId}>{m.title}</h2>
-          <LanguageSelector />
+          <div className="task-detail-title-row">
+            <h2 id={headingId} className="task-detail-title" ref={titleRef} tabIndex={detail === null ? -1 : 0} title={detail?.title}>{detail === null ? status === 'error' ? m.failed : m.loading : detail.title}</h2>
+            {detail !== null && action !== null && <button className={`button task-detail-title-action${action === 'approve' ? ' primary' : ''}`} type="button" disabled={!canAct} onClick={() => setConfirmation({ action, detail })}>{task.mutation.phase === 'pending' && task.mutation.operation?.action !== 'allowAgents' ? messages.inspection.approval.submitting : action === 'approve' ? messages.inspection.approval.approve : messages.inspection.approval.unapprove}</button>}
+          </div>
           <button className="button task-detail-close" type="button" ref={closeRef} aria-label={m.close} onClick={onClose}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
           </button>
         </header>
         <div className="task-detail-body">
           {status === 'loading' && (
-            <div className="task-detail-state" role="status"><span className="spinner" aria-hidden="true" /><p>{m.loading}</p></div>
+            <div className="task-detail-state" role="status" aria-label={m.loading}><span className="spinner" aria-hidden="true" /></div>
           )}
           {status === 'error' && (
-            <div className="task-detail-state task-detail-error" role="alert">
-              <h3>{m.failed}</h3>
+            <div className="task-detail-state task-detail-error" role="alert" aria-labelledby={headingId}>
               <DetailError error={error} />
               <button className="button primary" type="button" onClick={retry}>{m.retry}</button>
             </div>
@@ -167,11 +168,6 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
           {detail !== null && (
             <>
               <div className="task-detail-heading">
-                <p className="task-detail-id">{detail.id}</p>
-                <div className="task-detail-title-row">
-                  <h3 className="task-detail-title" ref={titleRef} tabIndex={0} title={detail.title}>{detail.title}</h3>
-                  {action !== null && <button className={`button task-detail-title-action${action === 'approve' ? ' primary' : ''}`} type="button" disabled={!canAct} onClick={() => setConfirmation({ action, detail })}>{task.mutation.phase === 'pending' && task.mutation.operation?.action !== 'allowAgents' ? messages.inspection.approval.submitting : action === 'approve' ? messages.inspection.approval.approve : messages.inspection.approval.unapprove}</button>}
-                </div>
                 <div className="task-detail-status-row">
                   <div className="task-detail-badges">
                     <StatusBadge status={detail.status} />
@@ -180,7 +176,7 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
                   <TaskAgentPermissionSwitch detail={detail} disabled={!task.canSetAgentPermission} describedBy={automationFeedbackId}
                     onClick={() => setPermissionConfirmation({ detail, allowAgents: !detail.allowAgents })} />
                 </div>
-                <TaskAgentPermissionFeedback id={automationFeedbackId} detail={detail} mutation={task.mutation} onReconcile={task.reconcile} />
+                <TaskAgentPermissionFeedback key={`${projectId}/${taskId}`} id={automationFeedbackId} detail={detail} mutation={task.mutation} onReconcile={task.reconcile} />
                 {retainedDetail && <p className="task-detail-retained" role="status">{m.retainedDetail}</p>}
                 {stale && (
                   <div className="task-detail-stale" role="status">
@@ -217,7 +213,7 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
                     <dl className="task-detail-section task-detail-metadata">
                       <div><dt>{m.created}</dt><dd><time dateTime={detail.createdAt}>{format.dateTime(detail.createdAt)}</time></dd></div>
                       <div><dt>{m.updated}</dt><dd><time dateTime={detail.updatedAt}>{format.dateTime(detail.updatedAt)}</time></dd></div>
-                      <div><dt>{m.taskId}</dt><dd className="task-detail-full-id">{detail.id}</dd></div>
+                      <div><dt>{m.taskId}</dt><dd className="task-detail-full-id"><TaskId key={`${projectId}/${taskId}`} value={detail.id} /></dd></div>
                     </dl>
                   </aside>
                 </div></>} />

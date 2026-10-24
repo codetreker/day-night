@@ -14,7 +14,7 @@ const enable = async (page: Page, value: boolean): Promise<void> => {
   await dialog.getByRole('button', { name: value ? '开启自动执行' : '关闭自动执行', exact: true }).click();
 };
 const open = async (page: Page, id: string): Promise<void> => {
-  await page.getByRole('tab', { name: '独立任务', exact: true }).click();
+  await page.getByRole('tab', { name: /^(独立任务|Standalone tasks)$/, exact: true }).click();
   await page.locator(`#standalone-task-${id}`).click();
   await expect(automatic(page)).toBeVisible();
 };
@@ -114,7 +114,10 @@ test('task-agent-permission', scenario, async ({ page, api, allowBrowserWrites }
     await expect(automatic(page)).toBeDisabled(); await expect(automatic(page)).not.toBeChecked();
     await expect(detail(page).getByText(/任务已被领取/)).toBeVisible();
     await page.setViewportSize({ width: 390, height: 844 }); await geometry(page);
-    await detail(page).getByRole('combobox', { name: '语言 / Language' }).selectOption('en'); await geometry(page);
+    await detail(page).getByRole('button', { name: '关闭任务详情', exact: true }).click();
+    await page.getByRole('combobox', { name: '语言 / Language', exact: true }).selectOption('en');
+    await open(page, task.id); await geometry(page);
+    await expect(detail(page).locator('.task-detail-header').getByRole('combobox')).toHaveCount(0);
     const screenshot = info.outputPath('automatic-execution-detail.png'); await page.screenshot({ path: screenshot, animations: 'disabled' });
     await info.attach('scenario-screenshot', { path: screenshot, contentType: 'image/png' });
     await info.attach('permission-write-receipts', { body: JSON.stringify({ writes, final: { id: claimed.id, status: claimed.status, allowAgents: claimed.allowAgents } }, null, 2), contentType: 'application/json' });
