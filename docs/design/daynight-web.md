@@ -9,7 +9,7 @@
 已实现的[附件架构](daynight-task-attachments.md)扩展 task 详情，提供文件树、
 单文件上传/覆盖/删除、下载及同源预览。[附件需求](../spec/daynight-task-attachments.md)
 拥有文件行为，[Web 决策](../../.agents/notes/implemented/feature/2026-10-21-task-attachment-web.md)
-记录状态、渲染和焦点机制。图、统计与 task 元数据保留读取约定；状态通过专用版本化 PUT 设置。任务的布尔 allowAgents 与可空枚举 requiredPlatform 已实现，通过普通版本化 PATCH 修改，详情开关机制见下文。
+记录状态、渲染和焦点机制。图、统计与 task 元数据保留读取约定；状态通过专用版本化 PUT 设置。任务的布尔 allowAgents 与可空枚举 requiredPlatform 已实现，通过普通版本化 PATCH 修改，详情确认开关、平台确认下拉框及共享请求归属见下文。
 
 [鉴权架构](daynight-auth.md)拥有 UniAuth 登录、项目权限、成员与邀请及个人访问
 令牌；`AuthenticatedApp` 和 API 客户端已接入生产入口。
@@ -33,7 +33,7 @@ GraphTask/详情保留必填 externalDependsOn，API 层校验正规化 ID、去
 ## 目标与现有基础
 
 浏览器完成“项目列表 → 项目统计 → 独立任务列表或根任务链 → 任务详情”的完整读取路径。数据继续归属 `daynight-server`，不接入 客户端的 review 命令，不新增父子任务。任务仅有 todo、in_progress、done，创建默认 todo，详情提供
-专用批准与撤回，图和一般元数据继续保持读取。
+版本化状态菜单；许可和平台使用各自确认入口，图和一般元数据继续保持读取。
 
 已有基础与集成位置：
 
@@ -189,23 +189,25 @@ Escape/Tab；隐藏附件页签关闭未提交的删除状态。上传目标初�
 
 详情和图 DTO 的 `allowAgents` 均严格解码为布尔；缺失、null 或其他类型拒绝。`TaskAgentPermission` 在标题下的公共状态行右侧组合标签与 switch，左侧为状态、ready 和可选平台。状态来自已确认详情，不做乐观切换；此入口在概览与附件页均可用，不重复渲染状态 badge 或 Overview 编辑区。窄屏左组内换行，右侧与首行状态顶部对齐；锁定、失败、未知结果和人工等待反馈靠近控件。`TaskAgentPermissionFeedback` 仅在当前详情观察到同一操作从 pending 变为 confirmed 时显示成功气泡，3 秒后移除；气泡定位于对话框之上，不参与标题、页签及正文的高度分配。计时与显示状态属于呈现，不清除或改写会话中的 mutation；挂载时已有 confirmed 结果、普通刷新和语言切换均不重播，卸载清理计时。独立任务行和图节点的紧凑许可标记只表达自身任务，根链条目不聚合许可，也不增加图卡高度。
 
-两个方向复用 `TaskConfirmation` 的模态、取消初始焦点、长任务名滚动、下层 inert 和焦点恢复。确认冻结目标布尔值、身份、源状态和精确版本；后台已知变化使确认失效。`TaskDetailSession` 与状态设置共用同一个进行中 operation；pending、未知或必需核对期间阻止两类重复写入，关闭/重开详情、切换任务或项目不会把原操作交给新资源。普通可选周期 GET 不废弃仍有效的版本。
+两个方向复用 `TaskConfirmation` 的模态、取消初始焦点、长任务名滚动、下层 inert 和焦点恢复。确认冻结目标布尔值、身份、源状态和精确版本；后台已知变化使确认失效。`TaskDetailSession` 与状态设置及平台确认共用同一个进行中 operation；pending、未知或必需核对期间阻止相冲突写入，关闭/重开详情、切换任务或项目不会把原操作交给新资源。普通可选周期 GET 不废弃仍有效的版本。
 
 确认后 `setTaskAgentPermission` 通过普通 task PATCH 提交目标许可与精确 bigint 数字。成功响应核验原 project/task、未变生命周期、目标许可和单次版本增长，然后安装完整详情并刷新图；许可变更保持执行起止、PR 和依赖。冲突重读并重新审阅，明确失败保持原值，网络/5xx/协议错误或响应丢失先 GET 核对，不重放 PATCH。`in_progress` 禁止实际切换；该锁不改变明确执行、ready 或依赖语义。
 
-### 平台要求与显式保存
+### 平台要求与确认下拉框
 
-详情与图 DTO 要求 `requiredPlatform` 字段为 null、windows、linux 或 macos，缺失和非法值拒绝；nullable 值不经过运行时默认。独立行、图节点与详情使用相同平台文案，null 不展示限制标签，三个枚举展示对应 Windows、Linux、macOS。平台标签留在标题下状态行左组，窄屏可在该组内换行；右侧自动执行控件仍与首行状态顶部和右边缘对齐。
+详情与图 DTO 要求 `requiredPlatform` 字段为 null、windows、linux 或 macos，缺失和非法值拒绝；nullable 值不经过运行时默认。独立行与图节点保留只读 `TaskPlatformBadge`，按自身任务值显示平台文案。详情状态行左组使用一个紧凑平台下拉框，提供不限平台/Any platform、Windows、Linux、macOS；它的受控值始终来自最近确认的详情，兼有展示和操作入口。左组可在窄屏换行，右侧自动执行控件保持首行顶部与右边缘对齐。平台入口在概览和附件页均可用；概览不再挂载独立平台编辑器或 Save platform 按钮。
 
-概览的 `TaskPlatform` 编辑器保留本地选择与明确 Save platform 操作，`TaskPlatformBadge` 拥有任务平台标签，`TaskPlatformFeedback` 呈现该操作反馈。选择不触发请求，Any platform 对应 null；保存绑定已审阅详情的 project/task、源平台和精确 version。`in_progress` 禁用编辑并说明执行锁定。后台已知平台或任务变化要求重新读取，不能用新版本替换原决定后静默提交。选择草稿绑定完整详情的审阅键，权威版本变化时重新基于当前平台建立草稿；仅时钟或无内容变化的刷新不丢弃输入。页签与附件操作遵循既有保留规则。
+`TaskPlatform` 模块中的 `TaskPlatformSelect` 提供平台入口，`TaskPlatformConfirmation` 与 `TaskPlatformFeedback` 拥有确认和反馈。选择当前值不创建操作；选择不同值只建立 `PlatformConfirmation`，捕获已审阅的完整详情、project/task、源平台、目标平台和精确 version。选择不限平台的目标为 null。下拉框立即保持原已确认值，目标值由确认窗口的当前/目标转换说明表达，不保存独立选择草稿或乐观更新。后台已知详情或版本变化使确认失效，不能静默换版本提交旧决定。`matchesPlatformReview` 以 `taskReviewKey` 验证原审阅。`TaskDetailDialog` 用 `DetailConfirmation` 的 status/permission/platform 判别联合保存唯一的本地确认，统一校验与提交路由，避免确认相互叠加；父详情在最上层确认开启时保持 inert。
 
-`TaskDetailSessions.setRequiredPlatform` 复用单任务 mutation 状态及 `canSetRequiredPlatform` 的可用条件，API client 的 `setTaskRequiredPlatform` 通过普通 PATCH 只发送 version 与 requiredPlatform。pending、结果未知、核对及已知陈旧期间同时阻止许可和状态写入；关闭详情、切换任务或项目后操作仍属于原 task。API client 接受精确原版本的服务空操作或单次版本增长；编辑器只提交相对原平台的真实变化，会话要求单次增长并核验身份、目标平台及未变生命周期和许可，然后安装完整详情并刷新图。明确失败保留已保存值，版本冲突读取当前任务后要求重新操作，断连、5xx、协议错误或响应丢失先 GET 核对且不重放 PATCH。服务端同值和运行锁语义由[服务架构](daynight-server.md)拥有。
+确认复用 `TaskConfirmation` 的长任务名、取消初始焦点、Tab/Shift+Tab 限制、Escape 和遮罩关闭；现有可选 `content` 区域容纳当前平台与目标平台转换说明，状态确认继续使用该区域展示其转换与计时后果。确认按钮只提交一次所捕获的目标与版本；取消、关闭和 Escape 均不写入，返回仍连接且可用的平台 select。入口已消失或被禁用时，焦点回退至详情标题。成功、失败、冲突和未知结果反馈靠近状态行的平台入口，切换详情页签仍可访问；既有 `TaskDetailReading` 面板及附件工作空间的身份、输入、预览和阅读状态保持。
+
+`TaskDetailSessions.setRequiredPlatform` 复用单任务 mutation 及 `canSetRequiredPlatform` 的可用条件，API client 的 `setTaskRequiredPlatform` 通过普通 PATCH 只发送 version 与 requiredPlatform。pending、结果未知、核对及已知陈旧期间同时阻止许可和状态写入；`in_progress` 禁用平台入口并说明锁定原因。关闭详情、切换任务或项目后，已提交操作仍属于原 task。API client 接受精确原版本的服务空操作或单次版本增长；确认只提交相对源平台的真实变化，会话要求单次增长并核验身份、目标平台及未变状态和许可，然后安装完整详情并刷新图。明确失败保留已保存值，版本冲突读取当前任务后要求新决定，断连、5xx、协议错误或响应丢失先 GET 核对且不重放 PATCH。服务端同值和运行锁语义由[服务架构](daynight-server.md)拥有，控件分配的取舍由[确认下拉框决策](../../.agents/notes/implemented/simplification/2026-10-24-task-platform-confirmation-control.md)拥有。
 
 ### 版本化状态设置与任务会话
 
 `TaskDetailSession.tsx` 按 project/task 保存详情与 status/allowAgents 操作；工作空间 provider
 按 user ID 和身份 generation 隔离，导航保留当前操作，登出或身份替换卸载，晚到结果不进入新身份。
-它只协调当前工作空间，不是服务端所有权锁。状态、许可和平台保存共用单写入 owner 与一个确认 union，
+它只协调当前工作空间，不是服务端所有权锁。状态、许可和平台确认共用单写入 owner 与一个确认 union，
 pending、stale、unknown、读取/核对失败期间均阻止三类写入，关闭详情不代表事务回滚。
 
 共享头部保留实际标题、当前状态菜单和关闭入口，ID/复制位于概览，继承应用语言。
@@ -462,7 +464,7 @@ flowchart LR
   在打开时及成功图读取后请求。相同活动资源保留已加载内容与附件面板；活动 GET 不中断，
   自动 receipt 合并最新待办 revision 为一次后续读取。显式重试仍有优先权。revision 与
   loadedRevision 记录请求和成功 GET 起始上下文；requiresFreshRead 根据任务描述符、
-  读取错误和显式核对判断，独立于网络 refreshing。未改变描述符的可选轮询不阻断批准。
+  读取错误和显式核对判断，独立于网络 refreshing。未改变描述符的可选轮询不阻断状态、许可或平台操作。
   相同有序 PR 内容复用数组，保留分页和焦点；关闭详情释放普通读取，但不丢失进行中
   状态提交或未核对结果。代次检查隔离晚到响应和旧源状态，资源/身份切换保持加载边界。
 - `TaskDetailReading` 持有唯一附件控制器，向描述导航和 `TaskAttachmentsPanel` 传递同一实例；
@@ -867,8 +869,7 @@ provider 响应证明 gateway/SDK 协议，不等同于真实上游账号登录�
 继续只发起 GET/HEAD，但 `refresh-staleness` 仅允许一次已登记 fixture task/file PUT，挂起真实上传响应并跨自动读取检查输入、预览、面板几何及唯一写入。`task-attachments` 与 `language-state-preservation` 仅允许精确 fixture task 内的文件
 PUT/DELETE；`task-status`、`task-status-conflicts`、`task-status-recovery` 和 `task-status-transitions`
 单独允许已登记 project/task 的 PUT status 和精确请求次数；六个鉴权场景仅放行各自
-登记的精确管理请求；`project-settings` 另只放行四次登记设置 PATCH，覆盖成功、409、真实提交后丢失响应及降权 403，重读失败后只重试读取。该场景还检查真实大版本、项目隔离、成员只读及双语 320px/390px 控件与导航边界及文字不截断。`task-agent-permission` 只允许登记任务的许可 PATCH 和精确请求次数，覆盖普通成员双向确认、取消/Escape、锁定、冲突、已提交响应丢失与读取核对、详情关闭/切换后的请求归属、严格布尔/精确版本及双语窄屏几何；未知写入只核对，不重放。`task-platform` 仅允许登记任务的精确平台PATCH，覆盖选择零写入、显式设置/清除、状态/许可共享锁、
-冲突与真实丢响应后的GET核对、跨任务归属、人工开始后锁定、字段传播及双语窄屏。
+登记的精确管理请求；`project-settings` 另只放行四次登记设置 PATCH，覆盖成功、409、真实提交后丢失响应及降权 403，重读失败后只重试读取。该场景还检查真实大版本、项目隔离、成员只读及双语 320px/390px 控件与导航边界及文字不截断。`task-agent-permission` 只允许登记任务的许可 PATCH 和精确请求次数，覆盖普通成员双向确认、取消/Escape、锁定、冲突、已提交响应丢失与读取核对、详情关闭/切换后的请求归属、严格布尔/精确版本及双语窄屏几何；未知写入只核对，不重放。`task-platform` 仅允许登记任务的精确平台 PATCH，覆盖状态行选择后确认、当前值无操作、各取消路径零写入和下拉框焦点恢复、确认后设置/清除、状态/许可共享锁、冲突与真实丢响应后的 GET 核对、跨任务归属、人工开始后锁定、字段传播及双语 320px/390px 窄屏。
 task-execution-time 保持浏览器 GET/HEAD-only，由正常 API/安装 CLI 准备起止、保存阈值和完成任务；挂起图响应与错误本机墙钟隔离本地单调 tick，验证实时/冻结/未知、卡片/独立行、外部虚线及焦点和图几何，其他写请求仍失败。附件场景在两目标上都让安装 CLI 与生产页面操作同一
 组数据，按原始字节交叉验证写入、覆盖、下载与删除；具体机制由
 [附件组合验收决策](../../.agents/notes/implemented/testing/2026-10-21-task-attachment-cross-layer-acceptance.md)

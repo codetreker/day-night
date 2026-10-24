@@ -47,7 +47,7 @@ export const TaskConfirmation = ({ title, question, explanation, content, taskTi
     return () => {
       document.removeEventListener('keydown', keydown, true);
       if (!wasInert) parent.removeAttribute('inert');
-      if (restoreOpener.current && opener instanceof HTMLButtonElement && opener.isConnected && !opener.disabled) opener.focus();
+      if (restoreOpener.current && (opener instanceof HTMLButtonElement || opener instanceof HTMLSelectElement) && opener.isConnected && !opener.disabled) opener.focus();
       else fallbackFocus.current?.focus();
     };
   }, [owner, fallbackFocus]);

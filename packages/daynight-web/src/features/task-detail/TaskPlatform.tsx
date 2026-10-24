@@ -1,9 +1,10 @@
-import { useId, useLayoutEffect, useState } from 'react';
+import type { RefObject } from 'react';
 import { ApiError } from '../../api/client';
 import { executionPlatform } from '../../api/parse';
 import type { ExecutionPlatform, TaskDetail } from '../../api/types';
 import { useI18n } from '../../i18n/LocaleProvider';
 import { taskReviewKey } from './freshness';
+import { TaskConfirmation } from './TaskConfirmation';
 import type { TaskMutationState } from './TaskDetailSession';
 
 export const TaskPlatformBadge = ({ requiredPlatform, compact = false }: {
@@ -13,6 +14,44 @@ export const TaskPlatformBadge = ({ requiredPlatform, compact = false }: {
   const { messages: { platform: m } } = useI18n();
   const label = requiredPlatform === null ? m.any : m.names[requiredPlatform];
   return <span className={`task-platform${compact ? ' task-platform-compact' : ''}`} title={`${m.title}: ${label}`}>{label}</span>;
+};
+
+export type PlatformConfirmation = { readonly detail: TaskDetail; readonly requiredPlatform: ExecutionPlatform | null };
+export const matchesPlatformReview = (confirmation: PlatformConfirmation, detail: TaskDetail | null): boolean =>
+  detail !== null && taskReviewKey(confirmation.detail) === taskReviewKey(detail) && confirmation.requiredPlatform !== detail.requiredPlatform;
+
+export const TaskPlatformConfirmation = ({ confirmation, ...props }: {
+  readonly confirmation: PlatformConfirmation;
+  readonly owner: RefObject<HTMLElement | null>;
+  readonly fallbackFocus: RefObject<HTMLElement | null>;
+  readonly onCancel: () => void;
+  readonly onConfirm: () => void;
+}) => {
+  const { messages: { platform: m } } = useI18n();
+  const name = (value: ExecutionPlatform | null): string => value === null ? m.any : m.names[value];
+  return <TaskConfirmation {...props} title={m.confirmTitle} question={m.confirmQuestion}
+    content={<><p>{m.transition({ from: name(confirmation.detail.requiredPlatform), to: name(confirmation.requiredPlatform) })}</p><p>{m.explanation}</p></>}
+    explanation={m.explanation} taskTitle={confirmation.detail.title} confirmLabel={m.confirm} cancelLabel={m.cancel} closeLabel={m.closeConfirmation} />;
+};
+
+export const TaskPlatformSelect = ({ detail, disabled, describedBy, onReview }: {
+  readonly detail: TaskDetail;
+  readonly disabled: boolean;
+  readonly describedBy: string;
+  readonly onReview: (requiredPlatform: ExecutionPlatform | null) => void;
+}) => {
+  const { messages: { platform: m } } = useI18n();
+  const saved = detail.requiredPlatform === null ? '' : detail.requiredPlatform;
+  return <select className="task-platform-select" aria-label={m.title} aria-describedby={describedBy}
+    title={detail.status === 'in_progress' ? m.locked : m.help} value={saved} disabled={disabled}
+    onChange={(event) => {
+      const selected = event.currentTarget.value === '' ? null : executionPlatform(event.currentTarget.value);
+      event.currentTarget.value = saved;
+      if (selected !== detail.requiredPlatform) onReview(selected);
+    }}>
+    <option value="">{m.any}</option>
+    {(['windows', 'linux', 'macos'] as const).map((platform) => <option value={platform} key={platform}>{m.names[platform]}</option>)}
+  </select>;
 };
 
 const PlatformError = ({ error }: { readonly error: unknown }) => {
@@ -25,52 +64,24 @@ const PlatformError = ({ error }: { readonly error: unknown }) => {
   return <><p>{message}</p>{error instanceof ApiError && error.requestId !== null && <p className="request-id">{common.requestId}{' '}<code>{error.requestId}</code></p>}</>;
 };
 
-export const TaskPlatformFeedback = ({ mutation, onReconcile }: {
+export const TaskPlatformFeedback = ({ id, detail, mutation, onReconcile }: {
+  readonly id?: string;
+  readonly detail: TaskDetail | null;
   readonly mutation: TaskMutationState;
   readonly onReconcile: () => void;
 }) => {
   const { messages: { platform: m } } = useI18n();
-  if (mutation.operation?.action !== 'requiredPlatform') return null;
-  const busy = mutation.phase === 'pending' || mutation.reconciling;
-  const unresolved = mutation.phase === 'unknown' || mutation.reconciliationError !== null;
-  const summary = mutation.reconciling ? m.checking : mutation.phase === 'pending' ? m.pending
+  const relevant = mutation.operation?.action === 'requiredPlatform';
+  const busy = relevant && (mutation.phase === 'pending' || mutation.reconciling);
+  const unresolved = relevant && (mutation.phase === 'unknown' || mutation.reconciliationError !== null);
+  const summary = !relevant ? null : mutation.reconciling ? m.checking : mutation.phase === 'pending' ? m.pending
     : mutation.phase === 'confirmed' ? m.confirmed : mutation.phase === 'unknown' ? m.unknown
       : mutation.phase === 'conflict' ? m.conflict : mutation.phase === 'reconciled' ? m.reconciled : null;
-  return <div className="task-platform-feedback" aria-live="polite" aria-busy={busy}>
+  return <div id={id} className="task-platform-feedback" aria-live="polite" aria-busy={busy}>
+    {detail?.status === 'in_progress' && <p>{m.locked}</p>}
     {summary !== null && <p role={unresolved || mutation.phase === 'conflict' ? 'alert' : 'status'}>{summary}</p>}
     {unresolved && <button className="button" type="button" disabled={busy} onClick={onReconcile}>{mutation.reconciling ? m.checking : m.checkState}</button>}
-    {mutation.error !== null && <div className="task-platform-error" role="alert"><PlatformError error={mutation.error} /></div>}
-    {mutation.reconciliationError !== null && <div className="task-platform-error" role="alert"><p>{m.checkFailed}</p><PlatformError error={mutation.reconciliationError} /></div>}
+    {relevant && mutation.error !== null && <div className="task-platform-error" role="alert"><PlatformError error={mutation.error} /></div>}
+    {relevant && mutation.reconciliationError !== null && <div className="task-platform-error" role="alert"><p>{m.checkFailed}</p><PlatformError error={mutation.reconciliationError} /></div>}
   </div>;
-};
-
-export const TaskPlatform = ({ detail, disabled, mutation, onSave, onReconcile }: {
-  readonly detail: TaskDetail;
-  readonly disabled: boolean;
-  readonly mutation: TaskMutationState;
-  readonly onSave: (requiredPlatform: ExecutionPlatform | null, version: bigint) => void;
-  readonly onReconcile: () => void;
-}) => {
-  const { messages: { platform: m } } = useI18n();
-  const headingId = useId();
-  const helpId = useId();
-  const reviewKey = taskReviewKey(detail);
-  const [draft, setDraft] = useState({ reviewKey, value: detail.requiredPlatform });
-  const current = draft.reviewKey === reviewKey;
-  const selected = current ? draft.value : detail.requiredPlatform;
-  useLayoutEffect(() => { if (!current) setDraft({ reviewKey, value: detail.requiredPlatform }); }, [current, reviewKey, detail.requiredPlatform]);
-  return <section className="task-detail-section" aria-labelledby={headingId}>
-    <h4 id={headingId}>{m.title}</h4>
-    <div className="task-platform-controls">
-      <select aria-labelledby={headingId} aria-describedby={helpId} value={selected === null ? '' : selected} disabled={disabled}
-        onChange={(event) => setDraft({ reviewKey, value: event.currentTarget.value === '' ? null : executionPlatform(event.currentTarget.value) })}>
-        <option value="">{m.any}</option>
-        {(['windows', 'linux', 'macos'] as const).map((platform) => <option value={platform} key={platform}>{m.names[platform]}</option>)}
-      </select>
-      <button className="button primary" type="button" disabled={disabled || !current || selected === detail.requiredPlatform}
-        onClick={() => { if (current) onSave(selected, detail.version); }}>{m.save}</button>
-    </div>
-    <p className="task-platform-help" id={helpId}>{detail.status === 'in_progress' ? m.locked : m.help}</p>
-    <TaskPlatformFeedback mutation={mutation} onReconcile={onReconcile} />
-  </section>;
 };

@@ -35,11 +35,11 @@ ready state, platform compatibility and unique ownership.
 
 The task detail places one combined “Automatic execution” / “自动执行” label
 and switch at the right of the status row below the title. Status, readiness
-and optional platform information occupy the left group. The combination
+and the platform selector occupy the left group. The combination
 provides both the confirmed state and its operation; the detail has no separate
 automation badge or lower Overview switch. List status badges retain their
 own purpose. Long titles remain above this row, and narrow layouts may wrap
-platform information only within the left group. The control stays right
+the compact platform control only within the left group. The control stays right
 aligned with the first status line at its top. Error, unknown-result, locked
 and human-waiting feedback stays near the control without overlapping content
 or causing horizontal overflow. A newly observed successful submission uses a
@@ -88,9 +88,11 @@ before candidate pagination and included in cursor scope. Future worker claim
 must recheck it inside the claim transaction. A local filter on a bounded page
 cannot establish that no eligible work exists.
 
-Switch changes share the task write gate with status setting and platform saves. Version
-conflicts require a fresh decision, confirmed failures retain the prior value,
-and uncertain writes remain unresolved until actual state is observed. Those
+Switch changes share the task write gate with status setting and confirmed
+platform changes. The [platform control decision](../simplification/2026-10-24-task-platform-confirmation-control.md)
+owns the status-row select, its confirmation and select-focus restoration.
+Version conflicts require a fresh decision, confirmed failures retain the prior
+value, and uncertain writes remain unresolved until actual state is observed. Those
 guarantees accompany the implemented permission controls, existing task/attachment
 state retention, bilingual labels, keyboard operation and fixed graph geometry.
 
