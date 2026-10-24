@@ -96,7 +96,7 @@ const fileUrl = (project: string, task: string, path: string): string => `/api/v
 const previewUrl = (project: string, task: string, path: string): string => `/api/v1/projects/${project}/tasks/${task}/preview/${path.split('/').map(encodeURIComponent).join('/')}`;
 type User = { id: string; name: string; email: string };
 type Project = { id: string; name: string };
-type Task = { id: string; version: bigint; properties: { pullRequests: { url: string; title: string }[] }; updatedAt: string };
+type Task = { id: string; title: string; version: bigint; properties: { pullRequests: { url: string; title: string }[] }; updatedAt: string };
 type Member = { userId: string; role: string; version: bigint };
 type Token = { id: string; token: string };
 type Invitation = { id: string; link: string };
@@ -378,7 +378,7 @@ export const runAuthCombined = async (options: AuthCombinedOptions): Promise<Aut
     await bobPage.getByRole('combobox', { name: '语言 / Language', exact: true }).selectOption('zh-CN');
     await bobPage.getByRole('tab', { name: '独立任务', exact: true }).click();
     await bobPage.locator(`#standalone-task-${task.id}`).click();
-    const detail = bobPage.getByRole('dialog', { name: '任务详情', exact: true });
+    const detail = bobPage.getByRole('dialog', { name: task.title, exact: true });
     await detail.getByRole('tab', { name: '附件', exact: true }).click();
     await detail.locator('button.attachment-file').filter({ hasText: /index\.html/ }).click();
     const frame = detail.frameLocator('iframe');
