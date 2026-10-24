@@ -95,8 +95,12 @@ guarantees accompany the implemented permission controls, existing task/attachme
 state retention, bilingual labels, keyboard operation and fixed graph geometry.
 
 The CLI exposes `--allow-agents true|false` on update, list and bounded ready
-queries. New automatic candidate selection uses true, including fallback
-inventories; workflows may not enable the flag themselves. Explicit single-task
+queries. New automatic candidate selection uses true together with actual-runtime
+platform compatibility, retaining both on fallback inventories and rechecking
+the latest full task before exact-version claim. The
+[platform decision](../feature/2026-10-24-task-required-platform.md) owns runtime
+mapping and candidate eligibility; automatically selecting an ID is not explicit
+manual assignment. Workflows may not enable the flag themselves. Explicit single-task
 execution remains available regardless of it. Human output displays the
 permission and JSON retains the required boolean.
 

@@ -213,10 +213,15 @@ stage order, without precreating future stages. A specific request to begin a
 Goal discussion authorizes approval and claim of that discussion only. Ordinary
 creation, run-task and autopilot do not supply approval; confirming a solution does
 not approve or execute delivery subtasks. Approved ready work is claimed at the
-reviewed version. Automatic selection uses
-`task ready --allow-agents true --json` and preserves that filter on fallback
-inventories; workflows never enable the flag themselves. Explicitly designated
-manual work can be claimed with either value. Task descriptions are self-contained
+reviewed version. Automatic selection reads the actual runtime
+`process.platform`: win32 maps to windows, darwin to macos and linux to linux,
+including WSL. An unknown or unsupported runtime waits for clarification. It uses
+`task ready --allow-agents true --compatible-platform <actual-platform> --json`
+and retains both filters on fallback inventories. Before exact-version claim,
+the latest full task must still allow automatic execution, be ready and have a
+null or matching platform requirement. Workflows never enable the flag themselves
+or treat an automatically selected ID as explicit manual assignment. Explicitly
+designated manual work can use ordinary claim independently of automatic eligibility. Task descriptions are self-contained
 Markdown briefs: the concrete problem and action, scope, deliverables, constraints,
 observable completion summaries and actual input references. The Web renders that
 Markdown; API storage and CLI/Agent output preserve the original string bytes.

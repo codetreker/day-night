@@ -3,6 +3,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, 
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { parse as parseYaml } from "yaml";
+import { inspectInstalledSkill, instructionScenarios, verifyInstructionScenario } from "../fixtures/skill-contract.js";
 
 const root = path.resolve(import.meta.dirname, "../../../../.tmp/copy-skill-tests");
 const packageDirectory = path.resolve(import.meta.dirname, "../..");
@@ -48,6 +49,29 @@ afterEach(() => {
 });
 
 describe("packaged skill resource copy", () => {
+  it("retains platform-filtered automatic selection and the full-task claim recheck in the copied bundle", async () => {
+    const f = fixture();
+    const copied = f.run();
+    expect(copied.status, copied.stderr).toBe(0);
+    const bundle = await inspectInstalledSkill(f.destination(bundles[1]));
+    for (const instruction of instructionScenarios) verifyInstructionScenario(bundle, instruction);
+    const scenario = instructionScenarios.find(({ id }) => id === "automatic-selection-platform")!;
+    expect(verifyInstructionScenario(bundle, scenario)).toHaveLength(4);
+    const mutations = [
+      { resource: "references/autopilot.md", before: "task ready --allow-agents true --compatible-platform <actual-platform>", after: "task ready --allow-agents true" },
+      { resource: "references/autopilot.md", before: "task list --allow-agents true --compatible-platform <actual-platform>", after: "task list --allow-agents true" },
+      { resource: "references/run-task.md", before: "Immediately before claim, reread the full task and", after: "Use the previously selected candidate and" },
+      { resource: "references/run-task.md", before: "An automatically selected ID passed here remains automatic\nselection, even though run-task receives a concrete ID.", after: "A task ID always uses manual selection." },
+    ];
+    for (const mutation of mutations) {
+      const documents = new Map(bundle.documents);
+      const original = documents.get(mutation.resource)!;
+      expect(original).toContain(mutation.before);
+      documents.set(mutation.resource, original.replace(mutation.before, mutation.after));
+      expect(() => verifyInstructionScenario({ ...bundle, documents }, scenario)).toThrow();
+    }
+  });
+
   it("copies the two complete allowlisted bundles byte-for-byte from an unrelated cwd", () => {
     const f = fixture();
     const publicBundle = bundles[1];
