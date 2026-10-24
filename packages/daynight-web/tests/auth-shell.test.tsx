@@ -769,6 +769,24 @@ describe("authenticated standalone attachment reader", () => {
     expect(fetcher).toHaveBeenCalledTimes(3);
   });
 
+  it("keeps the authenticated attachment controller and panel mounted through same-task history", async () => {
+    window.history.replaceState(null, "", location("docs/guide.md"));
+    const items = ["docs/guide.md", "next.txt"].map((path) => ({ path, contentType: "text/plain", sizeBytes: 12, createdAt: now, updatedAt: now }));
+    const fetcher = install((url) => url.includes("/attachments?") ? json({ items, nextCursor: null }) : url.endsWith("/attachments/files/docs/guide.md") ? new Response("First authenticated file") : url.endsWith("/attachments/files/next.txt") ? new Response("Next authenticated file") : defaults(url));
+    render(<AuthenticatedApp />);
+    await screen.findByText("First authenticated file");
+    const panel = document.querySelector(".task-attachments");
+    fireEvent.click(screen.getByRole("button", { name: /^next\.txt/ }));
+    await screen.findByText("Next authenticated file");
+    expect(window.location.pathname).toBe(location("next.txt"));
+    expect(document.querySelector(".task-attachments")).toBe(panel);
+    await act(async () => { window.history.back(); });
+    await screen.findByText("First authenticated file");
+    expect(document.querySelector(".task-attachments")).toBe(panel);
+    expect(fetcher.mock.calls.filter(([url]) => url.includes("/attachments?"))).toHaveLength(1);
+    expect(fetcher.mock.calls.filter(([url]) => url === "/api/v1/me")).toHaveLength(1);
+  });
+
   it("retains the same-origin HTML frame through same-user revalidation and removes it on an account change", async () => {
     window.history.replaceState(null, "", location("site/index.html"));
     let identify!: (response: Response) => void;
@@ -796,7 +814,7 @@ describe("authenticated standalone attachment reader", () => {
     await waitFor(() => expect(meCalls).toBe(3));
     bob = true;
     await act(async () => identify(json(user(otherId, "Bob"))));
-    await screen.findByRole("alert");
+    await within(await screen.findByRole("group", { name: "附件预览" })).findByRole("alert");
     expect(frame.isConnected).toBe(false);
     expect(screen.queryByTitle("HTML 预览：site/index.html")).toBeNull();
     expect(screen.queryByRole("heading", { name: "登录你的工作空间" })).toBeNull();
@@ -811,7 +829,7 @@ describe("authenticated standalone attachment reader", () => {
       expect(screen.queryByRole("heading", { name: "docs/guide.md" })).toBeNull();
       expect(document.querySelector(".attachment-page")).toBeNull();
     } else {
-      await screen.findByRole("alert");
+      await within(await screen.findByRole("group", { name: "附件预览" })).findByRole("alert");
       expect(screen.getByRole("heading", { name: "docs/guide.md" })).toBeInTheDocument();
       expect(screen.queryByRole("heading", { name: "登录你的工作空间" })).toBeNull();
       expect(document.title).toBe("附件预览 · Daynight");

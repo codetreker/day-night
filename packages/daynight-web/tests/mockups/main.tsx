@@ -13,7 +13,7 @@ import '../../src/styles/app.css';
 import '../../src/styles/task-detail.css';
 
 const query = new URLSearchParams(window.location.search);
-const standalonePath = query.get('file');
+const initialStandalonePath = query.get('file');
 const markdownColumns = Array.from({ length: 12 }, (_, index) => `字段 ${index + 1}`);
 const markdownDescription = [
   '# 任务描述 Markdown', '',
@@ -32,6 +32,12 @@ const markdownDescription = [
 const AttachmentMockup = () => {
   const { locale, messages, format } = useI18n();
   const m = messages.inspection.detail;
+  const [standalonePath, setStandalonePath] = useState(initialStandalonePath);
+  useEffect(() => {
+    const navigated = () => setStandalonePath(new URLSearchParams(window.location.search).get('file'));
+    window.addEventListener('popstate', navigated);
+    return () => window.removeEventListener('popstate', navigated);
+  }, []);
   useEffect(() => {
     document.documentElement.lang = locale;
     document.title = messages.workspace.app.documentTitle[standalonePath === null ? 'project' : 'attachment'];
@@ -41,7 +47,7 @@ const AttachmentMockup = () => {
   const [descriptionMode, setDescriptionMode] = useState<'rich' | 'empty' | 'long'>('rich');
   const description = descriptionMode === 'empty' ? '' : descriptionMode === 'long' ? `${markdownDescription}\n\n${Array.from({ length: 24 }, (_, index) => `### 验收记录 ${index + 1}\n\n完整任务描述在概览中滚动。方案链接激活现有附件页签，保留同一个文件清单和预览控制器。`).join('\n\n')}` : markdownDescription;
   useBodyScrollLock(open && standalonePath === null);
-  const fixture = useMemo(() => createAttachmentFixture(scenario), [scenario]);
+  const fixture = useMemo(() => createAttachmentFixture(scenario, { files: new URL('./files/', window.location.href).pathname, page: window.location.pathname }), [scenario]);
   useEffect(() => () => fixture.dispose(), [fixture]);
   if (standalonePath !== null) return <AttachmentPage projectId="mockup-project" taskId="mockup-task" path={standalonePath} api={fixture.api} urls={fixture.urls} />;
   return <>

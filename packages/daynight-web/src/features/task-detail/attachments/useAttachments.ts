@@ -31,7 +31,9 @@ type WriteState = { readonly scope: string; readonly status: "idle" | "saving" |
 const initialList = (scope: string): ListState => ({ scope, items: [], loading: true, complete: false, error: null });
 const initialPreview = (scope: string, path: string | null): PreviewState => ({ scope, path, status: path === null ? "idle" : "loading", text: null, error: null });
 
-export const useAttachments = (projectId: string, taskId: string, api: AttachmentApi = attachmentApi) => {
+type AttachmentOptions = { readonly requireCompleteInventory?: boolean };
+
+export const useAttachments = (projectId: string, taskId: string, api: AttachmentApi = attachmentApi, options: AttachmentOptions = {}) => {
   const scope = `${projectId}/${taskId}`;
   const currentScope = useRef(scope);
   currentScope.current = scope;
@@ -92,7 +94,7 @@ export const useAttachments = (projectId: string, taskId: string, api: Attachmen
   const visibleList = list.scope === scope ? list : initialList(scope);
   // An incomplete refresh cannot prove that a selected file disappeared from a later page.
   const selectedMetadata = useRef<{ scope: string; path: string | null; attachment: Attachment | undefined }>({ scope, path: null, attachment: undefined });
-  const listedSelection = visibleList.items.find((item) => item.path === selectedPath);
+  const listedSelection = !options.requireCompleteInventory || visibleList.complete ? visibleList.items.find((item) => item.path === selectedPath) : undefined;
   if (listedSelection !== undefined || visibleList.complete || selectedMetadata.current.scope !== scope || selectedMetadata.current.path !== selectedPath) {
     selectedMetadata.current = { scope, path: selectedPath, attachment: listedSelection };
   }

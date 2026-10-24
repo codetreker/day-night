@@ -209,7 +209,12 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
     await page.keyboard.press('Space');
     await expect(uploadDisclosure).not.toHaveAttribute('open', '');
 
+    const embeddedAddress = page.url();
+    const embeddedHistory = await page.evaluate(() => history.length);
+    await selectFile(attachments, 'notes/one/same.txt');
     await selectFile(attachments, 'docs/design.md');
+    expect(page.url()).toBe(embeddedAddress);
+    expect(await page.evaluate(() => history.length)).toBe(embeddedHistory);
     await expect(attachments.getByRole('table').first()).toContainText('Web已连接');
     const markdownImage = attachments.getByRole('img', { name: '项目流程' });
     await expect(markdownImage).toHaveAttribute('src', attachmentPreviewUrl(project.id, task.id, 'images/workflow.svg'));
@@ -240,7 +245,11 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
     await expect(newTabLink).toHaveAttribute('rel', 'noopener noreferrer');
     const [reader] = await Promise.all([page.waitForEvent('popup'), newTabLink.click()]);
     const readerErrors: string[] = [];
+    const readerWrites: string[] = [];
     reader.on('pageerror', (error) => readerErrors.push(error.name));
+    reader.on('request', (request) => {
+      if (!['GET', 'HEAD'].includes(request.method())) readerWrites.push(`${request.method()} ${request.url()}`);
+    });
     await expect(reader).toHaveURL(new URL(readerUrl, origin).href);
     expect(await reader.evaluate(() => window.opener === null)).toBe(true);
     await expect(reader.getByRole('table').first()).toContainText('Web已连接');
@@ -251,6 +260,48 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
     await expect(reader.locator('.attachment-markdown pre')).toHaveText(longCode);
     await expect(attachments.getByRole('heading', { name: 'docs/design.md', exact: true })).toBeVisible();
     await expect(dialog.getByRole('tab', { name: '附件', exact: true })).toHaveAttribute('aria-selected', 'true');
+    const readerAttachments = reader.locator('.task-attachments');
+    await expect(readerAttachments.getByRole('navigation', { name: '附件文件', exact: true })).toBeVisible();
+    const readerSidebar = await readerAttachments.locator('.attachment-sidebar').elementHandle();
+    if (readerSidebar === null) throw new Error('The standalone attachment sidebar is absent.');
+    const readerUpload = readerAttachments.locator('.attachment-upload-disclosure');
+    await readerUpload.locator('summary').click();
+    await readerAttachments.getByRole('textbox', { name: '目标相对路径' }).fill('drafts/reader.txt');
+    await readerUpload.locator('summary').click();
+    const readerLongDirectory = readerAttachments.locator('summary').filter({ hasText: exact('▱ long') }).locator('..');
+    await readerLongDirectory.locator('summary').first().click();
+    await expect(readerLongDirectory).not.toHaveAttribute('open', '');
+    await selectFile(readerAttachments, 'notes/one/same.txt');
+    await expect(reader).toHaveURL(new URL(attachmentPageUrl(project.id, task.id, 'notes/one/same.txt'), origin).href);
+    await expect(await fileButton(readerAttachments, 'notes/one/same.txt')).toHaveAttribute('aria-pressed', 'true');
+    await expect(readerAttachments.locator('pre')).toHaveText('First nested text\nSecond line\n');
+    await selectFile(readerAttachments, 'notes/two/same.txt');
+    await expect(reader).toHaveURL(new URL(attachmentPageUrl(project.id, task.id, 'notes/two/same.txt'), origin).href);
+    await reader.goBack();
+    await expect(readerAttachments.locator('pre')).toHaveText('First nested text\nSecond line\n');
+    await reader.goForward();
+    await expect(readerAttachments.locator('pre')).toHaveText('Second same-name text\n');
+    await expect(readerLongDirectory).not.toHaveAttribute('open', '');
+    await expect(readerUpload).not.toHaveAttribute('open', '');
+    await expect(readerAttachments.getByLabel('目标相对路径')).toHaveValue('drafts/reader.txt');
+    expect(await readerSidebar.evaluate((element) => element.isConnected)).toBe(true);
+    await reader.reload();
+    await expect(readerAttachments.locator('pre')).toHaveText('Second same-name text\n');
+    const standaloneUploadPath = 'standalone/reader-upload.txt';
+    const standaloneUploadUrl = new URL(attachmentDownloadUrl(project.id, task.id, standaloneUploadPath), origin).href;
+    await readerUpload.locator('summary').click();
+    await readerAttachments.getByLabel('选择一个文件').setInputFiles({ name: 'reader.txt', mimeType: 'text/plain', buffer: Buffer.from('Standalone shared upload\n') });
+    await readerAttachments.getByRole('textbox', { name: '目标相对路径' }).fill(standaloneUploadPath);
+    await readerAttachments.getByRole('button', { name: '上传文件', exact: true }).click();
+    await expect(readerAttachments.locator('pre')).toHaveText('Standalone shared upload\n');
+    await expect(reader).toHaveURL(new URL(attachmentPageUrl(project.id, task.id, standaloneUploadPath), origin).href);
+    expect(await cli.read(args('read', [standaloneUploadPath]))).toEqual(Buffer.from('Standalone shared upload\n'));
+    const standaloneDeletion = await confirmDeletion(reader, readerAttachments, standaloneUploadPath);
+    await standaloneDeletion.getByRole('button', { name: '删除附件', exact: true }).click();
+    await expect(standaloneDeletion).toBeHidden();
+    await expect(readerAttachments.locator('.attachment-file-name').filter({ hasText: exact('reader-upload.txt') })).toHaveCount(0);
+    expect(readerWrites).toEqual([`PUT ${standaloneUploadUrl}`, `DELETE ${standaloneUploadUrl}`]);
+    await selectFile(readerAttachments, 'docs/design.md');
     for (const method of ['get', 'head'] as const) {
       const response = await request[method](readerUrl);
       expect(response.status()).toBe(200);
@@ -263,6 +314,13 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
     const readerScrollEvidence: unknown[] = [];
     for (const viewport of [{ width: 1440, height: 800 }, { width: 320, height: 800 }, { width: 844, height: 390 }]) {
       await reader.setViewportSize(viewport);
+      const standalonePanes = await readerAttachments.locator('.attachment-sidebar,.attachment-preview-pane').evaluateAll((elements) => elements.map((element) => {
+        const bounds = element.getBoundingClientRect(); return { left: bounds.left, right: bounds.right, top: bounds.top, height: bounds.height };
+      }));
+      expect(standalonePanes[0]!.right).toBeLessThanOrEqual(standalonePanes[1]!.left + 1);
+      expect(standalonePanes[0]!.top).toBe(standalonePanes[1]!.top);
+      expect(standalonePanes[1]!.height).toBeGreaterThan(80);
+      expect(await reader.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       for (const extension of ['md', 'txt', 'svg', 'html', 'pdf']) {
         await reader.goto(attachmentPageUrl(project.id, task.id, `long/reading.${extension}`));
         await expect(reader.getByRole('heading', { name: `long/reading.${extension}`, exact: true })).toBeVisible();

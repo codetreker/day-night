@@ -32,7 +32,10 @@ right-side vertical scroll owner. The [centered detail decision](2026-10-22-cent
 retains the outer shell and modal lifecycle. The
 [full-reader decision](../architecture/2026-10-22-task-attachment-full-reader.md)
 extends the shared renderer with a reloadable nonmodal page and scopes the
-frame keyboard bridge to actual dialog use. One file input
+frame keyboard bridge to actual dialog use. The
+[shared-page decision](../architecture/2026-10-24-shared-attachment-page.md) composes
+the complete attachment panel in both containers while keeping URL/history in
+the standalone outer page. One file input
 initializes a target path from the filename; users may edit it to a nested path.
 `mime` 4.1.1 derives Content-Type from that target, so changing a source filename
 does not silently determine the saved path's type. Same-path upload overwrites;

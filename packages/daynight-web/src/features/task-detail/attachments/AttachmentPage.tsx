@@ -1,9 +1,9 @@
-import { useEffect, useLayoutEffect, useRef } from 'react';
-import { ApiError, attachmentDownloadUrl, attachmentPreviewRoot, attachmentPreviewUrl } from '../../../api/client';
+import { useLayoutEffect, useRef } from 'react';
+import { attachmentPageUrl } from '../../../api/client';
+import { navigate } from '../../../app/router';
 import { LanguageSelector } from '../../../i18n/LanguageSelector';
 import { useI18n } from '../../../i18n/LocaleProvider';
-import { AttachmentPreview } from './AttachmentPreview';
-import type { AttachmentUrls } from './TaskAttachments';
+import { TaskAttachmentsPanel, type AttachmentUrls } from './TaskAttachments';
 import { useAttachments, type AttachmentApi } from './useAttachments';
 import '../../../styles/attachments.css';
 
@@ -16,36 +16,28 @@ type AttachmentPageProps = {
 };
 
 const AttachmentPageContent = ({ projectId, taskId, path, api, urls }: AttachmentPageProps) => {
-  const { messages, format } = useI18n();
+  const { messages } = useI18n();
   const m = messages.inspection.attachments;
-  const attachments = useAttachments(projectId, taskId, api);
+  const attachments = useAttachments(projectId, taskId, api, { requireCompleteInventory: true });
   const main = useRef<HTMLElement>(null);
-  const selected = attachments.complete ? attachments.items.find((item) => item.path === path) : undefined;
+  const unselected = attachments.selectedPath === null;
   useLayoutEffect(() => { main.current!.focus(); }, []);
-  useEffect(() => {
-    attachments.select(selected === undefined ? null : path);
-  }, [attachments.select, path, selected]);
+  // A removed file keeps its route so reload and history show its missing state.
+  useLayoutEffect(() => {
+    attachments.select(path);
+  }, [attachments.select, path, unselected]);
+  const select = (nextPath: string) => {
+    const url = urls === undefined ? attachmentPageUrl(projectId, taskId, nextPath) : urls.page(nextPath);
+    if (new URL(url, window.location.href).href !== window.location.href) navigate(url);
+  };
 
   return <main className="attachment-page" ref={main} tabIndex={-1} aria-label={m.preview}>
     <header className="attachment-preview-header attachment-page-header">
-      <div><a className="attachment-page-back" href={`/projects/${encodeURIComponent(projectId)}`}>{m.returnToTask}</a><h1 title={path}>{path}</h1>{selected !== undefined && <p>{m.fileMetadata({ contentType: selected.contentType, size: format.bytes(selected.sizeBytes) })}</p>}</div>
-      <div className="attachment-preview-actions">
-        <a className="button" href={urls === undefined ? attachmentDownloadUrl(projectId, taskId, path) : urls.download(path)} download>{m.download}</a>
-        <LanguageSelector />
-      </div>
+      <div><a className="attachment-page-back" href={`/projects/${encodeURIComponent(projectId)}`}>{m.returnToTask}</a>{attachments.selected === undefined && <h1 title={path}>{path}</h1>}</div>
+      <LanguageSelector />
     </header>
-    {!attachments.complete ? (
-      <div className="attachment-preview-body">
-        {attachments.error === null ? <p className="attachment-state" role="status">{m.loading}</p> : <div className="attachment-state attachment-error" role="alert">
-          <p>{attachments.items.length === 0 ? m.listError : m.incompleteList}</p>
-          {attachments.error instanceof ApiError && attachments.error.requestId !== null && <p className="request-id">{messages.common.requestId}{' '}<code>{attachments.error.requestId}</code></p>}
-          <button className="button" type="button" onClick={attachments.reload}>{m.retry}</button>
-        </div>}
-      </div>
-    ) : selected === undefined ? <div className="attachment-preview-body"><div className="attachment-state" role="alert"><p>{m.missing}</p><button className="button" type="button" onClick={attachments.reload}>{m.retry}</button></div></div> : (
-      <AttachmentPreview key={`${selected.path}/${selected.updatedAt}`} attachment={selected} preview={attachments.preview.path === path ? attachments.preview : { path, status: 'loading', text: null, error: null }} url={urls === undefined ? attachmentPreviewUrl(projectId, taskId, path) : urls.preview(path)} previewRoot={urls === undefined ? attachmentPreviewRoot(projectId, taskId) : urls.previewRoot} onRetry={attachments.retryPreview} />
-    )}
+    <TaskAttachmentsPanel projectId={projectId} taskId={taskId} attachments={attachments} onSelect={select} {...(urls === undefined ? {} : { urls })} />
   </main>;
 };
 
-export const AttachmentPage = (props: AttachmentPageProps) => <AttachmentPageContent key={`${props.projectId}/${props.taskId}/${props.path}`} {...props} />;
+export const AttachmentPage = (props: AttachmentPageProps) => <AttachmentPageContent key={`${props.projectId}/${props.taskId}`} {...props} />;

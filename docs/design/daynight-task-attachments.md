@@ -432,41 +432,58 @@ UUID 并复用 `isAttachmentPath`；文件路径保持大小写和合法 Unicode
 通过 `%252F` 表达。`attachmentPageUrl` 与原文件 URL builder 共用同一地址规则，
 不把文件路径或预览状态从来源页写入浏览器内存作为导航依赖。
 
-`App` 在工作空间外渲染 `AttachmentPage`，仍由生产根部的 `LocaleProvider` 提供
-文案、格式与保存偏好。页面以 `(projectId, taskId, path)` 为身份；进入时聚焦主阅读
-区域，语言切换仅更新展示，不重挂载资源或 frame。页面标题由路由消息目录提供，
-页面头包含返回项目链接、完整文件路径、元数据、下载和语言选择。
+生产 `AuthenticatedApp` 在工作空间外渲染 `AttachmentPage`，根部 `LocaleProvider`
+继续提供文案、格式与保存偏好。独立外壳的头部只放返回项目入口和语言选择，正文
+直接组合现有 `TaskAttachmentsPanel`，复用左侧文件树、刷新、上传表单、菜单删除及
+右侧预览。路径、元数据和下载归属同一个共享预览标题，不在页面头重复维护。
+`TaskDetailReading` 的嵌入面板继续使用同一组件和原有控制器。
 
-`AttachmentPage` 复用 `useAttachments` 的完整分页读取。仅 `complete` 为 true 后
-在清单中精确匹配路径，找到后通过同一个控制器选择并读取预览；后续页失败保留
-不完整清单提示，不能退化为缺失。无文件、列表失败及内容失败使用各自状态与适用
-重试，继续展示可用的下载入口。页面复用 `AttachmentPreview`，Markdown/文本/
-图片及可信同源 frame 仍使用既有内容 URL 和相对资源处理，没有第二个渲染器、
-存储标识或元数据接口。
+页面实例以 `(projectId, taskId)` 为身份；文件路径是该实例中的选择，而非整个附件页
+的卸载条件。`App`、`AuthenticatedApp` 和 `AttachmentPage` 的同任务文件切换保留
+组件身份，所以目录展开、侧栏滚动、上传草稿与附件清单继续存在。用户身份边界仍
+由认证外壳拥有，project/task 或身份改变时释放旧状态与请求。首次进入页面聚焦主
+阅读区域，语言切换更新展示而不重挂载资源或 frame。
+
+`AttachmentPage` 持有一个 `useAttachments` 控制器，以完整清单要求处理独立路径的
+元数据。新选择的路径仅在 `complete` 为 true 后确认元数据或缺失；后续页失败
+保留不完整清单提示，不能退化为缺失。共享面板根据同一份列表、选择、写操作和
+预览状态展示加载、错误与适用重试。两种展示刷新同任务、同路径时均保留最近已确认
+的元数据，直到完整清单确认变化或缺失；嵌入选择继续使用原有清单规则。
+两种展示均复用 `AttachmentPreview` 与既有内容 URL、相对资源解析和取消机制，
+不增加第二个渲染器、存储标识或元数据接口。
+
+历史归属独立外壳。共享面板在目录选择或成功上传选择文件后通知独立外壳，由外壳
+通过现有 `navigate()` 写入新路径；与当前路径相同的选择不重复写历史。路由路径变化
+仅更新控制器选择，因此前进/后退不会反向触发新的历史写入。嵌入面板不接入这个
+通知，继续仅更新控制器。删除当前文件保留 URL 指定的路径，清单完整确认缺失后
+显示对应状态；删除其他文件保留当前预览与位置。文件路径与 `updatedAt` 继续界定
+预览组件身份，请求取消与迟到结果隔离仍由现有控制器负责。
 
 `attachment-page` 是占满 `100dvh` 的 flex column，外壳隐藏外溢；实际高度的头部
-不收缩，正文通过 flex 占据余下高度，每一级保持零最小尺寸。共享预览正文承担
-Markdown、文本和图片的滚动；原生 HTML/PDF 由拟合正文的 iframe 内文档滚动。
-不使用固定头部高度减法、frame 最低高度或嵌套纵向滚动。路径显示可截断但完整值
-保留在可访问文本与 title，短视口压缩内边距。
+不收缩，完整附件面板通过 flex 占据余下高度，每一级保持零最小尺寸。独立展示沿用
+共享分栏及断点：左栏独立滚动，右侧共享预览正文承担 Markdown、文本和图片滚动，
+HTML/PDF 由拟合正文的 iframe 内文档滚动。不使用固定头部高度减法、frame 最低
+高度或嵌套纵向滚动。路径显示可截断但完整值保留在可访问文本与 title，短视口压缩
+内边距。
 
-`AttachmentPreview` 的关闭能力是可选的。`TrustedFrame` 仅在存在实际 dialog 祖先
-并且调用方提供关闭回调时安装原有 Escape/边界 Tab 桥；独立页面不注册该监听，
-因此保留普通浏览器键盘行为。内嵌详情的焦点圈定、frame load/替换/卸载清理和
-关闭恢复继续按原规则执行。
+共享面板和 `AttachmentPreview` 的关闭能力是可选的。`TrustedFrame` 仅在存在实际
+任务详情 dialog 祖先且调用方提供关闭回调时安装原有 Escape/边界 Tab 桥；独立页面
+不注册该监听，保留普通浏览器键盘行为。内嵌详情的焦点圈定、frame load/替换/卸载
+清理和关闭恢复继续按原规则执行。原生删除确认拥有其当前层的焦点和键盘交互，
+在两种容器中均位于附件页子树。
 
 Go 的 `uiRoutes` 精确登记同一页面形状的 GET/HEAD index 及方法 fallback，继续由
-`internal/webui` 提供 no-store 页面。`attachmentPathGuard` 将新页面命名空间纳入
-既有原始路径检查，在 ServeMux 清理路径或重定向前验证每段和完整文件路径，
-保留中间 `..` 会掩盖命名空间的意图检查。页面 ID 无效仍先交付 index，由前端
-显示未找到页面；数据请求的 ID、归属、路径、授权检查继续由原接口负责。独立页
-及 UI 路由决策见[完整阅读决策](../../.agents/notes/implemented/architecture/2026-10-22-task-attachment-full-reader.md)。
+`internal/webui` 提供 no-store 页面。`attachmentPathGuard` 在 ServeMux 清理路径或
+重定向前验证每段和完整文件路径，保留中间 `..` 会掩盖命名空间的意图检查。页面
+ID 无效仍先交付 index，由前端显示未找到页面；数据请求的 ID、归属、路径、授权
+检查继续由原接口负责。[完整阅读决策](../../.agents/notes/implemented/architecture/2026-10-22-task-attachment-full-reader.md)
+拥有路由与非模态预览基础，[共享附件页决策](../../.agents/notes/implemented/architecture/2026-10-24-shared-attachment-page.md)
+拥有完整面板复用及独立历史的职责划分。
 
-前端实际组件 mockup 提供可重新加载的本地文件阅读入口，fixture 上传产生的临时
-对象 URL 仅用于演示。独立真实服务运行时验收已覆盖内嵌与完整阅读页面的真实输入、
-内容绘制、滚动与失败恢复；mockup 不承担该证明。运行方法与证据边界由
-[附件组合验收决策](../../.agents/notes/implemented/testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
-拥有，详细回执归属对应任务及 PR/CI。
+前端实际组件 mockup 使用同一完整附件页，支持独立入口、文件操作和前进后退；
+fixture 上传产生的临时对象 URL 仅用于演示。真实服务运行时验收与 fixture 验证的
+证据边界由[附件组合验收决策](../../.agents/notes/implemented/testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
+拥有；历史运行结果只证明其记录的源码与行为，具体扩展的结果归属相应源码及 PR/CI。
 
 ## CLI
 
@@ -575,9 +592,9 @@ Windows/macOS 托管结果。Web 管理界面交付组件、状态及前端 fixt
   非法路径拒绝，以及失败明确暴露；不以跨介质原子性作为验收条件。
 - CLI：实际构建入口的上传、完整列表、文本和二进制 stdout、背压、取消、管道中断、
   既有 project 选择、帮助及补全。
-- Web：详情页签与状态保留、左右分屏和独立完整阅读、单文件操作、相对资源、真实
-  内容绘制、唯一纵向滚动与读至结尾、键盘与原生 frame 行为，以及失败恢复和
-  切换文件时的过期请求取消。
+- Web：详情页签与状态保留、共用完整附件页的两种展示、独立模式地址同步与前进后退、
+  嵌入模式选择不写历史、单文件操作、相对资源、真实内容绘制、唯一纵向滚动与读至
+  结尾、键盘与原生 frame 行为，以及失败恢复和切换文件时的过期请求取消。
 - 部署：真实非 root 容器写入、同源 gateway 传输、正常重建保留附件、dev-ci 卷隔离
   及清理、配套备份恢复。
 

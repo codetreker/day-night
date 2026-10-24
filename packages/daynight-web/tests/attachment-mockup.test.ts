@@ -30,6 +30,14 @@ describe('development attachment fixture', () => {
     fixture.dispose();
   });
 
+  it('accepts a relocatable asset root and standalone page for bundled interactive previews', () => {
+    const fixture = createAttachmentFixture('files', { files: './files/', page: './index.html' });
+    expect(fixture.urls.preview('site/index.html')).toBe('./files/site/index.html');
+    expect(fixture.urls.previewRoot).toBe('./files/');
+    expect(fixture.urls.page('docs/guide.md')).toBe('./index.html?file=docs%2Fguide.md&scenario=files');
+    fixture.dispose();
+  });
+
   it('adds, overwrites, deletes, and releases the page-owned object URLs', async () => {
     const create = vi.fn().mockReturnValueOnce('blob:one').mockReturnValueOnce('blob:two');
     const revoke = vi.fn();

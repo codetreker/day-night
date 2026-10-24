@@ -118,8 +118,10 @@ proposed 按当前语言使用“Proposed”或“待审批”及独立的紫色
 `TaskDetailPanels` 提供默认概览及附件页签，两面板保持挂载并以 hidden/inert 隔离
 隐藏控件；页签使用可访问关联、roving tabindex、方向键与 Home/End 自动激活。
 project/task 身份切换重新从概览开始。下载旁的新标签页入口打开独立阅读路由；
-`App` 对该路由单独渲染 `AttachmentPage`，不挂载工作空间侧栏或详情外壳。完整清单、
-共享内容渲染、locale、非模态键盘与满视口滚动机制由
+`AuthenticatedApp` 对该路由单独渲染 `AttachmentPage`，不挂载工作空间侧栏或详情外壳。
+它与详情共用完整 `TaskAttachmentsPanel`，保留目录与文件操作；独立外壳拥有地址同步
+和前进后退，嵌入面板只维护本地选择。完整清单、共享内容渲染、locale、非模态键盘
+与满视口滚动机制由
 [独立附件阅读页](daynight-task-attachments.md#独立附件阅读页)拥有。
 
 概览是详情中任务内容的滚动所有者。阅读主栏展示共享 CommonMark/GFM 视图渲染的描述和关联 PR，265px 辅栏

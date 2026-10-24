@@ -1,6 +1,7 @@
-import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { ApiError } from '../src/api/client';
+import userEvent from '@testing-library/user-event';
+import { ApiError, attachmentPageUrl } from '../src/api/client';
 import type { Attachment, AttachmentPage as Page } from '../src/api/types';
 import { AttachmentPage } from '../src/features/task-detail/attachments/AttachmentPage';
 import type { AttachmentApi } from '../src/features/task-detail/attachments/useAttachments';
@@ -17,15 +18,96 @@ const deferred = <T,>() => {
   const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; });
   return { promise, resolve, reject };
 };
-const fixture = (items: readonly Attachment[]): AttachmentApi => ({
-  list: vi.fn(async () => ({ items, nextCursor: null })),
+const fixture = (items: readonly Attachment[]): AttachmentApi => {
+  const files = new Map(items.map((item) => [item.path, item]));
+  return {
+  list: vi.fn(async () => ({ items: [...files.values()], nextCursor: null })),
   readText: vi.fn(async (_project, _task, path) => `Contents of ${path}`),
   checkPreview: vi.fn(async () => {}),
-  put: vi.fn(), remove: vi.fn(),
-});
+  put: vi.fn(async (_project, _task, path) => { const item = file(path); files.set(path, item); return item; }),
+  remove: vi.fn(async (_project, _task, path) => { files.delete(path); }),
+  };
+};
+const preview = () => within(screen.getByRole('group', { name: '附件预览' }));
 const page = (api: AttachmentApi, path = 'docs/readme.md', id = taskId) => <AttachmentPage projectId={projectId} taskId={id} path={path} api={api} />;
 
 describe('standalone attachment reader', () => {
+  it('uses the complete shared file panel and synchronizes explicit selections without duplicate history entries', async () => {
+    const special = '资料/设计 %2F #?.txt';
+    window.history.replaceState(null, '', attachmentPageUrl(projectId, taskId, 'docs/readme.md'));
+    const api = fixture([file('docs/readme.md'), file(special)]);
+    render(page(api));
+    await screen.findByText('Contents of docs/readme.md');
+    expect(screen.getByText('上传文件', { selector: 'summary' })).toBeVisible();
+    expect(screen.getByRole('button', { name: '更多操作：docs/readme.md' })).toBeVisible();
+    const initialLength = window.history.length;
+    const target = screen.getByRole('button', { name: /^设计 %2F #\?\.txt/ });
+    fireEvent.click(target);
+    await screen.findByText(`Contents of ${special}`);
+    expect(window.location.pathname).toBe(attachmentPageUrl(projectId, taskId, special));
+    expect(window.history.length).toBe(initialLength + 1);
+    expect(target).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(target);
+    expect(window.history.length).toBe(initialLength + 1);
+    expect(api.list).toHaveBeenCalledOnce();
+  });
+
+  it('selects a successfully uploaded file in the shared panel and gives it an address', async () => {
+    window.history.replaceState(null, '', attachmentPageUrl(projectId, taskId, 'docs/readme.md'));
+    const api = fixture([file('docs/readme.md')]);
+    render(page(api));
+    await screen.findByText('Contents of docs/readme.md');
+    const user = userEvent.setup();
+    await user.click(screen.getByText('上传文件', { selector: 'summary' }));
+    await user.upload(screen.getByLabelText('选择一个文件'), new File(['new contents'], 'new.txt', { type: 'text/plain' }));
+    fireEvent.change(screen.getByLabelText('目标相对路径'), { target: { value: 'notes/new.txt' } });
+    await user.click(screen.getByRole('button', { name: '上传文件' }));
+    await screen.findByText('Contents of notes/new.txt');
+    expect(window.location.pathname).toBe(attachmentPageUrl(projectId, taskId, 'notes/new.txt'));
+    expect(screen.getByRole('link', { name: '下载' })).toHaveAttribute('href', expect.stringContaining('/notes/new.txt'));
+    expect(screen.getByLabelText('目标相对路径')).toHaveValue('');
+  });
+
+  it('synchronizes a completed upload after another file was selected while the write was pending', async () => {
+    window.history.replaceState(null, '', attachmentPageUrl(projectId, taskId, 'docs/readme.md'));
+    const pending = deferred<Attachment>();
+    const api = fixture([file('docs/readme.md'), file('next.txt')]);
+    vi.mocked(api.put).mockReturnValueOnce(pending.promise);
+    render(page(api));
+    await screen.findByText('Contents of docs/readme.md');
+    const user = userEvent.setup();
+    await user.click(screen.getByText('上传文件', { selector: 'summary' }));
+    await user.upload(screen.getByLabelText('选择一个文件'), new File(['replacement'], 'readme.md', { type: 'text/markdown' }));
+    fireEvent.change(screen.getByLabelText('目标相对路径'), { target: { value: 'docs/readme.md' } });
+    await user.click(screen.getByRole('button', { name: '上传文件' }));
+    fireEvent.click(screen.getByRole('button', { name: /^next\.txt/ }));
+    await screen.findByText('Contents of next.txt');
+    expect(window.location.pathname).toBe(attachmentPageUrl(projectId, taskId, 'next.txt'));
+    await act(async () => pending.resolve(file('docs/readme.md')));
+    await screen.findByText('Contents of docs/readme.md');
+    expect(window.location.pathname).toBe(attachmentPageUrl(projectId, taskId, 'docs/readme.md'));
+  });
+
+  it('retains the selected file address after deletion and shows the confirmed missing state', async () => {
+    const address = attachmentPageUrl(projectId, taskId, 'docs/readme.md');
+    window.history.replaceState(null, '', address);
+    const api = fixture([file('docs/readme.md'), file('next.txt')]);
+    render(page(api));
+    await screen.findByText('Contents of docs/readme.md');
+    const historyLength = window.history.length;
+    fireEvent.click(screen.getByRole('button', { name: '更多操作：docs/readme.md' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '删除' }));
+    const dialog = screen.getByRole('dialog', { name: '删除附件？' });
+    fireEvent.click(within(dialog).getByRole('button', { name: '删除附件' }));
+    expect(await preview().findByRole('alert')).toHaveTextContent('找不到此附件');
+    expect(window.location.pathname).toBe(address);
+    expect(window.history.length).toBe(historyLength);
+    expect(screen.queryByText('Contents of docs/readme.md')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /^next\.txt/ }));
+    await screen.findByText('Contents of next.txt');
+    expect(window.location.pathname).toBe(attachmentPageUrl(projectId, taskId, 'next.txt'));
+  });
+
   it('loads all inventory pages before rendering authoritative metadata and shared Markdown', async () => {
     const next = deferred<Page>();
     const item = file('docs/readme.md', 'text/markdown');
@@ -35,7 +117,7 @@ describe('standalone attachment reader', () => {
     render(page(api));
     expect(screen.getByRole('main')).toHaveFocus();
     await waitFor(() => expect(api.list).toHaveBeenCalledTimes(2));
-    expect(screen.getByRole('status')).toHaveTextContent('正在加载附件');
+    expect(preview().getByRole('status')).toHaveTextContent('正在加载附件');
     expect(api.readText).not.toHaveBeenCalled();
     expect(screen.queryByText('找不到此附件，文件可能已被删除。')).toBeNull();
     await act(async () => next.resolve({ items: [], nextCursor: null }));
@@ -55,14 +137,14 @@ describe('standalone attachment reader', () => {
     const failure = new ApiError('server', 500, 'server_error', 'inventory-7');
     vi.mocked(api.list).mockResolvedValueOnce({ items: [file('other.txt')], nextCursor: 'next' }).mockRejectedValueOnce(failure);
     render(page(api));
-    expect(await screen.findByRole('alert')).toHaveTextContent('附件列表尚未完整加载');
-    expect(screen.getByRole('alert')).toHaveTextContent('inventory-7');
+    expect(await preview().findByRole('alert')).toHaveTextContent('附件列表尚未完整加载');
+    expect(preview().getByRole('alert')).toHaveTextContent('inventory-7');
     expect(screen.queryByText('找不到此附件，文件可能已被删除。')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: '重试附件' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('找不到此附件');
+    fireEvent.click(preview().getByRole('button', { name: '重试附件' }));
+    expect(await preview().findByRole('alert')).toHaveTextContent('找不到此附件');
     expect(vi.mocked(api.list).mock.calls[2]?.[2]).toEqual({ limit: 100 });
     vi.mocked(api.list).mockResolvedValueOnce({ items: [file('docs/readme.md')], nextCursor: null });
-    fireEvent.click(screen.getByRole('button', { name: '重试附件' }));
+    fireEvent.click(preview().getByRole('button', { name: '重试附件' }));
     await screen.findByText('Contents of docs/readme.md');
   });
 
@@ -71,12 +153,12 @@ describe('standalone attachment reader', () => {
     vi.mocked(api.list).mockRejectedValueOnce(new Error('private inventory error'));
     vi.mocked(api.readText).mockRejectedValueOnce(new ApiError('server', 500, 'server_error', 'preview-7'));
     render(page(api));
-    expect(await screen.findByRole('alert')).toHaveTextContent('附件列表加载失败');
-    expect(screen.getByRole('alert')).not.toHaveTextContent('private');
-    fireEvent.click(screen.getByRole('button', { name: '重试附件' }));
+    expect(await preview().findByRole('alert')).toHaveTextContent('附件列表加载失败');
+    expect(preview().getByRole('alert')).not.toHaveTextContent('private');
+    fireEvent.click(preview().getByRole('button', { name: '重试附件' }));
     await screen.findByRole('button', { name: '重试预览' });
-    expect(screen.getByRole('alert')).toHaveTextContent('无法读取文件预览');
-    expect(screen.getByRole('alert')).toHaveTextContent('preview-7');
+    expect(preview().getByRole('alert')).toHaveTextContent('无法读取文件预览');
+    expect(preview().getByRole('alert')).toHaveTextContent('preview-7');
     fireEvent.click(screen.getByRole('button', { name: '重试预览' }));
     await screen.findByText('Contents of docs/readme.md');
     expect(api.list).toHaveBeenCalledTimes(2);
@@ -100,7 +182,7 @@ describe('standalone attachment reader', () => {
     vi.mocked(api.list).mockReturnValueOnce(pending.promise);
     view.rerender(page(api, 'next.txt', '00000000-0000-4000-8000-000000000002'));
     expect(screen.queryByText('Contents of next.txt')).toBeNull();
-    expect(screen.getByRole('status')).toHaveTextContent('正在加载附件');
+    expect(preview().getByRole('status')).toHaveTextContent('正在加载附件');
     const request = vi.mocked(api.list).mock.calls.at(-1)![3];
     view.unmount();
     expect(request.aborted).toBe(true);

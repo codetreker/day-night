@@ -17,7 +17,7 @@ export type AttachmentUrls = {
 type TaskAttachmentsProps = {
   readonly projectId: string;
   readonly taskId: string;
-  readonly onClose: () => void;
+  readonly onClose?: () => void;
   readonly api?: AttachmentApi;
   readonly urls?: AttachmentUrls;
 };
@@ -28,6 +28,7 @@ type TaskAttachmentsPanelProps = Omit<TaskAttachmentsProps, 'api'> & {
   readonly navigation?: AttachmentNavigation | null;
   readonly onInteract?: () => void;
   readonly active?: boolean;
+  readonly onSelect?: (path: string) => void;
 };
 
 const ErrorMessage = ({ error, message }: { readonly error: unknown; readonly message: string }) => {
@@ -65,7 +66,7 @@ const FileTree = ({ nodes, selectedPath, onSelect, onActions, actionPath, busy }
   </ul>;
 };
 
-export const TaskAttachmentsPanel = ({ projectId, taskId, attachments, urls, navigation, onInteract, onClose, active = true }: TaskAttachmentsPanelProps) => {
+export const TaskAttachmentsPanel = ({ projectId, taskId, attachments, urls, navigation, onInteract, onClose, onSelect, active = true }: TaskAttachmentsPanelProps) => {
   const { messages, format } = useI18n();
   const m = messages.inspection.attachments;
   const headingId = useId();
@@ -101,6 +102,7 @@ export const TaskAttachmentsPanel = ({ projectId, taskId, attachments, urls, nav
   const select = (path: string) => {
     onInteract?.();
     attachments.select(path);
+    onSelect?.(path);
   };
   const upload = async (event: FormEvent) => {
     event.preventDefault();
@@ -111,6 +113,7 @@ export const TaskAttachmentsPanel = ({ projectId, taskId, attachments, urls, nav
     }
     onInteract?.();
     if (await attachments.put(path, file)) {
+      onSelect?.(path);
       setFile(null);
       setPath('');
       fileInput.current!.value = '';
@@ -170,7 +173,7 @@ export const TaskAttachmentsPanel = ({ projectId, taskId, attachments, urls, nav
                   <a className="button" href={urls === undefined ? attachmentPageUrl(projectId, taskId, selected.path) : urls.page(selected.path)} target="_blank" rel="noopener noreferrer"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M14 3h7v7M21 3 10 14M10 3H4a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-6" /></svg>{m.openInNewTab}</a>
                 </div>
               </header>
-              <AttachmentPreview key={`${selected.path}/${selected.updatedAt}`} attachment={selected} preview={attachments.preview} url={urls === undefined ? attachmentPreviewUrl(projectId, taskId, selected.path) : urls.preview(selected.path)} previewRoot={urls === undefined ? attachmentPreviewRoot(projectId, taskId) : urls.previewRoot} onRetry={attachments.retryPreview} onClose={onClose} />
+              <AttachmentPreview key={`${selected.path}/${selected.updatedAt}`} attachment={selected} preview={attachments.preview} url={urls === undefined ? attachmentPreviewUrl(projectId, taskId, selected.path) : urls.preview(selected.path)} previewRoot={urls === undefined ? attachmentPreviewRoot(projectId, taskId) : urls.previewRoot} onRetry={attachments.retryPreview} {...(onClose === undefined ? {} : { onClose })} />
             </section>
           )}
         </div>
