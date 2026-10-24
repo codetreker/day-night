@@ -164,34 +164,54 @@ outstanding.
 The [public Agent skill design](docs/design/daynight-agent-skill.md) defines one
 npm-bundled `using-daynight` skill and interactive installation for Codex, Copilot
 CLI and Claude Code. Its [requirements](docs/spec/daynight-agent-skill.md) cover
-context-based routing, explicit continuous-execution intent, attachment-backed
-planning and complete replacement on reinstall. The entrypoint, four mode
-references and shared `goal.md` protocol are published under
+context-based routing, explicit continuous-execution intent, Daynight-backed
+concrete work and design reviews, attachment-backed planning and complete
+replacement on reinstall. The entrypoint, four mode references and shared
+`goal.md` protocol are published under
 `dist/commands/skill/skills/using-daynight/`. The
 [Goal workflow requirements](docs/spec/daynight-goal-workflow.md) and
 [design](docs/design/daynight-goal-workflow.md) define staged persistent work:
-`[Goal]<outcome>` clarifies the whole problem, behavior, scope, exclusions and
-acceptance, then a dependent architecture task completes design and registers
-all successors before design handover. Applicable UI Goals produce a final-style,
-frontend-only interactive prototype during clarification. Stage briefs are
-inputs; completed requirements, prototypes and architecture are their outputs.
+`[Goal]<outcome>` first owns a requirements discussion. An explicit request to
+start that discussion authorizes its approval and claim into in_progress; a
+registration-only request leaves that sole task proposed. After the user confirms
+requirements and requests the next discussion, complete requirements and only then
+create and start its dependent solution or architecture discussion. Keep candidate
+breakdown inside that task until the user confirms the solution; then register
+actual proposed delivery tasks with dependencies and verify their artifacts before
+completing the discussion. Applicable UI Goals produce a final-style, frontend-only
+interactive prototype during requirements discussion. Stage briefs are inputs;
+requirements, prototypes and architecture are their outputs.
 
 | Mode | Responsibility |
 |---|---|
 | `handbook` | Command purposes and operational context; use CLI help for command usage |
-| `create-task` | With explicit creation permission, register proposed ordinary work or two Goal seeds with verified stage inputs; approval is separate |
-| `run-task <task-id>` | Execute the designated task through validation and authorized delivery, then return |
+| `create-task` | Register concrete work within creation permission; a Goal first has only its requirements task. Registration-only requests return; explicit discussion-start requests follow the Goal protocol |
+| `run-task <task-id>` | Execute the designated task using discussion confirmation or actual delivery acceptance; explicit Goal discussion transitions follow the shared protocol |
 | `autopilot <goal or scope>` | Restore the current task or select one most relevant approved ready todo, and continue only after confirmed completion |
 
 Calling `using-daynight` without input uses the actual context; unclear intent is
 resolved with the user. Autopilot requires an explicit request for continuous
-execution. Creating tasks requires explicit user permission to create them;
-implementation requests and autopilot activation do not supply that permission.
+execution. When the skill and Daynight are available, Daynight manages concrete
+work with a defined objective and completion conditions: features, bug fixes,
+architecture/design assignments, and actual work items from their breakdown.
+Agent-generated execution steps, such as reading files, running commands, and
+routine checks, stay in the execution plan. Every solution, architecture, and
+design review uses its owning task. Before requesting user review, save the
+complete current material in the task description or attachments, read it back,
+and provide the task/resource
+reference. Keep revisions and review decisions synchronized there; chat and
+repository or PR links supplement the saved material. Creating tasks requires
+explicit scoped permission. A user or applicable repository instruction requiring
+Daynight tracking or review supplies standing creation permission for necessary
+tasks in the confirmed scope. Implementation requests and autopilot activation
+alone do not supply that permission.
 Existing explicit permission applies within its stated scope without repeated
-confirmation. Goal creation covers its two starting tasks and later in-scope
-breakdown; task approval needs a separate explicit task or Goal-task scope.
-Creation, stage completion, run-task and autopilot do not supply approval. Approved
-ready work is claimed at the reviewed version. Automatic selection uses
+confirmation. Goal permission covers in-scope registration in its confirmed
+stage order, without precreating future stages. A specific request to begin a
+Goal discussion authorizes approval and claim of that discussion only. Ordinary
+creation, run-task and autopilot do not supply approval; confirming a solution does
+not approve or execute delivery subtasks. Approved ready work is claimed at the
+reviewed version. Automatic selection uses
 `task ready --allow-agents true --json` and preserves that filter on fallback
 inventories; workflows never enable the flag themselves. Explicitly designated
 manual work can be claimed with either value. Task descriptions are self-contained
@@ -206,9 +226,12 @@ Shared Goal and design inputs stay at their source task ID and attachment path,
 or a verified immutable repository URL; attachments follow actual need. Frontend
 implementation tasks read the completed final-style interactive prototype and
 its representative states. Dependencies use dependsOn, PR references use properties,
-and execution progress uses an existing checkpoint. Necessary PRs must be
-platform-confirmed merged and acceptance satisfied before done. A request to
-retain a PR for review keeps the task in progress and returns control to the user.
+and execution progress uses an existing checkpoint. Discussion completion requires
+the user's confirmation and stage acceptance, not an automatic design-PR merge
+gate. Actual repository delivery and any PR explicitly included in discussion
+acceptance still require platform-confirmed merges and their acceptance. A request
+to retain a delivery PR for review keeps that delivery pending. User-confirmed
+discussion transitions do not activate autopilot or grant delivery authority.
 
 [`daynight skill install`](#agent-skill-installation) detects supported launchers
 and installs the selected scope. Once the complete using-daynight bundle is
@@ -757,6 +780,8 @@ starting them or checking login. Select one or more detected Agents with Space,
 then Enter; the initial selection is empty. Next select User or Project,
 with User initially selected. Installation starts after the scope is submitted.
 Repeating the command refreshes the full bundle from the running package.
+After upgrading Daynight, rerun it for the relevant Agents and scopes and follow
+the reload instructions; `daynight update` replaces only the npm package.
 
 | Agent | User destination | Project destination |
 |---|---|---|

@@ -152,11 +152,11 @@ export const instructionScenarios: readonly InstructionScenario[] = [
   },
   {
     id: "open-pr-retains-task",
-    input: "Acceptance passes but a required PR is open, or the user requests keeping it for review.",
+    input: "A delivery task passes acceptance but a required PR is open, or the user requests keeping that PR for review.",
     obligation: "Keep in_progress and the checkpoint; neither auto-merge nor complete to unlock successors.",
     propositions: [
       { resource: "references/run-task.md", section: "## Confirm completion or return waiting", requires: [/passing CI, approved review, and an open PR do not satisfy this condition/, /If the user requests an open PR for review or forbids merging/, /preserve `in_progress` and the waiting checkpoint/, /Do not enable auto-merge/, /Do not declare completion or select other work to bypass a wait/] },
-      { resource: "references/autopilot.md", section: "## Advance serially and accept the scope", requires: [/An explicit no-merge or user-review requirement is such a wait/, /never permits auto-merge or marking the task done/, /Return without replacing the target/] },
+      { resource: "references/autopilot.md", section: "## Advance serially and accept the scope", requires: [/An explicit no-merge or user-review requirement on a delivery task is such a wait/, /never permits auto-merge or marking the task done/, /Return without replacing the target/] },
     ],
   },
   {
@@ -165,7 +165,52 @@ export const instructionScenarios: readonly InstructionScenario[] = [
     obligation: "Record readable evidence, reread in_progress and complete its observed version; stage completion is bounded.",
     propositions: [
       { resource: "references/run-task.md", section: "## Confirm completion or return waiting", requires: [/every necessary delivery PR is merged/, /Completion rules grant no merge, deployment, external communication, or mainline push permission/, /For tasks without a development or PR delivery path, use their stated stage acceptance/, /confirm required evidence is recorded and readable/, /reread the complete in-progress task and use `task complete` with its exact observed version/, /Only service confirmation establishes the status update/, /Neither establishes whole-Goal completion/] },
-      { resource: "references/goal.md", section: "## Execute the appropriate stage", requires: [/Completion satisfies dependencies but never approves the next stage/] },
+      { resource: "references/goal.md", section: "## Execute the appropriate stage", requires: [/Completion satisfies dependencies but never approves delivery tasks/] },
+    ],
+  },
+  {
+    id: "goal-registration-only",
+    input: "The user asks only to register a Goal, without starting a discussion.",
+    obligation: "Create only the current requirements task as proposed and return; do not precreate architecture or delivery work.",
+    propositions: [
+      { resource: "references/goal.md", section: "## Identify the current discussion", requires: [/A registration-only request creates only the current discussion task in `proposed` and returns without approval or execution/] },
+      { resource: "references/goal.md", section: "## Start requirements discussion", requires: [/Create or reuse only the requirements discussion task/, /Do not create an architecture placeholder or delivery tasks at this point/] },
+      { resource: "references/create-task.md", section: "## Choose the tracked outcome", requires: [/A registration-only request leaves the current stage proposed and returns/] },
+    ],
+  },
+  {
+    id: "goal-discussion-start",
+    input: "The user explicitly asks to begin discussing a Goal's requirements.",
+    obligation: "Register only requirements and use the existing approve/claim lifecycle to enter in_progress for discussion.",
+    propositions: [
+      { resource: "references/goal.md", section: "## Identify the current discussion", requires: [/A request to start a Goal discussion authorizes creating, approving, and claiming that discussion task so it becomes `in_progress`/] },
+      { resource: "references/goal.md", section: "## Start requirements discussion", requires: [/Each task starts in `proposed`/, /use `task approve`, confirm todo, then use `task claim` with the version observed for that decision and confirm `in_progress`/, /All direct prerequisites must be done/] },
+      { resource: "references/run-task.md", section: "## Establish the task and stage", requires: [/authorizes approval and claim of that discussion under the Goal protocol; registration alone does not/] },
+    ],
+  },
+  {
+    id: "goal-requirements-confirmation",
+    input: "Requirements text is complete; the user has not confirmed it or asked to proceed.",
+    obligation: "Keep requirements in_progress; user confirmation and direction must precede completion and creating solution discussion.",
+    propositions: [
+      { resource: "references/goal.md", section: "## Confirm requirements and start solution discussion", requires: [/Keep the requirements task `in_progress` until the user explicitly confirms the current requirements and directs the next discussion/, /Agent confidence, completed text, a review result, or elapsed time does not satisfy this gate/, /A material revision after confirmation requires renewed user confirmation before advancement/, /Do not create the solution discussion until that completion is confirmed/, /ordinary prerequisite on the completed requirements task/] },
+    ],
+  },
+  {
+    id: "goal-unconfirmed-solution",
+    input: "Architecture and a draft breakdown exist, but the user has not confirmed the solution.",
+    obligation: "Keep the draft in the solution discussion task and wait; do not register delivery tasks or substitute CI/review for user confirmation.",
+    propositions: [
+      { resource: "references/goal.md", section: "## Execute the appropriate stage", requires: [/The solution task owns the current architecture, proposal, and draft breakdown/, /Do not register delivery subtasks before the user confirms the current solution/, /A discussion task completes from user-confirmed Daynight material and its stated stage acceptance/, /a generic repository PR rule does not add a merge prerequisite to a Daynight discussion/, /Successful CI or a design review cannot replace the user's confirmation/] },
+    ],
+  },
+  {
+    id: "goal-confirmed-breakdown",
+    input: "The user confirms the current solution and its actual delivery breakdown.",
+    obligation: "Register real outcome tasks with verified dependencies and materials, then complete the discussion; delivery remains proposed without separate approval or execution authority.",
+    propositions: [
+      { resource: "references/goal.md", section: "## Register the confirmed delivery breakdown", requires: [/Only after user solution confirmation, create or reuse the concrete delivery tasks/, /Create new delivery tasks in `proposed`/, /Solution confirmation authorizes the confirmed breakdown's registration, not approval, implementation, autopilot/, /Every delivery root without another ordinary implementation prerequisite depends directly on the solution discussion/, /Read back every task, required attachment, shared input, and dependency/, /Keep the solution discussion `in_progress` when registration is incomplete/] },
+      { resource: "references/goal.md", section: "## Execute the appropriate stage", requires: [/Complete the solution discussion only after the accepted solution and actual registered delivery tasks, their required materials, and their dependencies are read back and verified/, /Completion satisfies dependencies but never approves delivery tasks/] },
     ],
   },
   {

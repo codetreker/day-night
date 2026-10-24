@@ -17,6 +17,9 @@ partially supersedes the original registration and task-content rules. It owns
 stage-specific inputs, self-contained task briefs, shared-input ownership and
 whole-Goal completion. Mode routing, command ownership, authorization and the
 installer decisions remain here.
+The later [user-confirmed Goal discussion decision](../process/2026-10-24-user-confirmed-goal-discussions.md)
+owns sequential discussion creation, explicit user transition gates, and scoped
+discussion approval and claim.
 
 The public bundle is named `using-daynight`. Its entrypoint routes from the actual
 request and context to handbook, create-task, run-task or autopilot, with one
@@ -43,14 +46,20 @@ remain, while the public name and workflow ownership change. The
 continues to own query cost and candidate semantics; autopilot owns next-work
 selection, and run-task owns one task's delivery.
 
-Every task creation requires explicit user permission to create tasks. A direct
-creation request or existing explicit permission applies within its stated scope
-without repeated confirmation. Implementation requests, inferred routing,
-tracking needs and autopilot activation do not imply this permission. Missing
-creation permission requires asking before creating a task, including during
-autopilot. This keeps the persistent backlog under the user's control.
+The original creation rule required explicit user permission for every task to
+keep the persistent backlog under the user's control. A direct creation request
+or existing scoped permission avoided repeated confirmation; implementation
+requests, inferred routing, tracking needs and autopilot activation alone supplied
+none. The later [mandatory tracking and review decision](../process/2026-10-24-daynight-tracking-and-design-review.md)
+recognizes an explicit user or applicable repository tracking/review instruction
+as standing permission for necessary tasks within the confirmed scope. Missing
+permission still requires asking, and approval, execution and delivery remain
+separate.
 
-Create-task checks creation permission, skips one-off and trivial work, matches
+The original registration flow skipped one-off and trivial work to avoid treating
+execution steps as tasks. The [tracking and review decision](../process/2026-10-24-daynight-tracking-and-design-review.md)
+now defines eligibility by concrete outcomes, keeping agent-generated execution
+steps in the owning task's plan. Create-task checks creation permission, matches
 existing problem/scope and acceptance, and registers ordinary single-outcome work
 or a staged Goal. Every description is a self-contained Markdown brief with a
 concrete problem, scope/actions, deliverables, constraints, an observable completion
@@ -68,17 +77,22 @@ required snapshots retain source version and purpose.
 The original mode decision required complete solution and applicable frontend
 prototype before registration. That rule made ordinary implementation inputs
 explicit, but cannot apply to stages producing those artifacts. The Goal
-protocol now registers `[Goal]<outcome>` and its dependent architecture placeholder
-with stage briefs. Clarification produces complete requirements and applicable
-final-style interactive frontend-only UI; architecture completes design and
-registers all successors before handover. Implementation roots depend on design.
-Scoped Goal creation permission covers the initial pair and its in-scope breakdown.
+protocol originally registered `[Goal]<outcome>` and its dependent architecture
+placeholder with stage briefs. Its successor creates only requirements discussion
+first, starts solution discussion after user-confirmed requirements and an explicit
+transition request, and registers delivery tasks only after user-confirmed design.
+Clarification still produces complete requirements and applicable final-style
+interactive frontend-only UI. Implementation roots depend on design.
+Scoped Goal creation permission covers necessary stages and the confirmed breakdown
+at those respective gates.
 The Goal protocol adds no service resource, CLI command or ownership mechanism.
 The [approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md) applies
 to every stage: registration produces proposed, approval requires an explicit
 user instruction for the task or stated Goal-task scope, and ready todo is claimed
-with its reviewed version. Goal creation, stage completion, run-task and autopilot
-never imply approval permission.
+with its reviewed version. Goal creation, stage completion, ordinary run-task and
+autopilot alone never imply approval permission. An explicit request to start or
+advance a Goal discussion supplies approval and claim authorization for that
+discussion only.
 
 Dependencies remain in dependsOn; PR URLs and titles remain in
 properties.pullRequests. Results and merge references belong with the primary
@@ -90,8 +104,11 @@ proposed work awaiting approval unless separately authorized. Run-task reads the
 brief, detailed plan and stage inputs, executes its designated task and returns
 after completion or an external blocker. Development and PR-delivered documentation
 require every necessary PR platform-confirmed merged and acceptance satisfied
-before versioned task complete. Retaining a PR keeps the task in progress; completion grants no merge
-authority. A stage done does not establish whole-Goal completion.
+before versioned task complete. Retaining a delivery PR keeps its task in progress;
+completion grants no merge authority. Goal discussions instead follow user-confirmed
+material and their phase acceptance. An explicitly requested discussion transition
+can start the next discussion without continuous queue selection. A stage done
+does not establish whole-Goal completion.
 
 Autopilot restores the checkpoint's current task, otherwise picks exactly one
 approved ready todo most related to the authorized goal, without auto-approving
@@ -151,9 +168,10 @@ shared Goal protocol.
 Command usage stays with the installed CLI, and the compact handbook explains
 the operational facts needed to choose and combine commands. Task execution and
 repeated selection share one completion gate. Explicit autopilot entry prevents ordinary skill use
-from silently becoming a continuous work queue. Explicit task creation permission
-prevents autonomous execution from expanding the persistent backlog; missing
-permission requires user input before registration. Task attachments become required
+from silently becoming a continuous work queue. Scoped task creation permission,
+including applicable standing tracking/review instructions, prevents autonomous
+execution from expanding the persistent backlog beyond the confirmed scope;
+missing permission requires user input before registration. Task attachments become required
 inputs to execution; create-task must reconcile partial registration and cannot
 claim readiness from an existing task ID alone.
 

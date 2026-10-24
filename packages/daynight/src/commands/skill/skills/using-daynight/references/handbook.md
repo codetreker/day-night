@@ -73,7 +73,10 @@ in-progress or done work, execution release, or direct todo-to-done transition.
 Metadata, attachments and PR references cannot approve, withdraw approval or
 claim work. Approve or unapprove only when the user explicitly authorizes that
 action for the task or stated scope; creation, execution requests, `run-task`
-and autopilot grant none. In the Web, the title-row entry opens a confirmation;
+and autopilot alone grant none. The Goal protocol treats an explicit request
+to start a requirements or solution discussion as scoped authorization to approve
+and claim that discussion task. Its user-confirmed transitions do not authorize
+approval or execution of delivery tasks. In the Web, the title-row entry opens a confirmation;
 only deliberate confirmation is the user's approval or withdrawal instruction.
 Cancel and Escape submit no action. Task approval itself grants no implementation,
 publication, deployment or merge permission.

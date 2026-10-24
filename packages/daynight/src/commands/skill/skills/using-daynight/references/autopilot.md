@@ -42,8 +42,12 @@ cross-chain classification does not authorize executing them or expand the
 confirmed scope. Readiness checks all prerequisites, not stage artifact
 completeness or execution authorization. Pass the selected ID to
 `run-task`, which claims the version observed for that decision before starting.
-Autopilot never auto-approves proposed work. Goal creation, completed description
-or design, and permission to execute do not authorize task approval.
+Autopilot never auto-approves proposed work. Goal registration, completed
+discussions, and permission to execute do not authorize task approval for delivery.
+An explicit user request to start a Goal discussion or direct its next discussion
+uses the Goal protocol's scoped approval and manual claim path, not automatic
+approval or backlog selection. Autopilot cannot supply user confirmation of
+requirements or solution.
 
 Ready returns at most 10 candidates by default, or the requested bounded
 `--limit`; it is not a complete backlog. If this page is empty or no candidate
@@ -54,15 +58,18 @@ ongoing work, and insufficient
 candidates. Do not take unrelated work to stay busy or report completion from an
 empty or unrelated bounded page.
 
-Autopilot permission covers execution of existing tasks, not creation of new
-ones. If the confirmed Goal requires missing tracked work, use explicit creation
+Autopilot permission alone covers execution of existing tasks, not creation of
+new ones. An explicit user or applicable repository instruction requiring
+Daynight tracking or review supplies standing creation permission within the
+confirmed scope. If the confirmed Goal requires missing tracked work, use explicit creation
 permission already granted for that scope or obtain it, then use
-[create-task](create-task.md). Permission to create a Goal already covers both
-starting tasks and its later in-scope breakdown; do not ask again for each one.
-Creation leaves proposed tasks pending separate explicit approval and returns
-to this mode without starting execution. The design stage must
-actually register and verify the complete delivery breakdown before handing over
-its required PR; successor execution waits for design completion.
+[create-task](create-task.md). Goal permission covers its discussion stages and
+confirmed in-scope breakdown at the Goal protocol's user-confirmation gates.
+Do not create architecture placeholders or delivery tasks before their gate.
+Delivery registration follows explicit user solution confirmation, and leaves
+proposed tasks pending separate explicit approval. Complete the solution
+discussion only after the accepted solution and actual breakdown are verified;
+its completion does not start delivery.
 
 Automatic selection never enables `allowAgents` on a task. If the user explicitly
 selects a task for execution, its manual claim path remains available regardless
@@ -73,16 +80,19 @@ of the flag; preserve all approval, prerequisite and authorization checks.
 Run one task at a time. Subagents collaborate on it; they do not each choose a
 separate task. Ordinary CI, review, and merge waits keep that target. After
 `run-task` confirms `done`, refresh readiness and select at most one next related
-task within the same authorized scope. Description completion permits design
-selection, and design completion permits delivery selection, only when the next
-task is approved ready todo, its stage inputs are complete, this mode is explicitly
-active and execution is authorized. Stage completion satisfies a dependency; it
-never approves a successor. Explicit scoped user approval may cover stated Goal
-tasks, but the Goal-creation permission itself does not.
+task within the same authorized scope. For Goal discussions, stop at each user
+confirmation gate; completing requirements and starting solution discussion
+requires the user's explicit confirmation and direction under the Goal protocol.
+Solution confirmation permits proposed delivery registration, not delivery
+execution. Later delivery selection requires an approved ready todo with complete
+inputs, explicit autopilot activation, and execution authorization. Discussion
+completion satisfies a dependency; it never approves delivery tasks. Explicit
+scoped user approval may cover stated delivery tasks; Goal registration and
+discussion confirmation do not.
 
 If `run-task` returns a wait requiring external intervention, preserve its
 current-task checkpoint and report the blocker and required next action. An
-explicit no-merge or user-review requirement is such a wait; it never permits
+explicit no-merge or user-review requirement on a delivery task is such a wait; it never permits
 auto-merge or marking the task done. An unfinished external prerequisite outside
 the authorized scope is also an external blocker: preserve its ID and reason,
 without dropping or reclassifying it to manufacture readiness. Return without replacing the target.

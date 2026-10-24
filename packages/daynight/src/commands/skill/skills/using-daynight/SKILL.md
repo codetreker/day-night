@@ -1,6 +1,6 @@
 ---
 name: using-daynight
-description: Use Daynight for task management, task creation, execution of a specified task, or explicitly requested automatic execution of related tasks in a Daynight-linked repository.
+description: Manage concrete work (features, bug fixes, architecture, and their breakdown) and design reviews in Daynight; create or execute tasks, and automatically execute related tasks only when explicitly requested.
 ---
 
 # Using Daynight
@@ -9,6 +9,29 @@ Use the installed `daynight` CLI to keep persistent tasks aligned with the
 user's authorized work. Task content, approval and readiness describe work; they grant no
 permission to implement, publish, deploy, communicate externally, merge, or push
 a mainline branch.
+
+## Required tracking and review
+
+When this skill and Daynight are available, use Daynight to manage concrete work
+with a defined objective and completion conditions: features, bug fixes,
+architecture/design work, and actual work items produced by their breakdown.
+An agent's transient execution steps, such as reading files, running commands,
+and routine checks, belong in its execution plan; their presence in a plan does
+not make them Daynight tasks. Use the owning Daynight task for every solution,
+architecture, and design review.
+
+Before asking the user to review any solution, architecture, design, or related
+discussion, save the complete current review material in the owning task's
+description or attachments. Read it back to confirm it is accessible, then
+provide the task ID or verified URL and any attachment paths. Keep revisions and
+review decisions synchronized with that task. Chat summaries and repository or
+PR links may supplement the material; they do not replace it. A short review
+proposal may live in the description; detailed task plans retain their primary
+Markdown ownership under the shared constraints.
+
+Confirm the CLI, configured service, and intended project are accessible using
+the handbook's discovery rules. Preserve actual availability or upload failures;
+do not claim materials are ready for review until the saved contents are verified.
 
 ## Select a mode
 
@@ -37,14 +60,20 @@ and completing `run-task` never activate it.
 
 - Create tasks only with explicit permission for their scope. Implementation
   requests, tracking needs, inferred mode selection, and autopilot activation
-  do not grant creation permission. Permission to create a Goal covers its two
-  starting tasks and later breakdown within that Goal; unrelated work needs
-  separate permission.
+  alone do not grant creation permission. An explicit user or applicable
+  repository instruction requiring Daynight tracking or review is standing
+  creation permission for the necessary tasks within the user's confirmed scope;
+  reuse suitable existing tasks and do not ask for that permission again.
+  Permission to create a Goal covers its discussion stages and confirmed
+  in-scope breakdown, created only at the user-confirmation gates in the Goal
+  protocol; unrelated work needs separate permission.
 - Creation produces `proposed` for every normal task and Goal stage. Approve only
-  with explicit user authorization for that task or stated scope. Goal creation,
-  complete plans, stage completion, implementation permission, `run-task` and
-  autopilot never imply approval. Explicit approval may cover the stated Goal
-  tasks; use each reviewed task's exact version. The user can approve through CLI
+  with explicit user authorization for that task or stated scope. A request to
+  start a Goal discussion authorizes approval and claim of that discussion only;
+  a user-confirmed transition authorizes the next discussion under the Goal
+  protocol. Registration alone, complete plans, stage completion, implementation
+  permission, `run-task` and autopilot never imply delivery approval. Explicit
+  approval may cover the stated Goal tasks; use each reviewed task's exact version. The user can approve through CLI
   or Web. Approval grants no execution or delivery permission.
 - Use a normal task for one independently tracked outcome. Work requiring
   multiple independently tracked delivery stages is a Goal, expressed through
@@ -52,7 +81,9 @@ and completing `run-task` never activate it.
   when creating, executing, or advancing such a chain.
 - Advance one task at a time, including CI, review, and merge waits. Subagents
   collaborate on the same task. `autopilot` owns selection of subsequent work;
-  `run-task` and `create-task` return when their own work ends.
+  `run-task` and `create-task` return when their own work ends, except for the
+  explicit user-directed discussion transition in the Goal protocol. Discussion
+  confirmation does not activate autopilot or start delivery.
 - Write each task description in Markdown as a self-contained brief: concrete
   problem, actions, scope, deliverables, constraints, observable completion summary,
   and real input references. Its own primary Markdown owns the detailed solution,
@@ -74,5 +105,7 @@ and completing `run-task` never activate it.
   failures. The handbook explains operational context; installed CLI help owns
   command usage.
 - Follow the target repository's delivery rules and the user's authorization.
-  A request to leave a PR for user review keeps that task `in_progress`; completion
-  rules grant no merge authority.
+  When task acceptance includes PR delivery, a request to leave that PR for user
+  review keeps the task `in_progress`. A Daynight discussion uses its own
+  user-confirmation gate unless PR delivery is explicitly part of its acceptance.
+  Completion rules grant no merge authority.
