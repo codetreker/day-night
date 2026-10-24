@@ -122,7 +122,11 @@ inventories browsers only after validating that exact permission. Its
 `ready.json` records diagnostic timing and grants no permission. The callback
 runs the twenty-four container functional scenarios, confirms browser cleanup and
 returns to the normal shell exit path. The outer stage waits for full dev-ci
-cleanup and browser recovery before completing.
+cleanup and browser recovery before completing. The native callback fixture
+uses separate initialization and execution watchdogs while retaining strict
+readiness, status, permission, and cleanup checks; the
+[callback phase-budget decision](2026-10-24-web-callback-phase-budgets.md) owns
+that test-only timing boundary.
 
 Capacity runs last, after every preparation/check command, native functional
 phase, container functional phase and complete container cleanup. The native

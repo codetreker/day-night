@@ -58,22 +58,41 @@ const fixture = async (run: (value: Fixture) => Promise<void>): Promise<void> =>
   }
 };
 
-const start = (args: readonly string[], value: Fixture, ipc = false) => {
+const start = (args: readonly string[], value: Fixture, initialization?: { timeoutMs: number }) => {
   const child = spawn(process.execPath, args, { cwd: value.directory, env: value.env,
-    stdio: ipc ? ['ignore', 'pipe', 'pipe', 'ipc'] : ['ignore', 'pipe', 'pipe'] });
+    stdio: initialization === undefined ? ['ignore', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe', 'ipc'] });
   let stdout = '';
   let stderr = '';
   let error: Error | undefined;
   let timedOut = false;
   child.stdout!.on('data', (data: Buffer) => { stdout += data.toString(); });
   child.stderr!.on('data', (data: Buffer) => { stderr += data.toString(); });
-  const timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL'); }, 5_000);
+  const timeout = (): void => { timedOut = true; child.kill('SIGKILL'); };
+  let timer = setTimeout(timeout, initialization?.timeoutMs ?? 5_000);
+  const runCallback = (): void => {
+    clearTimeout(timer);
+    timer = setTimeout(timeout, 5_000);
+    child.send('run');
+  };
   child.once('error', (failure) => { error = failure; });
   const done = new Promise<{ code: number | null; signal: NodeJS.Signals | null; stdout: string; stderr: string; error: Error | undefined; timedOut: boolean }>((resolve) => {
     child.once('close', (code, signal) => { clearTimeout(timer); resolve({ code, signal, stdout, stderr, error, timedOut }); });
   });
-  return { child, done };
+  return { child, done, runCallback };
 };
+
+const callbackInitialized = (running: ReturnType<typeof start>): Promise<void> => new Promise((resolve, reject) => {
+  const receive = (message: unknown): void => {
+    running.child.removeListener('message', receive);
+    if (message === 'initialized') resolve();
+    else reject(new Error('Container callback sent an unexpected initialization message.'));
+  };
+  running.child.once('message', receive);
+  void running.done.then((result) => {
+    running.child.removeListener('message', receive);
+    reject(new Error(`Container callback exited before initialization (exit=${result.code}, signal=${result.signal}, watchdog=${result.timedOut}).`));
+  });
+});
 
 const readyReceipt = async (path: string, running: ReturnType<typeof start>): Promise<Record<string, unknown>> => {
   const deadline = performance.now() + 3_000;
@@ -227,99 +246,132 @@ test('recovery refuses a storage path outside its run and preserves storage whil
   });
 });
 
-test('an early container callback records readiness and waits for permission before inspecting Chromium', { skip: !['linux', 'darwin'].includes(process.platform) }, async () => {
-  await fixture(async (value) => {
-    const id = runId();
-    const devCiRunId = '20261021123457-1234-56789';
-    const directory = join(evidenceRoot, id);
-    const containerDirectory = join(directory, 'container');
-    await mkdir(directory, { recursive: true });
-    await writeFile(join(directory, 'evidence.json'), JSON.stringify({ schemaVersion: 3, runId: id, source: { gitSha: sourceGitSha, gitTreeSha: sourceGitTreeSha } }));
-    await writeFile(join(value.bin, 'docker'), '#!/bin/sh\nprintf \'%s\\n\' "$0 $*" >> "$DAYNIGHT_TEST_COMMAND_LOG"\nif [ "$1" != ps ]; then exit 91; fi\nprintf \'%s\\n\' aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n');
-    value.env = { ...value.env, DAYNIGHT_ACCEPTANCE_DIRECTORY: containerDirectory, DAYNIGHT_DEV_CI_RUN_ID: devCiRunId,
-      DAYNIGHT_BASE_URL: 'http://127.0.0.1:12345' };
-    const running = start(['--input-type=module', '--eval', `
-      import assert from 'node:assert/strict';
-      import { getEventListeners } from 'node:events';
-      import { runContainerCallback } from ${JSON.stringify(runner)};
-      const cancellation = new AbortController();
-      const reason = new Error('callback-test-abort');
-      let begin;
-      const started = new Promise((resolve) => { begin = resolve; });
-      const receive = (message) => {
-        if (message === 'run') begin();
-        else if (message === 'status') process.send('waiting-for-permission');
-        else if (message === 'abort') cancellation.abort(reason);
-      };
-      process.on('message', receive);
-      process.send('initialized');
-      try {
-        await started;
-        await runContainerCallback(cancellation);
-        throw new Error('Container callback completed without permission.');
-      } catch (error) {
-        assert.equal(cancellation.signal.aborted, true);
-        assert.ok(error === reason || error.cause === reason);
-        assert.equal(getEventListeners(cancellation.signal, 'abort').length, 0);
-        assert.equal(process.getActiveResourcesInfo().filter((type) => type === 'Timeout').length, 0);
-        console.log('callback-aborted-cleanly');
-      } finally {
-        process.removeListener('message', receive);
-        process.disconnect();
-      }
-    `], value, true);
-    let stage = 'module initialization';
+const earlyContainerCallback = async (value: Fixture, delays = { initializationMs: 0, readinessMs: 0 }) => {
+  const id = runId();
+  const devCiRunId = '20261021123457-1234-56789';
+  const directory = join(evidenceRoot, id);
+  const containerDirectory = join(directory, 'container');
+  await mkdir(directory, { recursive: true });
+  await writeFile(join(directory, 'evidence.json'), JSON.stringify({ schemaVersion: 3, runId: id, source: { gitSha: sourceGitSha, gitTreeSha: sourceGitTreeSha } }));
+  await writeFile(join(value.bin, 'docker'), '#!/bin/sh\nprintf \'%s\\n\' "$0 $*" >> "$DAYNIGHT_TEST_COMMAND_LOG"\nif [ "$1" != ps ]; then exit 91; fi\nprintf \'%s\\n\' aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n');
+  value.env = { ...value.env, DAYNIGHT_ACCEPTANCE_DIRECTORY: containerDirectory, DAYNIGHT_DEV_CI_RUN_ID: devCiRunId,
+    DAYNIGHT_BASE_URL: 'http://127.0.0.1:12345' };
+  const spawnedAt = performance.now();
+  const running = start(['--input-type=module', '--eval', `
+    import assert from 'node:assert/strict';
+    import { getEventListeners } from 'node:events';
+    import { setTimeout as delay } from 'node:timers/promises';
+    import { runContainerCallback } from ${JSON.stringify(runner)};
+    const cancellation = new AbortController();
+    const reason = new Error('callback-test-abort');
+    let begin;
+    const started = new Promise((resolve) => { begin = resolve; });
+    const receive = (message) => {
+      if (message === 'run') begin();
+      else if (message === 'status') process.send('waiting-for-permission');
+      else if (message === 'abort') cancellation.abort(reason);
+    };
+    process.on('message', receive);
+    await delay(${delays.initializationMs});
+    process.send('initialized');
     try {
-      // Readiness measures the callback after imports; the child still has one five-second watchdog.
-      await new Promise<void>((resolve, reject) => {
-        const receive = (message: unknown): void => {
-          running.child.removeListener('message', receive);
-          if (message === 'initialized') resolve();
-          else reject(new Error('Container callback sent an unexpected initialization message.'));
-        };
-        running.child.once('message', receive);
-        void running.done.then((result) => {
-          running.child.removeListener('message', receive);
-          reject(new Error(`Container callback exited before initialization (exit=${result.code}, signal=${result.signal}, watchdog=${result.timedOut}).`));
-        });
+      await started;
+      await delay(${delays.readinessMs});
+      await runContainerCallback(cancellation);
+      throw new Error('Container callback completed without permission.');
+    } catch (error) {
+      assert.equal(cancellation.signal.aborted, true);
+      assert.ok(error === reason || error.cause === reason);
+      assert.equal(getEventListeners(cancellation.signal, 'abort').length, 0);
+      assert.equal(process.getActiveResourcesInfo().filter((type) => type === 'Timeout').length, 0);
+      console.log('callback-aborted-cleanly');
+    } finally {
+      process.removeListener('message', receive);
+      process.disconnect();
+    }
+  `], value, { timeoutMs: 30_000 });
+  let stage = 'module initialization';
+  try {
+    await callbackInitialized(running);
+    const initializedAt = performance.now();
+    stage = 'readiness publication';
+    running.runCallback();
+    const ready = await readyReceipt(join(containerDirectory, 'ready.json'), running);
+    const readyAt = performance.now();
+    assert.equal(ready.acceptanceRunId, id);
+    assert.equal(ready.devCiRunId, devCiRunId);
+    assert.equal(ready.sourceGitSha, sourceGitSha);
+    assert.equal((ready.callback as { pid: number }).pid, running.child.pid);
+    assert.deepEqual(JSON.parse(await readFile(join(containerDirectory, 'dev-ci-run.json'), 'utf8')), { runId: devCiRunId });
+    assert.deepEqual(JSON.parse(await readFile(join(containerDirectory, 'callback.json'), 'utf8')), ready.callback);
+    stage = 'permission gating';
+    const status = new Promise<unknown>((resolve, reject) => {
+      const timer = setTimeout(() => { running.child.removeListener('message', receive); reject(new Error('Container callback stopped responding while gated.')); }, 1_000);
+      const receive = (message: unknown): void => { clearTimeout(timer); running.child.removeListener('message', receive); resolve(message); };
+      running.child.once('message', receive);
+    });
+    running.child.send('status');
+    assert.equal(await status, 'waiting-for-permission');
+    assert.deepEqual((await readdir(containerDirectory)).sort(), ['callback.json', 'dev-ci-run.json', 'ready.json']);
+    const commands = (await readFile(value.commands, 'utf8')).trim().split('\n');
+    assert.equal(commands.length, 1);
+    assert.match(commands[0]!, /docker ps --quiet --no-trunc --filter label=com\.docker\.compose\.project=daynight-dev-ci-/);
+    stage = 'cancellation cleanup';
+    running.child.send('abort');
+    const result = await running.done;
+    assert.equal(result.error, undefined);
+    assert.equal(result.timedOut, false);
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(result.stdout, 'callback-aborted-cleanly\n');
+    assert.equal(result.stderr, '');
+    assert.deepEqual((await readdir(containerDirectory)).sort(), ['callback.json', 'dev-ci-run.json', 'ready.json']);
+    assert.equal(await processIdentity(running.child.pid!), null);
+    return { initializationMs: initializedAt - spawnedAt, readinessMs: readyAt - initializedAt, elapsedMs: readyAt - spawnedAt };
+  } catch (cause) {
+    throw new Error(`Container callback test failed during ${stage}.`, { cause });
+  } finally {
+    if (running.child.exitCode === null && running.child.signalCode === null) running.child.kill('SIGKILL');
+    await running.done;
+    await rm(directory, { recursive: true, force: true });
+  }
+};
+
+test('an early container callback records readiness and waits for permission before inspecting Chromium', { skip: !['linux', 'darwin'].includes(process.platform) }, async () => {
+  await fixture(async (value) => { await earlyContainerCallback(value); });
+});
+
+test('callback readiness retains its full budget after delayed initialization', { skip: !['linux', 'darwin'].includes(process.platform) }, async () => {
+  await fixture(async (value) => {
+    const elapsed = await earlyContainerCallback(value, { initializationMs: 4_000, readinessMs: 2_000 });
+    assert.ok(elapsed.initializationMs >= 4_000, `Initialization gate released after ${elapsed.initializationMs}ms.`);
+    assert.ok(elapsed.readinessMs >= 2_000, `Callback readiness gate released after ${elapsed.readinessMs}ms.`);
+    assert.ok(elapsed.elapsedMs > 5_000, `Callback readiness was observed after only ${elapsed.elapsedMs}ms.`);
+  });
+});
+
+test('the callback execution watchdog replaces the initialization budget', { skip: !['linux', 'darwin'].includes(process.platform) }, async () => {
+  await fixture(async (value) => {
+    const running = start(['--input-type=module', '--eval', `
+      process.on('message', (message) => {
+        if (message === 'run') setTimeout(() => process.exit(0), 15_000);
       });
-      stage = 'readiness publication';
-      running.child.send('run');
-      const ready = await readyReceipt(join(containerDirectory, 'ready.json'), running);
-      assert.equal(ready.acceptanceRunId, id);
-      assert.equal(ready.devCiRunId, devCiRunId);
-      assert.equal(ready.sourceGitSha, sourceGitSha);
-      assert.equal((ready.callback as { pid: number }).pid, running.child.pid);
-      assert.deepEqual(JSON.parse(await readFile(join(containerDirectory, 'dev-ci-run.json'), 'utf8')), { runId: devCiRunId });
-      assert.deepEqual(JSON.parse(await readFile(join(containerDirectory, 'callback.json'), 'utf8')), ready.callback);
-      stage = 'permission gating';
-      const status = new Promise<unknown>((resolve, reject) => {
-        const timer = setTimeout(() => { running.child.removeListener('message', receive); reject(new Error('Container callback stopped responding while gated.')); }, 1_000);
-        const receive = (message: unknown): void => { clearTimeout(timer); running.child.removeListener('message', receive); resolve(message); };
-        running.child.once('message', receive);
-      });
-      running.child.send('status');
-      assert.equal(await status, 'waiting-for-permission');
-      assert.deepEqual((await readdir(containerDirectory)).sort(), ['callback.json', 'dev-ci-run.json', 'ready.json']);
-      const commands = (await readFile(value.commands, 'utf8')).trim().split('\n');
-      assert.equal(commands.length, 1);
-      assert.match(commands[0]!, /docker ps --quiet --no-trunc --filter label=com\.docker\.compose\.project=daynight-dev-ci-/);
-      stage = 'cancellation cleanup';
-      running.child.send('abort');
+      process.send('initialized');
+    `], value, { timeoutMs: 30_000 });
+    try {
+      await callbackInitialized(running);
+      const startedAt = performance.now();
+      running.runCallback();
       const result = await running.done;
       assert.equal(result.error, undefined);
-      assert.equal(result.timedOut, false);
-      assert.equal(result.code, 0, result.stderr);
-      assert.equal(result.stdout, 'callback-aborted-cleanly\n');
-      assert.equal(result.stderr, '');
-      assert.deepEqual((await readdir(containerDirectory)).sort(), ['callback.json', 'dev-ci-run.json', 'ready.json']);
+      assert.equal(result.timedOut, true);
+      assert.equal(result.code, null);
+      assert.equal(result.signal, 'SIGKILL');
+      assert.ok(performance.now() - startedAt >= 4_500, 'Callback watchdog expired before its execution budget.');
+      assert.equal(await readFile(value.commands, 'utf8'), '');
       assert.equal(await processIdentity(running.child.pid!), null);
-    } catch (cause) {
-      throw new Error(`Container callback test failed during ${stage}.`, { cause });
     } finally {
       if (running.child.exitCode === null && running.child.signalCode === null) running.child.kill('SIGKILL');
       await running.done;
-      await rm(directory, { recursive: true, force: true });
     }
   });
 });
