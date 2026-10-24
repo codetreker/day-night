@@ -282,7 +282,8 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
     await reader.goForward();
     await expect(readerAttachments.locator('pre')).toHaveText('Second same-name text\n');
     await expect(readerLongDirectory).not.toHaveAttribute('open', '');
-    await expect(readerAttachments.getByRole('textbox', { name: '目标相对路径' })).toHaveValue('drafts/reader.txt');
+    await expect(readerUpload).not.toHaveAttribute('open', '');
+    await expect(readerAttachments.getByLabel('目标相对路径')).toHaveValue('drafts/reader.txt');
     expect(await readerSidebar.evaluate((element) => element.isConnected)).toBe(true);
     await reader.reload();
     await expect(readerAttachments.locator('pre')).toHaveText('Second same-name text\n');
