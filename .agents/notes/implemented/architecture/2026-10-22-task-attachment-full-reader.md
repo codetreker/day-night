@@ -20,9 +20,11 @@ anchor with an external-link icon, `target="_blank"` and
 metadata, independently of pending content. It shares the existing canonical-ID
 and encoded-path validators. The source dialog and its selection remain open.
 
-`AuthenticatedApp` renders `AttachmentPage` outside the workspace shell and
-modal. The route owns project, task and exact case-sensitive path, and the reader fetches through
-its own `useAttachments` instance. Only a complete inventory establishes either
+The standalone task route renders outside the workspace shell and modal.
+Its attachment path owns project, task and exact case-sensitive file identity,
+while the complete detail shares one attachment controller with description
+navigation. The [standalone-detail decision](2026-10-24-standalone-task-detail.md)
+owns the current full-detail container. Only a complete inventory establishes either
 selected metadata or a missing file; failed or partial inventories remain errors
 with retry. The same `AttachmentPreview` renders every supported format and
 its failure states. Content URLs remain the existing raw/preview endpoints, so
@@ -58,7 +60,9 @@ The [attachment requirements](../../../../docs/spec/daynight-task-attachments.md
 own visible behavior and the [design](../../../../docs/design/daynight-task-attachments.md#独立附件阅读页)
 owns the route and rendering mechanism. The
 [shared-page decision](2026-10-24-shared-attachment-page.md) extends this foundation
-with the complete attachment panel and standalone navigation history. This
+with the complete attachment panel and standalone navigation history. The
+[standalone-detail decision](2026-10-24-standalone-task-detail.md) places that panel
+within complete task details and extends history to task/tab/file state. This
 decision extends the [split-view decision](2026-10-22-task-attachment-split-view.md), which retains
 inline tabs, state and scroll ownership. The
 [original Web attachment decision](../feature/2026-10-21-task-attachment-web.md)

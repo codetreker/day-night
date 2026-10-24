@@ -13,9 +13,13 @@ when refresh removes the original entry.
 
 ## Decision
 
-`TaskDetailDialog` is the shared task-detail entry for graph nodes and standalone
-rows. It retains the existing detail request hook, relationship navigation, PR
-pagination, attachment state and stale-snapshot notice. `task-detail.css` owns one
+`TaskDetailDialog` remains the default task-detail entry for graph nodes and
+standalone rows. It composes `TaskDetailSurface`, which retains the existing
+detail request hook, relationship navigation, PR pagination, attachment state
+and stale-snapshot notice. The
+[standalone-detail decision](../architecture/2026-10-24-standalone-task-detail.md)
+shares that complete surface with a normal page and adds the title-bar popout,
+while this decision retains modal geometry and focus ownership. `task-detail.css` owns one
 `task-detail-*` namespace for its shell and content.
 
 The body portal centers the dialog in the available viewport, with a maximum

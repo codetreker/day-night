@@ -181,11 +181,13 @@ HTTP 认证逐请求读取当前会话/PAT 并产生 Principal。资源服务在
 requestId。非成员与不存在项目均 not_found；错误类别不能落入 internal_error。
 
 正式 main.tsx 在常驻 LocaleProvider 下挂载 AuthenticatedApp；语言机制和现有图、
-任务/附件页签及居中 TaskDetailDialog 保持同一实例与状态规则。
+任务/附件页签及完整详情的弹窗/独立展示保持同一实例与状态规则。独立详情导航同时
+包含 pathname 与 search；登录返回路径保留任务、页签和附件的相关查询参数，构造
+登录入口时移除临时 `authError`，避免一次旧登录失败随成功返回再次呈现。
 TaskDetailSessionProvider 位于当前 user/generation 的身份域内，跨详情关闭/重开
-保持 project/task 的批准操作身份与结果，401 或身份变化时丢弃旧用户状态；同一
-用户核验与语言切换不重建 Provider。批准依赖当前完整详情的精确版本，冲突与未知
-结果遵守[生命周期决策](../../.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)。
+保持 project/task 的状态操作身份与结果，401 或身份变化时丢弃旧用户状态；同一
+用户核验与语言切换不重建 Provider。状态设置依赖当前完整详情的精确版本，冲突与未知
+结果遵守[三状态设计](daynight-task-status.md)。
 它通过 /me 取得身份，401 显示 UniAuth 入口；资源 404 不退出全局会话。
 项目列表增加名称/仓库地址创建表单，复用原 API，成功进入空项目且创建者为 admin。
 账户页管理 PAT，项目管理导航连接成员与 `/projects/:id/settings`。设置页成员可读，角色确认是 admin 后可编辑；

@@ -311,9 +311,9 @@ docker compose -f deployment/localhost/compose.yaml logs server | rg '"request_i
 
 ## Web 文件树与预览
 
-`TaskDetailDialog` 通过 `TaskDetailReading` 在公共标题下组合 `TaskDetailPanels`，
-以概览和附件两个稳定面板分开任务阅读与文件浏览。详情与面板以 `(projectId, taskId)` 为身份，每个新身份默认
-概览；两个面板保持挂载，非当前面板同时使用 `hidden` 与 `inert`。页签按钮关联
+`TaskDetailSurface` 通过 `TaskDetailReading` 在公共标题下组合 `TaskDetailPanels`，
+以概览和附件两个稳定面板分开任务阅读与文件浏览。详情与面板以 `(projectId, taskId)` 为身份，
+项目内详情默认概览，独立详情按 URL 初始化页签与文件；两个面板保持挂载，非当前面板同时使用 `hidden` 与 `inert`。页签按钮关联
 `tabpanel`，使用 roving tabindex，方向键和 Home/End 自动激活并聚焦目标页签，原生
 Enter/空格继续有效。`TaskAttachmentsPanel`、表单及目录控件保留组件身份，因此往返页签
 保留选中路径、目录展开、列表/预览状态和未提交上传。`TaskDetailReading` 持有唯一的
@@ -426,64 +426,51 @@ URL 在删除后仍保持有效，到 fixture dispose 才释放，避免已加�
 
 ## 独立附件阅读页
 
-`router.ts` 将 `/projects/{projectId}/tasks/{taskId}/attachments/{path...}` 解析为
-`attachment` 路由。先按原始 `/` 分段再逐段解码，拒绝解码后含 `/` 的段，规范化
-UUID 并复用 `isAttachmentPath`；文件路径保持大小写和合法 Unicode 拼写，字面 `%2F`
-通过 `%252F` 表达。`attachmentPageUrl` 与原文件 URL builder 共用同一地址规则，
-不把文件路径或预览状态从来源页写入浏览器内存作为导航依赖。
+独立附件入口是完整任务详情的一种初始状态。
+`/projects/{projectId}/tasks/{taskId}/attachments/{path...}` 与基础任务路径由同一
+`TaskDetailPage` 展示 `TaskDetailSurface`，附件路径默认激活附件并选中文件；显式
+`tab=overview|attachments` 可选择页签。完整详情的共享主体、任务/页签/文件 URL、
+浏览器历史及项目图刷新由[独立详情设计](daynight-task-inspection.md#独立完整任务详情)
+拥有。附件预览的真实新标签链接仍使用 `attachmentPageUrl`，进入完整详情并定位
+当前文件，不传递来源窗口的数据或状态。
 
-生产 `AuthenticatedApp` 在工作空间外渲染 `AttachmentPage`，根部 `LocaleProvider`
-继续提供文案、格式与保存偏好。独立外壳的头部只放返回项目入口和语言选择，正文
-直接组合现有 `TaskAttachmentsPanel`，复用左侧文件树、刷新、上传表单、菜单删除及
-右侧预览。路径、元数据和下载归属同一个共享预览标题，不在页面头重复维护。
-`TaskDetailReading` 的嵌入面板继续使用同一组件和原有控制器。
+`TaskDetailSurface` 通过 `TaskDetailReading` 在同一 project/task 身份内持有一个
+`useAttachments` 控制器，概览描述导航与完整 `TaskAttachmentsPanel` 共用它。
+弹窗及独立页面因此使用相同目录、刷新、上传、文件菜单、删除确认和预览。独立
+导航由外层记录页签与文件状态，路由恢复只应用选择；弹窗继续使用本地选择。同任务
+的页签与文件变化保留主体、附件控制器、目录展开、侧栏位置及草稿，跨任务或身份
+变化按原有请求生命周期释放。所选文件删除后仍保留 URL 路径，完整清单确认缺失
+后显示对应状态；删除其他文件保持当前预览。
 
-页面实例以 `(projectId, taskId)` 为身份；文件路径是该实例中的选择，而非整个附件页
-的卸载条件。`App`、`AuthenticatedApp` 和 `AttachmentPage` 的同任务文件切换保留
-组件身份，所以目录展开、侧栏滚动、上传草稿与附件清单继续存在。用户身份边界仍
-由认证外壳拥有，project/task 或身份改变时释放旧状态与请求。首次进入页面聚焦主
-阅读区域，语言切换更新展示而不重挂载资源或 frame。
+文件路径先按原始 `/` 分段再逐段解码，拒绝解码后含 `/` 的段，规范化 UUID 并复用
+`isAttachmentPath`；大小写和合法 Unicode 拼写不变，字面 `%2F` 通过 `%252F` 表达。
+`attachmentPageUrl` 与原文件 URL builder 共用地址规则。新路径元数据及缺失仅在
+完整清单后确认；不完整刷新保留同任务、同路径最近已确认的元数据。加载、清单错误、
+路径错误、缺失和预览错误由现有所有者展示，不能把失败当作空列表。正文继续复用
+`AttachmentPreview`、既有内容 URL、相对资源和请求取消，不另建树、渲染器或元数据接口。
 
-`AttachmentPage` 持有一个 `useAttachments` 控制器，以完整清单要求处理独立路径的
-元数据。新选择的路径仅在 `complete` 为 true 后确认元数据或缺失；后续页失败
-保留不完整清单提示，不能退化为缺失。共享面板根据同一份列表、选择、写操作和
-预览状态展示加载、错误与适用重试。两种展示刷新同任务、同路径时均保留最近已确认
-的元数据，直到完整清单确认变化或缺失；嵌入选择继续使用原有清单规则。
-两种展示均复用 `AttachmentPreview` 与既有内容 URL、相对资源解析和取消机制，
-不增加第二个渲染器、存储标识或元数据接口。
+独立详情的整页尺寸链在实际高度的标题与页签后为面板分配余下空间。共享分栏及
+断点保持左侧独立滚动；右侧预览正文承担 Markdown、文本和图片滚动，HTML/PDF
+由拟合正文的 iframe 内文档滚动。所有可收缩层保持零最小尺寸，外壳隐藏外溢，不
+以固定头高减法或 frame 最低高度产生嵌套滚动。
 
-历史归属独立外壳。共享面板在目录选择或成功上传选择文件后通知独立外壳，由外壳
-通过现有 `navigate()` 写入新路径；与当前路径相同的选择不重复写历史。路由路径变化
-仅更新控制器选择，因此前进/后退不会反向触发新的历史写入。嵌入面板不接入这个
-通知，继续仅更新控制器。删除当前文件保留 URL 指定的路径，清单完整确认缺失后
-显示对应状态；删除其他文件保留当前预览与位置。文件路径与 `updatedAt` 继续界定
-预览组件身份，请求取消与迟到结果隔离仍由现有控制器负责。
+`AttachmentPreview` 的关闭能力可选。`TrustedFrame` 仅在实际任务详情 dialog 祖先
+与关闭回调同时存在时安装 Escape/边界 Tab 桥。独立完整详情不安装该桥，内部原生
+删除确认继续拥有当前层焦点和键盘交互。内嵌详情的焦点圈定、frame load/替换/卸载
+清理和关闭恢复按原规则执行。
 
-`attachment-page` 是占满 `100dvh` 的 flex column，外壳隐藏外溢；实际高度的头部
-不收缩，完整附件面板通过 flex 占据余下高度，每一级保持零最小尺寸。独立展示沿用
-共享分栏及断点：左栏独立滚动，右侧共享预览正文承担 Markdown、文本和图片滚动，
-HTML/PDF 由拟合正文的 iframe 内文档滚动。不使用固定头部高度减法、frame 最低
-高度或嵌套纵向滚动。路径显示可截断但完整值保留在可访问文本与 title，短视口压缩
-内边距。
+Go UI mux 精确登记基础任务和附件页面 GET/HEAD，继续交付相同 no-store index。
+附件原始路径守卫在 ServeMux 清理或重定向前验证路径，保留中间 `..` 掩盖命名空间
+的意图检查。无效页面 ID 仍由前端显示未找到页面，数据与授权由已有接口检查。
+[完整阅读决策](../../.agents/notes/implemented/architecture/2026-10-22-task-attachment-full-reader.md)
+拥有非模态渲染及路径基础，[共享附件页决策](../../.agents/notes/implemented/architecture/2026-10-24-shared-attachment-page.md)
+保留完整附件面板复用的理由，[独立详情决策](../../.agents/notes/implemented/architecture/2026-10-24-standalone-task-detail.md)
+拥有当前完整任务详情组合。
 
-共享面板和 `AttachmentPreview` 的关闭能力是可选的。`TrustedFrame` 仅在存在实际
-任务详情 dialog 祖先且调用方提供关闭回调时安装原有 Escape/边界 Tab 桥；独立页面
-不注册该监听，保留普通浏览器键盘行为。内嵌详情的焦点圈定、frame load/替换/卸载
-清理和关闭恢复继续按原规则执行。原生删除确认拥有其当前层的焦点和键盘交互，
-在两种容器中均位于附件页子树。
-
-Go 的 `uiRoutes` 精确登记同一页面形状的 GET/HEAD index 及方法 fallback，继续由
-`internal/webui` 提供 no-store 页面。`attachmentPathGuard` 在 ServeMux 清理路径或
-重定向前验证每段和完整文件路径，保留中间 `..` 会掩盖命名空间的意图检查。页面
-ID 无效仍先交付 index，由前端显示未找到页面；数据请求的 ID、归属、路径、授权
-检查继续由原接口负责。[完整阅读决策](../../.agents/notes/implemented/architecture/2026-10-22-task-attachment-full-reader.md)
-拥有路由与非模态预览基础，[共享附件页决策](../../.agents/notes/implemented/architecture/2026-10-24-shared-attachment-page.md)
-拥有完整面板复用及独立历史的职责划分。
-
-前端实际组件 mockup 使用同一完整附件页，支持独立入口、文件操作和前进后退；
-fixture 上传产生的临时对象 URL 仅用于演示。真实服务运行时验收与 fixture 验证的
-证据边界由[附件组合验收决策](../../.agents/notes/implemented/testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
-拥有；历史运行结果只证明其记录的源码与行为，具体扩展的结果归属相应源码及 PR/CI。
+前端实际组件 mockup 与真实服务验收分别证明其被测行为；fixture 临时对象 URL
+只用于演示。源码、构建产物及浏览器环境的证据边界沿用
+[附件组合验收决策](../../.agents/notes/implemented/testing/2026-10-21-task-attachment-cross-layer-acceptance.md)，
+历史运行结果不能替代当前扩展的验证。
 
 ## CLI
 

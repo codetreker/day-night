@@ -16,10 +16,12 @@ must still leave the dialog controls and reading panels reachable.
 The loaded task's actual title is the common header's h2 and the dialog's
 accessible name. Loading and initial failure use their corresponding state
 titles. The complete task title owns bounded native scrolling and keyboard focus;
-status and close controls stay accessible across supported viewport sizes.
+status, new-tab and close controls stay accessible across supported viewport sizes.
 Task details consume the current application locale through the shared
-`LocaleProvider`; the header contains the title, current status menu and
-close control. The body heading retains status, automation controls and actionable
+`LocaleProvider`; the modal header contains the title, current status menu,
+current-state new-tab link and close control. The
+[standalone-detail decision](../architecture/2026-10-24-standalone-task-detail.md)
+owns that link and shares the same complete content with its page container. The body heading retains status, automation controls and actionable
 notices. Overview metadata retains the full selectable ID and a localized Copy
 button that directly writes its exact value with the browser Clipboard API. Copy success and failure belong to the displayed task; failure
 keeps both the ID and a retry available.

@@ -41,7 +41,7 @@ validation, notices and already displayed errors. Login, workspace, invitation
 and management dialogs expose the shared language selector; native formatters
 render dates and counts. Language changes retain form inputs, dialog and
 one-time secrets, identity and pending requests without restarting operations.
-It composes the existing project list, graph and centered `TaskDetailDialog` with
+It composes the existing project list, graph and shared task-detail surfaces with
 private project creation, account/token pages, member/invitation management,
 project execution-warning settings and explicit invitation acceptance. Task
 details expose the versioned automatic-execution permission: one bilingual
@@ -559,18 +559,18 @@ Same-path overwrite and explicit attachment refresh retain the existing revision
 and preview reload behavior.
 
 Run `pnpm web:dev` and open `/tests/mockups/markdown.html` for the production
-`TaskDetailReading` composition and final styles with the existing frontend-only
-attachment fixture. Its controls select rich, empty or long descriptions and
-attachment loading, empty, list-error, preview-error, upload-error or busy states.
-Actual root-relative image/document links, missing/upward references, detail
-panels and the standalone fixture reader are interactive without Go or
-PostgreSQL. This entry and `/tests/mockups/attachments.html` share
+`TaskDetailSurface` and `TaskDetailReading` composition with final styles and
+frontend-only task/attachment fixtures. Description links, detail tabs, relations,
+existing task actions and attachment management are interactive without Go or
+PostgreSQL. Query parameters choose the task, tab, file, page mode and attachment
+scenario. This entry and `/tests/mockups/attachments.html` share
 `tests/mockups/main.tsx`; neither belongs to the production single-index build.
 
 ## Task attachments
 
-Every task detail opens on Overview, which retains descriptions, PR
-associations, relationships and metadata. The complete task ID appears only in
+Task details opened from the project list or graph start on Overview, which
+retains descriptions, PR associations, relationships and metadata. Standalone
+addresses initialize the tab and attachment selection from their navigation state. The complete task ID appears only in
 its metadata row, beside a localized Copy button. This writes the exact ID with
 `navigator.clipboard.writeText` and exposes success or a recoverable failure; the
 ID remains selectable when browser clipboard access fails. Copy feedback belongs
@@ -614,8 +614,8 @@ HTML/PDF, the body and fitted frame wrapper hide overflow and the embedded
 document or native reader owns scrolling. The preview header never scrolls
 independently, exposes the complete path and keeps Download and Open in new tab reachable. File-row menus and confirmation controls remain accessible at narrow widths.
 Left-pane scrolling does not move right-side content or its reading position.
-The standalone page reuses this complete panel, rendering and sizing; only its
-outer composition integrates selection with URL and history. Independent
+The standalone complete details reuse this panel, rendering and sizing; their
+outer composition integrates task, tab and file navigation with URL and history. Independent
 real-service runtime acceptance of the attachment-reading group is complete.
 Its source, build, browser and cleanup receipts retain the scope of that result;
 a local browser override does not establish hosted-CI browser behavior.
@@ -645,95 +645,118 @@ Other formats show metadata and a download link. Files and metadata can diverge
 after a failed write under the accepted K1 limitation; the UI reports errors and
 does not implement reconciliation or rollback.
 
+### Standalone complete task details
+
+The default graph/list entry still opens the centered `TaskDetailDialog`. Its
+header has a real Open in new tab anchor with `target="_blank"` and
+`rel="noopener noreferrer"`, preserving the current task, Overview/Attachments
+tab and selected attachment. The source dialog remains open with its local
+state. A preview's neighboring Open in new tab action enters the same complete
+task details at that file, even while preview content is loading.
+
+`TaskDetailSurface` shares the full content and existing actions between dialog
+and page: description, status, relationships, PRs, metadata, three-state setting,
+automatic-execution permission, execution platform and attachment management.
+`TaskDetailDialog` owns only the modal portal, inertness, scroll lock, focus loop,
+Escape and focus restoration. `TaskDetailPage` provides an ordinary full-page
+container, return-to-project link and language selector. The platform select
+stays in the status row with live feedback beneath it. Status, permission and
+platform use the same confirmation/review owner; file deletion keeps its own
+modal confirmation. These interactions remain available in either container.
+The standalone page and native frames do not install the outer dialog's keys.
+
+`/projects/{projectId}/tasks/{taskId}` defaults to Overview. The existing
+`/projects/{projectId}/tasks/{taskId}/attachments/{path...}` defaults to
+Attachments with that exact file selected. `tab=overview|attachments` can
+explicitly select a tab. With no file selected, Attachments uses the base task
+URL with `?tab=attachments`; a hidden file selection can remain in an attachment
+path with `?tab=overview`. `taskDetailUrl` builds those URLs from
+`TaskDetailNavigation`. The app observes both pathname and search, and login
+return navigation retains navigation query parameters so authentication does not
+lose the tab. The login-start target removes transient `authError` feedback,
+preventing an old login failure from surviving a successful return.
+
+Standalone relationship navigation, tab changes, file selection and successful
+upload selection synchronize the address and add history only for a new state.
+Back/Forward apply the address state without adding an entry; copying or reloading
+restores the task, tab and file. Modal relationship/tab/file changes stay local
+and do not write the project URL or history. A same-task tab/file route change
+keeps the shared surface and attachment controller mounted, retaining directory
+disclosure, sidebar scroll and upload drafts. Task and authenticated-identity
+changes preserve the existing cancellation and state-isolation rules.
+
+The page owns a real `useTaskGraph` snapshot for relationship titles, successors
+and freshness, then composes the shared detail session. Initial loading, initial
+failure and retained-snapshot refresh errors stay distinct; failure cannot become
+an empty graph. Each successful graph revision still rereads full task details,
+even when the graph projection is unchanged. Same-identity foreground auth
+revalidation retains ordinary page visibility, interaction and component identity.
+Unchanged detail refreshes retain focus, inputs, preview and heading/panel geometry.
+Each window reads its own resources; task objects, snapshots and confirmations
+are not transferred from the opener. Existing precise-version writes, conflicts
+and unknown-outcome reconciliation remain owned by `TaskDetailSession`.
+
+The [inspection requirements](../../docs/spec/daynight-task-inspection.md#独立完整任务详情),
+[design](../../docs/design/daynight-task-inspection.md#独立完整任务详情) and
+[standalone-detail decision](../../.agents/notes/implemented/architecture/2026-10-24-standalone-task-detail.md)
+own complete-page behavior and composition.
+
 ### Standalone attachment reader
 
-The new-tab action is a real anchor with `target="_blank"` and
-`rel="noopener noreferrer"`. `attachmentPageUrl` uses the selected metadata's
-project, task and complete case-sensitive path, so loading preview content does
-not delay or stale the link. The source dialog, tab and selection stay intact.
-The URL survives copying, closing the source dialog and reloading.
-
-Production `AuthenticatedApp` renders `AttachmentPage` within its authenticated
-identity boundary, outside the workspace shell and modal, at
-`/projects/{projectId}/tasks/{taskId}/attachments/{path...}`. The standalone shell
-provides a return-to-project link and the shared language selector. Its body is
-the same `TaskAttachmentsPanel` used in task details: directory tree, refresh,
-upload disclosure, file menus and deletion confirmation beside the selected
-preview. Path, metadata, Download and Open in new tab belong to the shared
-preview header. Initial focus enters the main region. Locale updates preserve
-the panel, resource identity and ordinary browser keyboard behavior.
-
-Standalone tree selection and successful upload selection synchronize the URL
-through the existing router and add a history entry only for a different path.
-Back and Forward apply the route's path to the same controller without adding
-another entry. The page and panel are keyed by project/task rather than file
-path, retaining directory expansion, sidebar scroll, inventory and unsent upload
-drafts while switching files. Project/task or authenticated-identity changes
-retain their existing teardown and isolation rules. Embedded selection remains
-local to its panel; tree and upload selection there do not write the address or
-browser history. Deleting the standalone selection keeps its URL and displays a
-missing file once the complete inventory confirms absence. Deleting another file
-preserves the active preview and reading position.
-
-One `useAttachments` controller owns standalone inventory, writes, selection and
-preview. It requires a complete paginated inventory before establishing selected
-metadata or absence for a new selected path; initial and partial-list failures
-remain errors with retry. Previously confirmed same-task/path metadata remains
-available through an incomplete refresh. The shared `AttachmentPreview` handles
-every format and content failure, with
-existing request cancellation and stale-result rejection. No metadata API,
-object-URL navigation contract, second renderer or separate file-management
-implementation is introduced.
+Attachment links now open complete task details at the selected file, using the
+same `TaskDetailReading` and `TaskAttachmentsPanel` as the modal. One attachment
+controller serves description navigation, directory tree, refresh, upload,
+row menus, deletion confirmation and preview. Complete inventory is required to
+establish new-path metadata or absence; partial failures remain visible with retry,
+and confirmed same-task/path metadata survives incomplete refreshes. Deleting
+the selected file keeps its URL and displays missing after complete confirmation;
+deleting another file preserves the current preview and reading position.
 
 The parser splits the raw path before decoding segments once and applies the
 existing canonical-ID and attachment-path validators. Encoded separators and
-traversal are rejected; encoded `%252F` represents a valid literal `%2F` in a
-filename. Go serves index HTML for GET/HEAD of this exact page shape, returns
-405 with `Allow: GET, HEAD` for other methods, and keeps unknown page shapes as
-JSON 404. Invalid page IDs retain the existing index plus frontend not-found
-behavior. The raw attachment path guard rejects invalid paths before ServeMux
-normalization can redirect or repair them; file endpoints retain their existing
-scope checks.
+traversal are rejected; `%252F` represents a literal `%2F` in a filename. Go serves
+the same index for GET/HEAD of the base task and attachment page shapes, rejects
+other methods with 405 and `Allow: GET, HEAD`, and keeps unknown shapes as JSON
+404. Invalid page IDs retain index plus frontend not-found behavior. The raw
+attachment guard runs before ServeMux normalization; file endpoints keep their
+existing scope and authorization checks.
 
-The page is a `100dvh` flex column with an actual-height header and remaining-height
-attachment panel. Its outer wrapper does not scroll. The shared split stays
-adjacent at narrow widths with independently scrolling inventory and preview.
-Documents, text and images use the preview body; HTML/PDF use a fitted native
-frame whose document owns vertical scrolling. There is no fixed header-height
-subtraction or modal height cap. The iframe Escape/Tab bridge is installed only
-with a real task-detail dialog ancestor and close callback; standalone frames
-keep ordinary browser keys. File deletion retains its own native modal focus
-and keyboard behavior in either container. The
-[full-reader decision](../../.agents/notes/implemented/architecture/2026-10-22-task-attachment-full-reader.md)
-owns the route and nonmodal rendering foundation; the
+The full-page detail allocates remaining height after its actual heading and
+tabs. Shared attachment panes stay adjacent at narrow widths and own their scroll
+independently. Markdown/text/images use the preview body; fitted HTML/PDF frames
+use their documents' scrolling, without another vertical wrapper. No fixed
+heading-height subtraction, extra renderer, metadata API or preview credential
+is introduced. The [full-reader decision](../../.agents/notes/implemented/architecture/2026-10-22-task-attachment-full-reader.md)
+retains routing/rendering foundations and the
 [shared-page decision](../../.agents/notes/implemented/architecture/2026-10-24-shared-attachment-page.md)
-owns full-panel reuse and standalone history.
+retains full attachment-panel reuse rationale; complete Task Detail composition
+now belongs to the standalone-detail decision.
 
 ### Frontend-only attachment mockup
 
 Run `pnpm web:dev` and open `/tests/mockups/attachments.html` on Vite's printed
-origin. `tests/mockups/main.tsx` renders the production attachment components and
-CSS with `tests/mockups/fixture.ts`; metadata changes remain in memory and native
-previews use local fixture files. Exercise detail tabs, adjacent panes and tall
-content along with loading, empty, failure and busy states, plus upload,
-overwrite, preview, download and menu/confirmation deletion without Go,
-PostgreSQL or network API calls. Refreshing the page resets fixture state.
-Object URLs stay valid through deletion and are released when the fixture is
-disposed. Open `/tests/mockups/attachments.html?file=docs%2Fguide.md&scenario=files`
-for the same production reader with a bundled file; it reloads independently
-using the injected fixture API and URLs. Uploaded object URLs remain simulation
-resources and do not define production navigation. This development entry is
-excluded from the single-index production build.
+origin. `tests/mockups/main.tsx` renders the production `TaskDetailSurface` and
+CSS with `task-detail-fixture.ts` and the attachment `fixture.ts`. Task reads and
+existing writes are intercepted by the in-memory fixture; native previews use
+local files. The modal and page therefore share complete content and actions
+without Go, PostgreSQL or service requests. Refresh resets fixture changes.
+Object URLs remain valid through deletion and are released with their fixture.
 
-The mockup validates appearance and frontend behavior. Local browser probes also
-exercise the actual portal dialog, background inertness, CSS-hidden controls,
-contenteditable frame boundaries, Escape/Tab release and trigger restoration.
-The probe receipts and screenshots live under the task's `.tmp/a-t4/`; a local
-existing Chromium override is recorded and does not establish pinned CI-browser
-or real-backend delivery. JSDOM uses an upstream `tabbable` test wrapper because
-it lacks layout; those unit tests do not prove browser visibility. The production
-`task-attachments` journey below uses the real service and the installed CLI on
-both runtime targets; its receipts remain separate from this fixture evidence.
+Use `/tests/mockups/attachments.html?mode=page` for standalone Overview and
+`/tests/mockups/attachments.html?mode=page&file=docs%2Fguide.md&scenario=files`
+for complete details at a bundled attachment. Query `task`, `tab` and `file`
+express fixture navigation; page changes use browser history while modal changes
+stay local. The fixture URL differs from production's canonical task routes.
+The `scenario` query selects existing attachment files, loading, empty, failure
+and busy cases. All resources are development entries excluded from the
+single-index production build; object URLs define no production navigation rule.
+
+The mockup validates appearance and frontend behavior, not authentication or
+persistent data. Local browser probes exercise the real portal dialog,
+background inertness, CSS-hidden controls, frame boundaries, layered keys and
+trigger restoration; unit layout emulation does not establish those browser
+properties. The production `task-detail-page` and `task-attachments` journeys
+use actual services on both runtime targets with source-qualified receipts.
 
 ## Frontend-only task browsing mockup
 
@@ -812,7 +835,7 @@ image identity and full cleanup; the job retains its 20-minute overall bound.
 
 Native functional checks start after the native process and browser are ready.
 Their browser cleanup must pass before an atomic, run/source-bound permission
-releases the container's twenty-eight functional checks. Capacity runs last, after all
+releases the container's twenty-nine functional checks. Capacity runs last, after all
 preparation and coverage commands, container checks, full dev-ci cleanup and
 container browser recovery have finished. Every browser phase retains one
 worker and zero retries. CI runs controlled deployment fixtures before the
@@ -879,7 +902,7 @@ ownership revalidation. Uncertain ownership fails without recursive removal.
 Existing recovery commands remain available without opting into new attachment.
 
 The full CI workflow remains on Linux and retains case-sensitive storage coverage.
-macOS local acceptance runs the same 61 scenarios, additional combined
+macOS local acceptance runs the same 63 scenarios, additional combined
 authentication checks and fixed performance budgets, with native filesystem
 coverage qualified by its recorded capability. A local pass does not establish
 macOS CI coverage. The [filesystem coverage decision](../../.agents/notes/implemented/testing/2026-10-23-native-development-filesystem-coverage.md)
@@ -892,7 +915,7 @@ npm registry unless the build variable is explicitly supplied.
 The command builds real embedded assets and a new Go executable and owns a
 separate PostgreSQL container/volume and ephemeral loopback listener. In parallel,
 the normal dev-ci runner builds and starts the actual production image. Browser
-execution proceeds through twenty-eight native functional scenarios, the same twenty-eight
+execution proceeds through twenty-nine native functional scenarios, the same twenty-nine
 functional scenarios through the production image's stream gateway, then five
 native capacity/limit scenarios. The native process and PostgreSQL remain alive
 through the capacity phase; other preparation commands and the complete
@@ -965,7 +988,7 @@ or an iframe load cannot satisfy this check. The
 owns data-sharing, rendering and independent reading proof.
 
 The additional [combined authentication journey](scripts/acceptance/auth-combined.mts)
-requires a separate receipt on each runtime target, alongside the 61
+requires a separate receipt on each runtime target, alongside the 63
 Playwright cases. It reuses the same installed package and normal Alice/Bob
 identities, records their initial project sets, and crosses browser and CLI data
 through shared/private projects, original-credential service restart, logout/PAT
@@ -1031,7 +1054,21 @@ with select-focus restoration, explicit set/clear, shared mutation locks,
 conflicts, unknown-result readback, late-response ownership and bilingual
 320px/390px layouts through the real service.
 
-The 61-scenario inventory (33 native, 28 container), current manual/periodic refresh,
+The `task-detail-page` journey observes source and popup requests at the browser
+context boundary. Only one registered task may receive exactly five PATCHes
+(platform success, permission enable, platform conflict, deliberate platform
+retry and committed response loss) and three PUT `/status` requests for
+todo → in_progress → done → todo. Version increments, start/finish/reset timing,
+and running-state permission/platform locks are checked. One exact attachment
+URL permits one PUT and one DELETE. Cancellation adds no write;
+uncertain outcomes reconcile by GET without PATCH replay. The source page itself
+has no mutation allowance. A separate anonymous context exercises real
+login-return redirects while only the provider endpoint is controlled, with
+zero application mutations. Complete content/actions, modal-local navigation,
+task/tab/file history, retained state and bilingual desktop/narrow/short layouts
+are checked in both runtime targets.
+
+The 63-scenario inventory (34 native, 29 container), current manual/periodic refresh,
 attachment tabs/standalone reader, bilingual/auth boundaries, zero retries, timeouts,
 coverage, size refusals and cleanup remain. PR #143 delivered dependency inspection;
 its receipts bind results to that exact tested source. The authentication/lifecycle
@@ -1045,6 +1082,7 @@ The [graph functional scenarios](tests/e2e/workflow.spec.ts),
 [status journeys](tests/e2e/status.spec.ts),
 [permission journey](tests/e2e/task-agent-permission.spec.ts),
 [platform journey](tests/e2e/task-platform.spec.ts),
+[standalone-detail journey](tests/e2e/task-detail-page.spec.ts),
 [project-settings journey](tests/e2e/project-settings.spec.ts),
 [execution-time journey](tests/e2e/task-execution-time.spec.ts),
 [capacity scenarios](tests/e2e/capacity.spec.ts) and
@@ -1057,10 +1095,10 @@ scenario annotations validated in each target's report.
 | Requirement | Production checks |
 |---|---|
 | W1 | `project-list`: more than 50 projects, cursor requests, unique cards and navigation to a later-page project |
-| W2 | `project-graph`, `deep-links`, `task-attachments`: project entry, direct HTML reload, browser history and standalone attachment opening/reload without source-tab state; standalone file selection owns its address/history while embedded selection remains local |
+| W2 | `project-graph`, `deep-links`, `task-attachments`, `task-detail-page`: project entry, direct HTML reload, complete standalone task/tab/file navigation and history without source-tab state; modal selection remains local |
 | W3–W4 | `project-graph`, `project-view-tabs`, `refresh-staleness`, `failure-recovery`: exact statistics, ordinary-component tabs and member progress, direct standalone details, independent completion filters, per-project tab/scroll/expansion restoration, dependency reclassification and consistent full refresh |
 | W5–W7 | `project-graph`, `keyboard-focus`, `capacity-chain`, `capacity-merge`, `capacity-shared`, `capacity-external`: complete projection data, bounded overview/induced edges, explicit expansion/reset, state markers and existing detail/viewport actions |
-| W8 | `detail-navigation`, `refresh-staleness`: complete centered-dialog content, ordered PR associations, relation navigation, automatic detail refresh with retained dialog/attachment state, property refresh and readiness differences without revising a dependent task |
+| W8, TI12–TI14 | `detail-navigation`, `refresh-staleness`, `task-detail-page`: shared complete dialog/page content and actions, title-bar/attachment popouts, task/tab/file history, query-preserving login, nested confirmations, precise/conflicting/unknown writes, automatic full-detail reads and retained geometry/state |
 | W9 | `refresh-staleness`, `failure-recovery`, `deep-links`, `capacity-limits`: periodic status updates and automatic recovery, owned-database failure/restoration, correlated errors, empty/not-found states, delayed request replacement and complete size refusal |
 | W10 | Native and container functional targets, exact image identity and dev-ci cleanup receipt |
 | W11 | Strict raw Go/V8 coverage reports, validated complete browser/performance receipts and the final `checks` result |
@@ -1095,14 +1133,14 @@ combined receipts are `native/auth-combined/target.json` and
 They require all eleven named checks, source/browser/installed-package identity,
 old/new restart process identity and passed browser/resource cleanup. They retain
 safe observations and hashes, not credential/configuration bodies or raw logs.
-The 61-case report validator remains independent. `CI` requires a clean checkout matching
+The 63-case report validator remains independent. `CI` requires a clean checkout matching
 `GITHUB_SHA` and the pinned browser for the current Linux or macOS host. Playwright uses one worker and no
 retries; skipped, flaky, duplicate/missing or incomplete scenarios fail validation.
 When selected, the web CI job archives `daynight-web-acceptance` separately from raw
 coverage for 30 days. Inspect the artifact from the exact workflow run and its
 tested checkout identity, which is normally a merge revision for PR runs. A pass
-requires the strict union of twenty-eight native functional and five native capacity/limit
-scenarios (33 native total), plus the twenty-eight container functional scenarios. Every
+requires the strict union of twenty-nine native functional and five native capacity/limit
+scenarios (34 native total), plus the twenty-nine container functional scenarios. Every
 phase and target rejects missing, extra or duplicate scenarios and skipped/flaky/retried results.
 Installed-CLI handoff, container callbacks and recovery require matching source
 commit/tree/dirty state as well as existing package/artifact ownership. A missing

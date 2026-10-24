@@ -252,6 +252,8 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
     });
     await expect(reader).toHaveURL(new URL(readerUrl, origin).href);
     expect(await reader.evaluate(() => window.opener === null)).toBe(true);
+    await expect(reader.locator('.task-detail-title')).toHaveText(task.title);
+    await expect(reader.getByRole('tab', { name: '附件', exact: true })).toHaveAttribute('aria-selected', 'true');
     await expect(reader.getByRole('table').first()).toContainText('Web已连接');
     await expect(reader.getByRole('navigation', { name: '工作空间导航' })).toHaveCount(0);
     await expect(reader.getByRole('dialog')).toHaveCount(0);
@@ -377,6 +379,9 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
     const downloadedPath = await binaryDownload.path();
     if (downloadedPath === null) throw new Error('The standalone unsupported-file download was not saved.');
     expect(await readFile(downloadedPath)).toEqual(binary);
+    // The lower-page PDF marker needs a tall paint viewport; compact sizing and
+    // native scroll ownership are verified independently in the viewport matrix.
+    await reader.setViewportSize(openerViewport);
     await reader.goto(attachmentPageUrl(project.id, task.id, 'reports/brief.pdf'));
     await paintedPdf(reader, reader.getByTitle('PDF 预览：reports/brief.pdf'), info, pdf, new URL(attachmentPreviewUrl(project.id, task.id, 'reports/brief.pdf'), origin).href, 'standalone-attachments');
     await reader.getByRole('combobox', { name: '语言 / Language', exact: true }).selectOption('en');
@@ -537,6 +542,8 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
     await expect(dialog.locator('.task-detail-title')).toBeFocused();
     await page.keyboard.press('Tab');
     await expect(dialog.locator('.task-detail-title-row button[aria-haspopup="menu"]')).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(dialog.locator('.task-detail-popout')).toBeFocused();
     await page.keyboard.press('Tab');
     await expect(dialog.getByRole('button', { name: '关闭任务详情', exact: true })).toBeFocused();
     await innerButton.focus();

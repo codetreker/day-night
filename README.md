@@ -18,16 +18,16 @@ interactions and Markdown description/skill behavior. The progressive
 view starts at fifty tasks/one hundred induced edges, with explicit twenty-neighbor
 expansion and global reset; complete data, statistics and progress remain intact.
 Smooth routes retain direction, card clearance and external dashes. Cards use
-220×96 compact or 220×136 expandable geometry. The centered dialog preserves
-Overview/Attachments split panels, the standalone reader and existing modal,
-attachment and focus lifecycles. Descriptions render CommonMark/GFM through the
+220×96 compact or 220×136 expandable geometry. A shared complete detail surface
+provides Overview/Attachments in the centered dialog and an independent page,
+preserving attachment state and each container's focus lifecycle. Descriptions render CommonMark/GFM through the
 shared renderer. Relative links/images resolve from the task attachment root;
 ordinary relative file links select the existing Attachments preview through one
 controller, while real hrefs retain native browser navigation. The
 [Markdown reading decision](.agents/notes/implemented/architecture/2026-10-22-task-description-markdown.md)
 owns root/document resolution, complete-inventory checks and focus integration.
 The published skill preserves self-contained briefs, primary-plan ownership and
-Goal, dependency, PR and separate approval/implementation/merge permissions.
+Goal, dependency and PR ownership with explicit implementation and merge permissions.
 
 The [external dependency requirements](docs/spec/daynight-external-dependencies.md),
 [architecture](docs/design/daynight-external-dependencies.md) and
@@ -68,10 +68,11 @@ implemented. Task details open on Overview and provide a separate Attachments
 tab with adjacent file and preview panes at every supported width. Each pane
 owns its scroll region; the preview has exactly one vertical scroll owner,
 including native HTML/PDF documents. A link beside Download opens the same complete
-attachment page outside the workspace and dialog, retaining the directory tree,
-upload, deletion and preview. Standalone file selection synchronizes the address
-and browser history; embedded selection stays within its panel. Direct links and
-reloads select the addressed file. Independent runtime acceptance of the original
+Task Detail outside the workspace and dialog, locating the selected attachment
+while retaining Overview, status, relationships and all existing task/file actions.
+The dialog title also opens its current task, tab and attachment in a new tab.
+Standalone task/tab/file navigation synchronizes the address and browser history;
+modal navigation stays local. Direct links and reloads restore that navigation. Independent runtime acceptance of the original
 reading group is complete against real embedded assets and service files,
 including native PDF reading to the final painted page. Installed CLI/service
 and production-browser attachment journeys share real service data on native
@@ -88,7 +89,9 @@ owns detail tabs, retained attachment state and preview scroll ownership; the
 [full-reader decision](.agents/notes/implemented/architecture/2026-10-22-task-attachment-full-reader.md)
 owns standalone routing and nonmodal reading; the
 [shared-page decision](.agents/notes/implemented/architecture/2026-10-24-shared-attachment-page.md)
-owns complete-panel reuse and standalone navigation history; the
+owns complete-panel reuse and the original file-navigation integration; the
+[standalone-detail decision](.agents/notes/implemented/architecture/2026-10-24-standalone-task-detail.md)
+owns shared complete details, task/tab/file history and independent data refresh; the
 [deployment guide](deployment/localhost/README.md#persistence-and-backup) owns data
 retention and backup commands. Filesystem/PostgreSQL non-atomicity remains a known
 issue; consistency remediation is outside that scope.
@@ -517,10 +520,10 @@ binary identity, scenario results and resource cleanup.
 
 The private [web workspace](packages/daynight-web/README.md) implements the project
 list, cursor paging, safe API decoding, cancellation, project statistics, task
-graphs, centered task detail dialogs and single-file attachment management. An open
-project refreshes its complete task snapshot every five seconds while the page is
+graphs, complete task details in centered dialogs or independent pages, and
+single-file attachment management. An open project or standalone detail refreshes its complete task snapshot every five seconds while the page is
 visible, pauses automatic reads while hidden and refreshes immediately on return.
-Refresh retains browsing state and an open detail dialog, including attachment
+Refresh retains browsing state and the mounted details, including attachment
 inputs and previews. Failed reads keep prior data with an error and recover on a
 later successful read; unavailable resources are cleared. The
 [automatic refresh decision](.agents/notes/implemented/feature/2026-10-22-project-task-auto-refresh.md)

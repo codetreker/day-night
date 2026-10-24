@@ -271,9 +271,10 @@ points，截短时标记 titleTruncated；不返回完整标题、description �
 
 本文的任务管理接口范围不包含自动任务执行、PR 关联、review 调度、跨 project
 依赖或 project/task 删除接口。完整图读取由本文定义，浏览器页面及内嵌交付要求由
-[看板需求](daynight-web.md)拥有，包括独立附件阅读页的 GET/HEAD 深链接。页面只交付
-既有 index，完整附件清单与文件读取继续使用原接口；路径校验、未知路径和方法拒绝
-遵守[附件阅读要求](daynight-task-attachments.md#独立页面完整阅读)。现有分页接口继续
+[看板需求](daynight-web.md)拥有，包括基础任务路径和附件路径的独立完整详情 GET/HEAD
+深链接。页面只交付既有 index，完整详情、项目图、附件清单与文件读取继续使用原接口；
+页面行为遵守[独立详情要求](daynight-task-inspection.md#独立完整任务详情)，附件路径校验、
+未知路径和方法拒绝遵守[附件阅读要求](daynight-task-attachments.md#独立页面完整阅读)。现有分页接口继续
 遵循本文的快照边界。后续扩展必须保留现有 task 身份、
 状态约束、事务原子性和错误语义。源码构建需要先安装固定的 Node/pnpm workspace
 依赖并构建真实页面资源；缺少资源必须构建失败，不能交付占位页面。容器验收使用独立

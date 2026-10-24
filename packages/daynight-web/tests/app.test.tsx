@@ -1,3 +1,4 @@
+import { withDetailResources } from './helpers/taskDetail';
 import { stringifyWireJson } from "./helpers/wireJson";
 import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { createLocaleRender } from './helpers/renderWithLocale';
@@ -69,18 +70,18 @@ describe('application navigation', () => {
     const taskId = '00000000-0000-4000-8000-000000000002';
     window.history.replaceState(null, '', `/projects/${projectId}/tasks/${taskId}/attachments/docs/guide.md`);
     const list = { items: [{ path: 'docs/guide.md', contentType: 'text/markdown', sizeBytes: 12, createdAt: '2026-10-20T09:00:00Z', updatedAt: '2026-10-20T09:00:00Z' }], nextCursor: null };
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => url.includes('/attachments?') ? new Response(JSON.stringify(list), { headers: { 'Content-Type': 'application/json' } }) : new Response('# Standalone document')));
+    vi.stubGlobal('fetch', vi.fn(withDetailResources(projectId, taskId, async (url: string) => url.includes('/attachments?') ? new Response(JSON.stringify(list), { headers: { 'Content-Type': 'application/json' } }) : new Response('# Standalone document'))));
     render(<App />);
     await screen.findByRole('heading', { name: 'Standalone document' });
-    expect(document.title).toBe('附件预览 · Daynight');
+    expect(document.title).toBe('任务详情 · Daynight');
     expect(screen.getByRole('main')).toHaveFocus();
     expect(document.querySelector('.shell')).toBeNull();
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(screen.getByRole('combobox', { name: '语言 / Language' })).toBeVisible();
     fireEvent.change(screen.getByRole('combobox', { name: '语言 / Language' }), { target: { value: 'en' } });
-    expect(document.title).toBe('Attachment preview · Daynight');
+    expect(document.title).toBe('Task details · Daynight');
     expect(screen.getByRole('link', { name: 'Download' })).toBeVisible();
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenCalledTimes(4);
   });
 
   it('keeps the standalone panel and draft mounted through selection and browser history', async () => {
@@ -89,7 +90,7 @@ describe('application navigation', () => {
     window.history.replaceState(null, '', address('docs/guide.md'));
     const items = ['docs/guide.md', 'other/next.txt'].map((path) => ({ path, contentType: 'text/plain', sizeBytes: 12, createdAt: '2026-10-20T09:00:00Z', updatedAt: '2026-10-20T09:00:00Z' }));
     const list = { items, nextCursor: null };
-    const requests = vi.fn(async (url: string) => url.includes('/attachments?') ? new Response(JSON.stringify(list), { headers: { 'Content-Type': 'application/json' } }) : new Response(url.endsWith('guide.md') ? 'Initial document' : 'Next document'));
+    const requests = vi.fn(withDetailResources(projectId, taskId, async (url: string) => url.includes('/attachments?') ? new Response(JSON.stringify(list), { headers: { 'Content-Type': 'application/json' } }) : new Response(url.endsWith('guide.md') ? 'Initial document' : 'Next document')));
     vi.stubGlobal('fetch', requests);
     render(<App />);
     await screen.findByText('Initial document');

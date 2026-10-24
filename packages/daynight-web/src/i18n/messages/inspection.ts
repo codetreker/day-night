@@ -32,6 +32,8 @@ export type InspectionMessages = {
     readonly requestFailed: string;
   };
   readonly detail: {
+    readonly openInNewTab: string;
+    readonly returnToProject: string;
     readonly title: string;
     readonly overview: string;
     readonly close: string;

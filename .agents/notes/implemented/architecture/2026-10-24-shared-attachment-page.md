@@ -12,51 +12,47 @@ while selecting files inside a task dialog must preserve that page's navigation.
 
 ## Decision
 
-Both containers compose the complete `TaskAttachmentsPanel`: directory tree,
+Both detail containers use the complete `TaskAttachmentsPanel`: directory tree,
 refresh, upload disclosure, row menus, deletion confirmation, preview and file
-actions. Each page has one `useAttachments` controller. `AttachmentPage` adds only
-its standalone return/language header, viewport sizing and route integration;
-the shared preview header owns path, metadata, Download and Open in new tab.
-The embedded panel retains its existing task-detail container and selection.
+actions. `TaskDetailReading` owns one `useAttachments` controller shared by
+Overview description navigation and the panel. The preview header owns path,
+metadata, Download and Open in new tab.
 
-Standalone tree selection and successful upload selection notify the outer page,
-which navigates only when the selected path differs from the current route.
-Route changes apply selection to the controller without emitting a selection
-event back to the router. Back/Forward therefore restore a file without creating
-new history, and direct loading uses the existing canonical attachment address.
-The embedded composition does not register this observer, so its tree and upload
-selection remain local and leave the URL and history unchanged.
+The original shared-page delivery composed this panel in `AttachmentPage`, with
+only a return/language header, viewport sizing and file-route integration. That
+kept the extension focused on file browsing and reused the established panel.
+The [standalone-detail decision](2026-10-24-standalone-task-detail.md) partially
+supersedes that outer composition: the standalone container now provides the
+complete Task Detail, and navigation records task, tab and selected file.
 
-The standalone page and its authenticated composition retain identity by
-project/task across path changes. That preserves inventory, directory disclosure,
-sidebar scroll and upload drafts while the selected preview changes. Task and
-identity changes still release the old controller and requests. The existing
-path/updated-time preview identity and request cancellation reject stale content.
+Standalone tree and successful upload selection update the outer navigation;
+Back/Forward apply selection without creating history. Dialog selection remains
+local. Same-task tab/file changes retain inventory, directory disclosure,
+sidebar scroll and upload drafts; task and identity changes still release old
+resources. Existing preview identity and request cancellation reject stale data.
 
-Metadata for a newly selected standalone path requires a complete inventory;
-partial pagination and failures cannot establish absence. An incomplete refresh
-retains already-confirmed metadata for the same task/path. Deleting the selected file keeps the
-current route and shows missing after complete inventory confirmation. Deleting
-another file preserves the current preview. Existing upload/delete requests,
-confirmation, error visibility, exact-path targeting and K1 semantics apply in
-both containers. No new API, storage identifier or renderer is required.
+New standalone attachment metadata requires a complete inventory; partial pages
+and failures cannot establish absence. Incomplete refreshes retain already
+confirmed metadata for the same task/path. Selected-file deletion keeps its
+address and shows missing after complete confirmation; unrelated deletion keeps
+the current preview. Existing single-file requests, confirmations, errors and K1
+semantics apply in both containers without a new API, storage key or renderer.
 
-The shared split preserves the left inventory and right preview at narrow widths.
-The inventory scrolls independently; the preview body owns Markdown/text/image
-scrolling and fitted native HTML/PDF documents own their scroll. The standalone
-page has no task-dialog focus trap or iframe keyboard bridge. Its file deletion
-confirmation retains its own native modal focus and keyboard ownership.
+The shared split retains adjacent inventory and preview at narrow widths, with
+independent inventory scrolling and one right-side vertical owner. Standalone
+native frames use ordinary browser keys; the modal frame bridge remains scoped
+to an actual detail dialog and close callback. File confirmation retains its own
+native modal ownership.
 
-This partially supersedes the read-only composition in the
-[full-reader decision](2026-10-22-task-attachment-full-reader.md), while retaining
-its routing, path validation, same-origin content and nonmodal keyboard rules.
+This panel-reuse decision partially supersedes the initial read-only composition
+in the [full-reader decision](2026-10-22-task-attachment-full-reader.md).
 The [split-view decision](2026-10-22-task-attachment-split-view.md) retains panel,
-upload-draft and scroll ownership. The
+upload-draft and scroll ownership; the
 [deletion-confirmation decision](../feature/2026-10-23-attachment-delete-confirmation.md)
-retains single-file mutation and confirmation behavior. The
+retains mutation and confirmation rules. The
 [requirements](../../../../docs/spec/daynight-task-attachments.md#独立页面完整阅读)
 and [design](../../../../docs/design/daynight-task-attachments.md#独立附件阅读页)
-own the complete observable behavior and composition.
+own current attachment behavior within complete task details.
 
 ## Alternatives
 

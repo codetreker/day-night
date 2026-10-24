@@ -27,6 +27,22 @@
   animation: task-detail-appear .2s ease-out;
 }
 
+.task-detail-page-container { display: flex; flex-direction: column; width: 100%; height: 100dvh; min-width: 0; min-height: 0; overflow: hidden; background: #fff; }
+.task-detail-page { position: relative; display: flex; flex-direction: column; width: 100%; height: 100dvh; flex: 1; min-width: 0; min-height: 0; overflow: hidden; background: #fff; outline: none; }
+.task-detail-header-actions { display: flex; align-items: flex-start; flex: none; gap: 8px; min-width: 0; max-width: 100%; }
+.task-detail-popout { height: 32px; padding: 7px 10px; flex: none; font-size: 11px; }
+.task-detail-graph-error { flex: 0 0 auto; max-height: 30%; overflow: auto; padding: 12px 26px; color: #a05252; font-size: 11px; line-height: 1.8; }
+.task-detail-graph-error h2 { font-size: 13px; margin: 0 0 5px; }
+.task-detail-graph-error .button { margin-top: 8px; }
+.task-detail-page .task-detail-header { flex-wrap: wrap; }
+.task-detail-page .task-detail-title-row { flex-basis: 260px; }
+.task-detail-page-topbar { display: flex; flex: none; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; min-width: 0; padding: 10px 24px; border-bottom: 1px solid var(--line); background: #fafbfe; }
+.task-detail-page-back { color: #5c5cbd; font-size: 11px; }
+.task-detail-page-topbar .locale-preference, .task-detail-page-topbar .locale-notice { max-width: 260px; }
+.task-detail-page .task-detail-header-actions { flex-wrap: wrap; margin-left: auto; }
+.task-detail-page .task-detail-header-actions .locale-preference { max-width: 260px; }
+.task-detail-page .task-detail-header-actions .locale-notice { max-width: 260px; }
+
 .task-detail-header {
   display: flex;
   align-items: flex-start;
@@ -169,7 +185,9 @@
 @media (max-width: 600px) {
   .task-detail-backdrop { padding: 12px; }
   .task-detail-dialog { height: min(880px, calc(100dvh - 24px)); max-height: min(880px, calc(100dvh - 24px)); border-radius: 10px; }
-  .task-detail-header { padding: 10px 12px; gap: 9px; }
+  .task-detail-header { padding: 10px 12px; gap: 9px; flex-wrap: wrap; }
+  .task-detail-title-row { flex-basis: calc(100% - 48px); }
+  .task-detail-header-actions { margin-left: auto; }
   .task-detail-close { min-width: 36px; min-height: 36px; }
   .task-detail-heading { padding: 12px 19px 0; }
   .task-detail-status-feedback { padding: 0 19px; }

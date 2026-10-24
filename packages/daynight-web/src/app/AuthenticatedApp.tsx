@@ -13,14 +13,14 @@ import { captureInvitation, clearInvitation } from "../features/auth/invitation"
 import { TaskDetailSessionProvider } from "../features/task-detail/TaskDetailSession";
 import { ProjectPage } from "../features/projects/ProjectPage";
 import { ProjectsPage } from "../features/projects/ProjectsPage";
-import { AttachmentPage } from "../features/task-detail/attachments/AttachmentPage";
+import { TaskDetailPage } from "../features/task-detail/TaskDetailPage";
 import { navigate, parseRoute, type Route } from "./router";
 import { useI18n } from "../i18n/LocaleProvider";
 import { LanguageSelector } from "../i18n/LanguageSelector";
 import "../styles/auth.css";
 
 type AuthRoute = Route | { readonly kind: "account" | "invitations" } | { readonly kind: "members" | "settings"; readonly projectId: string };
-export const parseAuthRoute = (pathname: string): AuthRoute => {
+export const parseAuthRoute = (pathname: string, search = ""): AuthRoute => {
   if (pathname === "/account") return { kind: "account" };
   if (pathname === "/invitations") return { kind: "invitations" };
   const members = /^(\/projects\/[^/]+)\/(members|settings)$/.exec(pathname);
@@ -28,7 +28,7 @@ export const parseAuthRoute = (pathname: string): AuthRoute => {
     const project = parseRoute(members[1]!);
     return project.kind === "project" ? { kind: members[2] as "members" | "settings", projectId: project.projectId } : { kind: "notFound" };
   }
-  return parseRoute(pathname);
+  return parseRoute(pathname, search);
 };
 
 const followLink = (event: MouseEvent<HTMLAnchorElement>) => {
@@ -103,7 +103,8 @@ const assignLogin = (url: string) => window.location.assign(url);
 export const AuthenticatedApp = ({ navigateToLogin = assignLogin }: { readonly navigateToLogin?: (url: string) => void }) => {
   const { locale, messages: { auth: { shell: m }, workspace: { app, projects } } } = useI18n();
   const [invitation, setInvitation] = useState(captureInvitation);
-  const [pathname, setPathname] = useState(window.location.pathname);
+  const [location, setLocation] = useState(() => ({ pathname: window.location.pathname, search: window.location.search }));
+  const { pathname, search } = location;
   const [invitationRevision, setInvitationRevision] = useState(0);
   const invitationLifetime = useRef(new AbortController());
   const [session, setSession] = useState<Session>({ status: "loading" });
@@ -119,12 +120,12 @@ export const AuthenticatedApp = ({ navigateToLogin = assignLogin }: { readonly n
   const active = useRef<AbortController | null>(null);
   const resumeAuthRequests = useRef<(() => void) | null>(null);
   const mounted = useRef(true);
-  const route = parseAuthRoute(pathname);
+  const route = parseAuthRoute(pathname, search);
   useLayoutEffect(() => {
     document.documentElement.lang = locale;
     const page = session.status === "authenticated" ? route.kind : session.status === "anonymous" ? "login" : session.status;
-    document.title = page === "attachment" ? app.documentTitle.attachment : m.documentTitle[page];
-  }, [locale, m.documentTitle, app.documentTitle.attachment, route.kind, session.status]);
+    document.title = (page === "attachment" || page === "task") ? app.documentTitle.task : m.documentTitle[page];
+  }, [locale, m.documentTitle, app.documentTitle.task, route.kind, session.status]);
   const [loginError] = useState(() => {
     const parameters = new URLSearchParams(window.location.search);
     const failed = parameters.get("authError") === "login_failed";
@@ -148,7 +149,7 @@ export const AuthenticatedApp = ({ navigateToLogin = assignLogin }: { readonly n
         invitationLifetime.current = new AbortController();
         setInvitation(incoming); setInvitationRevision((value) => value + 1);
       }
-      setPathname(window.location.pathname);
+      setLocation({ pathname: window.location.pathname, search: window.location.search });
     };
     window.addEventListener("popstate", onNavigate);
     window.addEventListener("hashchange", onNavigate);
@@ -238,7 +239,9 @@ export const AuthenticatedApp = ({ navigateToLogin = assignLogin }: { readonly n
     };
   }, [session.status, pauseIdentity, recheckIdentity]);
   const startLogin = (provider: AuthProvider) => {
-    const returnPath = route.kind === "invitations" ? "/invitations" : pathname;
+    const navigation = new URLSearchParams(search);
+    navigation.delete("authError");
+    const returnPath = route.kind === "invitations" ? "/invitations" : pathname + (navigation.size === 0 ? "" : `?${navigation}`);
     const parameters = new URLSearchParams({ provider, returnPath });
     navigateToLogin(`/api/v1/auth/login?${parameters}`);
   };
@@ -248,8 +251,8 @@ export const AuthenticatedApp = ({ navigateToLogin = assignLogin }: { readonly n
   if (session.status === "anonymous") return <>{cleanupWarning}{route.kind === "invitations" && invitation.storageUnavailable && <div className="notice warning" role="alert">{m.invitationStorageError}</div>}<LoginPage invitation={route.kind === "invitations"} {...(session.notice !== undefined ? { notice: m.notice[session.notice] } : loginError ? { notice: m.notice.loginFailed } : {})} onLogin={startLogin} />{logoutFailed && <button className="button" type="button" onClick={signOut}>{m.retryLogout}</button>}</>;
   const identity = `${session.user.id}:${session.generation}`;
   const revalidationOverlay = blocked ? <RevalidationOverlay failed={revalidation === "error"} onRetry={recheckIdentity} /> : null;
-  if (route.kind === "attachment") return <TaskDetailSessionProvider key={identity}>{revalidationOverlay}{cleanupWarning}<div className="auth-shell" key={identity} aria-hidden={blocked} inert={blocked}>
-    <AttachmentPage key={`${route.projectId}/${route.taskId}`} projectId={route.projectId} taskId={route.taskId} path={route.path} />
+  if (route.kind === "attachment" || route.kind === "task") return <TaskDetailSessionProvider key={identity}>{revalidationOverlay}{cleanupWarning}<div className="auth-shell" key={identity} aria-hidden={blocked} inert={blocked}>
+    <TaskDetailPage key={route.projectId} projectId={route.projectId} taskId={route.taskId} navigation={{ tab: route.tab, path: route.path }} />
   </div></TaskDetailSessionProvider>;
   if (route.kind === "invitations") return <TaskDetailSessionProvider key={identity}>{revalidationOverlay}{cleanupWarning}<div aria-hidden={blocked} inert={blocked}><InvitationPage key={`${identity}:${invitationRevision}`} lifetime={invitationLifetime.current.signal} invitation={invitation} user={session.user} onComplete={completeInvitation} onCancel={cancelInvitation} onSwitchAccount={signOut} onUnavailable={unavailableInvitation} /></div></TaskDetailSessionProvider>;
   return <TaskDetailSessionProvider key={identity}>{revalidationOverlay}<Workspace key={identity} user={session.user} route={route} onSignOut={signOut} blocked={blocked}>

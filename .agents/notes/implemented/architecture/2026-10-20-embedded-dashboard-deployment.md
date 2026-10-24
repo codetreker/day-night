@@ -25,10 +25,12 @@ pnpm 11.28.6 workspace dependencies with the frozen lockfile. Go CI declares the
 same prerequisites explicitly.
 
 `internal/server` keeps one ServeMux and the existing single logging wrapper.
-Exact root, project-page and standalone attachment-reader page shapes return
+Exact root, project-page, base task and attachment-path page shapes return
 index HTML; asset routes serve only actual files. The
 [full-reader decision](2026-10-22-task-attachment-full-reader.md) extends exact
-page registration and the existing raw attachment path guard. Known page shapes
+page registration and the existing raw attachment path guard. The
+[standalone-detail decision](2026-10-24-standalone-task-detail.md) adds the base
+task shape and composes complete details for both task entry shapes. Known page shapes
 keep frontend ID validation; missing resources and unknown page shapes do not
 become index HTML, and unknown APIs retain JSON errors. HTML, graph snapshots and latest task details
 use no-store; hashed resources use immutable caching. Static responses retain
@@ -118,5 +120,8 @@ not clean CI evidence or a claim that CI repeats the fault matrix. Historical
 loopback origins, run IDs and relative source paths are observed evidence, not
 operator configuration. The [MVP design decision](2026-10-20-task-dashboard-mvp-design.md)
 continues to own the read-only baseline, graph semantics and deferred capabilities.
-The [approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md) adds a dedicated
-task-detail write while keeping the same embedded origin and deployment model.
+The [original approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md)
+introduced dedicated task-detail writes while keeping the same embedded origin
+and deployment model. The
+[status assignment decision](2026-10-24-task-status-assignment.md) now owns the
+three-state write contract on that same delivery foundation.

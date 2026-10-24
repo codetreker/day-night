@@ -65,7 +65,7 @@ func TestUIExactRoutesAssetsAndSingleRequestLog(t *testing.T) {
 	}
 	for _, target := range []string{
 		"/unknown-private-page", "/projects", "/projects/id/extra", "/projects/id/members/extra", "/projects/id/settings/extra",
-		"/projects/id/tasks", "/projects/id/tasks/task/unknown/file", "/projects/id/tasks/task/attachment/file",
+		"/projects/id/tasks", "/projects/id/tasks/task/unknown", "/projects/id/tasks/task/unknown/file", "/projects/id/tasks/task/attachment/file",
 		"/api/unknown-private-route", "/api/v1/projects/id/unknown", "/assets/", "/assets/missing-private.js",
 		"/assets/%2e%2e/index.html", "/assets/%2findex.html",
 	} {
@@ -80,27 +80,33 @@ func TestUIExactRoutesAssetsAndSingleRequestLog(t *testing.T) {
 	}
 }
 
-func TestUIStandaloneAttachmentReloadUsesProductionIndexAndSafeRequestLog(t *testing.T) {
+func TestUIStandaloneTaskDetailReloadUsesProductionIndexAndSafeRequestLog(t *testing.T) {
 	var logs bytes.Buffer
 	handler := uiTestHandler(t, &logs)
 	index := projectRequest(handler, http.MethodGet, "/", "")
-	for _, target := range []string{
-		"/projects/00000000-0000-4000-8000-000000000099/tasks/00000000-0000-4000-8000-000000000001/attachments/plan.md",
-		"/projects/00000000-0000-4000-8000-000000000099/tasks/00000000-0000-4000-8000-000000000001/attachments/%E6%96%87%E6%A1%A3%20space/private%20%3F%23%20%252F.md",
-		"/projects/invalid-private-project/tasks/invalid-private-task/attachments/file.txt",
+	for _, target := range []struct {
+		path  string
+		route string
+	}{
+		{"/projects/00000000-0000-4000-8000-000000000099/tasks/00000000-0000-4000-8000-000000000001", "GET /projects/{projectId}/tasks/{taskId}"},
+		{"/projects/00000000-0000-4000-8000-000000000099/tasks/00000000-0000-4000-8000-000000000001?tab=attachments", "GET /projects/{projectId}/tasks/{taskId}"},
+		{"/projects/invalid-private-project/tasks/invalid-private-task?tab=overview", "GET /projects/{projectId}/tasks/{taskId}"},
+		{"/projects/00000000-0000-4000-8000-000000000099/tasks/00000000-0000-4000-8000-000000000001/attachments/plan.md", "GET /projects/{projectId}/tasks/{taskId}/attachments/{path...}"},
+		{"/projects/00000000-0000-4000-8000-000000000099/tasks/00000000-0000-4000-8000-000000000001/attachments/%E6%96%87%E6%A1%A3%20space/private%20%3F%23%20%252F.md?tab=overview", "GET /projects/{projectId}/tasks/{taskId}/attachments/{path...}"},
+		{"/projects/invalid-private-project/tasks/invalid-private-task/attachments/file.txt", "GET /projects/{projectId}/tasks/{taskId}/attachments/{path...}"},
 	} {
 		for range 2 {
 			logs.Reset()
-			response := projectRequest(handler, http.MethodGet, target, "")
+			response := projectRequest(handler, http.MethodGet, target.path, "")
 			if response.Code != http.StatusOK || !bytes.Equal(response.Body.Bytes(), index.Body.Bytes()) || response.Header().Get("Content-Type") != "text/html; charset=utf-8" || response.Header().Get("Cache-Control") != "no-store" {
-				t.Fatalf("standalone deep link did not return actual index: %s %d %+v", target, response.Code, response.Header())
+				t.Fatalf("standalone deep link did not return actual index: %s %d %+v", target.path, response.Code, response.Header())
 			}
 			var entry map[string]any
 			decoder := json.NewDecoder(&logs)
 			if err := decoder.Decode(&entry); err != nil {
 				t.Fatal(err)
 			}
-			if decoder.More() || entry["type"] != "http_request" || entry["route"] != "GET /projects/{projectId}/tasks/{taskId}/attachments/{path...}" || entry["request_id"] != "project-test" || strings.Contains(logs.String(), "private") {
+			if decoder.More() || entry["type"] != "http_request" || entry["route"] != target.route || entry["request_id"] != "project-test" || strings.Contains(logs.String(), "private") {
 				t.Fatalf("standalone route lost safe single request logging: %+v %s", entry, &logs)
 			}
 		}
@@ -120,7 +126,10 @@ func TestUIHeadAndKnownMethodBoundaries(t *testing.T) {
 		"/", "/projects/00000000-0000-4000-8000-000000000099",
 		"/projects/00000000-0000-4000-8000-000000000099/members",
 		"/projects/00000000-0000-4000-8000-000000000099/settings",
+		"/projects/00000000-0000-4000-8000-000000000099/tasks/00000000-0000-4000-8000-000000000001",
+		"/projects/00000000-0000-4000-8000-000000000099/tasks/00000000-0000-4000-8000-000000000001?tab=attachments",
 		"/projects/00000000-0000-4000-8000-000000000099/tasks/00000000-0000-4000-8000-000000000001/attachments/nested/plan.md",
+		"/projects/00000000-0000-4000-8000-000000000099/tasks/00000000-0000-4000-8000-000000000001/attachments/nested/plan.md?tab=overview",
 		asset[1],
 	} {
 		for _, method := range []string{http.MethodPost, http.MethodPatch, http.MethodDelete, http.MethodOptions} {
