@@ -6,7 +6,15 @@ const scenario = { annotation: { type: 'scenario', description: 'task-platform' 
 const taskPath = (project: string, task: string): string => `/api/v1/projects/${project}/tasks/${task}`;
 const detail = (page: Page): Locator => page.locator('.task-detail-dialog');
 const platform = (page: Page): Locator => detail(page).getByRole('combobox', { name: /^(执行平台|Execution platform)$/, exact: true });
-const save = (page: Page): Locator => detail(page).getByRole('button', { name: /^(保存平台|Save platform)$/, exact: true });
+const confirmation = (page: Page): Locator => page.getByRole('alertdialog', { name: /^(修改执行平台？|Change execution platform\?)$/, exact: true });
+const review = async (page: Page, target: string): Promise<void> => {
+  const saved = await platform(page).inputValue();
+  await platform(page).focus(); await platform(page).selectOption(target);
+  await expect(confirmation(page)).toBeVisible(); await expect(platform(page)).toHaveValue(saved);
+};
+const confirm = async (page: Page): Promise<void> => {
+  await confirmation(page).getByRole('button', { name: /^(修改平台|Change platform)$/, exact: true }).click();
+};
 const deferred = () => { let resolve!: () => void; const promise = new Promise<void>((done) => { resolve = done; }); return { promise, resolve }; };
 const open = async (page: Page, id: string): Promise<void> => {
   await page.getByRole('tab', { name: /^(独立任务|Standalone tasks)$/, exact: true }).click();
@@ -19,7 +27,9 @@ const geometry = async (page: Page): Promise<void> => {
     const bounds = row.getBoundingClientRect();
     const left = row.querySelector('.task-detail-badges')!.getBoundingClientRect();
     const right = row.querySelector('.task-automation-control')!.getBoundingClientRect();
-    return Math.abs(bounds.right - right.right) < .5 && Math.abs(left.y - right.y) < .5 && left.right <= right.left && row.scrollWidth <= row.clientWidth;
+    const select = row.querySelector('select')!.getBoundingClientRect();
+    return Math.abs(bounds.right - right.right) < .5 && Math.abs(left.y - right.y) < .5 && left.right <= right.left
+      && select.left >= left.left && select.right <= left.right && row.scrollWidth <= row.clientWidth;
   })).toBe(true);
   expect(await detail(page).evaluate((dialog) => dialog.scrollWidth <= dialog.clientWidth)).toBe(true);
 };
@@ -49,7 +59,7 @@ test('task-platform', scenario, async ({ page, api, allowBrowserWrites }, info) 
     expect(Object.keys(data).sort()).toEqual(['requiredPlatform', 'version']);
     if (mode === 'conflict') {
       const current = await (await api.get(taskPath(own.id, task.id))).json() as Task;
-      task = await updateTask(api, own.id, task.id, { version: current.version, description: '平台保存之前，任务版本已变化。' });
+      task = await updateTask(api, own.id, task.id, { version: current.version, description: '平台确认之前，任务版本已变化。' });
       mode = 'ordinary';
     }
     const response = await route.fetch();
@@ -60,26 +70,48 @@ test('task-platform', scenario, async ({ page, api, allowBrowserWrites }, info) 
   });
   try {
     await page.goto(`/projects/${own.id}`); await open(page, task.id); await geometry(page);
-    await expect(platform(page)).toHaveValue(''); await expect(save(page)).toBeDisabled();
-    await platform(page).selectOption('linux'); expect(writes).toHaveLength(0);
+    await expect(detail(page).locator('.task-detail-status-row select')).toHaveCount(1);
+    await expect(detail(page).locator('.task-detail-badges .task-platform')).toHaveCount(0);
+    await expect(detail(page).getByRole('button', { name: /^(保存平台|Save platform)$/, exact: true })).toHaveCount(0);
+    await platform(page).selectOption(''); expect(writes).toHaveLength(0); await expect(confirmation(page)).toHaveCount(0);
+    await platform(page).focus(); await page.keyboard.press('ArrowDown'); await expect(confirmation(page)).toBeVisible();
+    await expect(platform(page)).toHaveValue(''); expect(writes).toHaveLength(0);
+    await page.keyboard.press('Escape'); await expect(confirmation(page)).toHaveCount(0); await expect(platform(page)).toBeFocused();
+
+    for (const { locale, width } of [{ locale: 'zh-CN', width: 390 }, { locale: 'en', width: 390 }, { locale: 'zh-CN', width: 320 }, { locale: 'en', width: 320 }]) {
+      await detail(page).getByRole('button', { name: /^(关闭任务详情|Close task details)$/, exact: true }).click();
+      await page.getByRole('combobox', { name: '语言 / Language', exact: true }).selectOption(locale);
+      await page.setViewportSize({ width, height: 844 }); await open(page, task.id); await geometry(page); await expect(platform(page)).toBeEnabled();
+      const editable = info.outputPath(`task-platform-editable-${locale}-${width}.png`); await page.screenshot({ path: editable, animations: 'disabled' });
+      await info.attach('scenario-screenshot', { path: editable, contentType: 'image/png' });
+      await review(page, 'windows');
+      await expect(confirmation(page).getByText(locale === 'en' ? 'Current platform: Any platform. New platform: Windows.' : '当前平台：不限平台。目标平台：Windows。', { exact: true })).toBeVisible();
+      const modal = info.outputPath(`task-platform-confirmation-${locale}-${width}.png`); await page.screenshot({ path: modal, animations: 'disabled' });
+      await info.attach('scenario-screenshot', { path: modal, contentType: 'image/png' });
+      await page.keyboard.press('Escape'); await expect(platform(page)).toBeFocused(); expect(writes).toHaveLength(0);
+    }
+    await detail(page).getByRole('button', { name: /^(关闭任务详情|Close task details)$/, exact: true }).click();
+    await page.getByRole('combobox', { name: '语言 / Language', exact: true }).selectOption('zh-CN');
+    await page.setViewportSize({ width: 1600, height: 1100 }); await open(page, task.id);
+
+    await review(page, 'linux'); expect(writes).toHaveLength(0);
     expect((await (await api.get(taskPath(own.id, task.id))).json() as Task).requiredPlatform).toBeNull();
-    await save(page).click(); await expect(detail(page).locator('.task-detail-badges .task-platform')).toHaveText('Linux');
+    await confirm(page); await expect(platform(page)).toHaveValue('linux');
     expect((await (await api.get(taskPath(own.id, task.id))).json() as Task)).toMatchObject({ requiredPlatform: 'linux', allowAgents: false, status: 'proposed', ready: false });
-    await platform(page).selectOption(''); await save(page).click(); await expect(detail(page).locator('.task-detail-badges .task-platform')).toHaveText('不限平台');
+    await review(page, ''); await confirm(page); await expect(platform(page)).toHaveValue('');
 
-    mode = 'conflict'; await platform(page).selectOption('windows'); await save(page).click();
-    await expect(detail(page).getByText('任务已发生变化，请检查当前平台后重新保存修改。')).toBeVisible();
-    await expect(platform(page)).toHaveValue(''); await expect(save(page)).toBeDisabled(); expect(writes).toHaveLength(3);
-    await platform(page).selectOption('windows'); await save(page).click(); await expect(detail(page).locator('.task-detail-badges .task-platform')).toHaveText('Windows');
+    mode = 'conflict'; await review(page, 'windows'); await confirm(page);
+    await expect(detail(page).getByText('任务已发生变化，请检查当前平台后重新确认修改。')).toBeVisible();
+    await expect(platform(page)).toHaveValue(''); await expect(confirmation(page)).toHaveCount(0); expect(writes).toHaveLength(3);
+    await review(page, 'windows'); await confirm(page); await expect(platform(page)).toHaveValue('windows');
 
-    mode = 'unknown'; await platform(page).selectOption('linux'); await save(page).click();
+    mode = 'unknown'; await review(page, 'linux'); await confirm(page);
     const check = detail(page).getByRole('button', { name: '核对实际任务', exact: true }); await expect(check).toBeEnabled();
     await expect(platform(page)).toBeDisabled(); await expect(detail(page).getByRole('switch')).toBeDisabled();
-    await expect(detail(page).getByRole('button', { name: '批准任务', exact: true })).toBeDisabled();
-    await expect(detail(page).locator('.task-detail-badges .task-platform')).toHaveText('Windows');
+    await expect(detail(page).getByRole('button', { name: '批准任务', exact: true })).toBeDisabled(); await expect(platform(page)).toHaveValue('windows');
     rejectReconciliation = false; await check.click(); await expect(platform(page)).toHaveValue('linux'); await expect(platform(page)).toBeEnabled(); expect(writes).toHaveLength(5);
 
-    mode = 'pending'; await platform(page).selectOption('macos'); await save(page).click(); await pendingReached.promise;
+    mode = 'pending'; await review(page, 'macos'); await confirm(page); await pendingReached.promise;
     await expect(platform(page)).toBeDisabled(); await expect(detail(page).getByRole('switch')).toBeDisabled();
     await detail(page).getByRole('button', { name: '关闭任务详情', exact: true }).click();
     await open(page, other.id); await expect(platform(page)).toHaveValue('windows'); releasePending.resolve();
@@ -92,13 +124,13 @@ test('task-platform', scenario, async ({ page, api, allowBrowserWrites }, info) 
     task = await (await api.get(taskPath(own.id, task.id))).json() as Task;
     const claimed = await claimTask(api, own.id, await approveTask(api, own.id, task)); expect(claimed.requiredPlatform).toBe('macos');
     await detail(page).getByRole('button', { name: '关闭任务详情', exact: true }).click(); await page.reload(); await open(page, task.id);
-    await expect(platform(page)).toBeDisabled(); await expect(save(page)).toBeDisabled();
+    await expect(platform(page)).toBeDisabled();
     await expect(detail(page).getByText('任务已被领取，执行结束或解除领取前无法修改执行平台。')).toBeVisible();
     for (const { locale, width } of [{ locale: 'zh-CN', width: 390 }, { locale: 'en', width: 390 }, { locale: 'zh-CN', width: 320 }, { locale: 'en', width: 320 }]) {
       await detail(page).getByRole('button', { name: /^(关闭任务详情|Close task details)$/, exact: true }).click();
       await page.getByRole('combobox', { name: '语言 / Language', exact: true }).selectOption(locale);
       await page.setViewportSize({ width, height: 844 }); await open(page, task.id); await geometry(page);
-      const screenshot = info.outputPath(`task-platform-${locale}-${width}.png`); await page.screenshot({ path: screenshot, animations: 'disabled' });
+      const screenshot = info.outputPath(`task-platform-locked-${locale}-${width}.png`); await page.screenshot({ path: screenshot, animations: 'disabled' });
       await info.attach('scenario-screenshot', { path: screenshot, contentType: 'image/png' });
     }
     await info.attach('platform-write-receipts', { body: JSON.stringify({ writes, final: { id: claimed.id, status: claimed.status, requiredPlatform: claimed.requiredPlatform } }, null, 2), contentType: 'application/json' });

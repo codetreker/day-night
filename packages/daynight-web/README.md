@@ -58,11 +58,16 @@ Standalone rows and graph nodes show each task's permission and optional
 platform without turning root values into chain aggregates. Full task and graph
 decoders require an explicit boolean `allowAgents` and a `requiredPlatform` key
 whose value is null, `windows`, `linux` or `macos`; missing or invalid fields fail.
-The task detail offers Any platform, Windows, Linux and macOS with a separate
-Save platform action. Selecting an option sends no request; saving Any platform
-clears the requirement. In-progress tasks lock the platform control, and left-side
-platform badges may wrap while the automatic-execution control stays right aligned
-with the first status line.
+The task detail combines platform display and editing in one select in the
+left status group, with Any platform, Windows, Linux and macOS. Choosing the
+saved value does nothing; a different selection opens confirmation showing the
+current and target platforms. Only confirmation submits the captured exact
+version. Cancel, close, backdrop dismissal and Escape preserve the saved value
+and restore select focus. The select displays the last confirmed value until
+success; Any platform clears the requirement. Overview has no separate platform
+editor or Save action, and the header control remains available on either tab.
+In-progress tasks lock it. The left group may wrap the compact platform control
+while automatic execution stays right aligned with the first status line.
 `TaskDetailSessionProvider` owns detail, approval, permission and platform
 state within the authenticated branch, keyed by user identity/session generation.
 All three mutations share one task write gate and exact-version freshness
@@ -1062,9 +1067,10 @@ locking, exact versions, conflicts, actual writes with lost responses and read
 recovery, close/reopen ownership, bilingual narrow layouts and task-local
 list/node indicators. Only registered permission PATCHes and exact request
 counts are permitted; unknown writes are not replayed. The `task-platform`
-journey adds explicit set/clear, shared mutation locks, conflicts, unknown-result
-readback, late-response ownership and bilingual 320px/390px platform layouts
-through the real service.
+journey covers status-row selection and confirmation, zero-write cancellation
+with select-focus restoration, explicit set/clear, shared mutation locks,
+conflicts, unknown-result readback, late-response ownership and bilingual
+320px/390px layouts through the real service.
 
 The 61-scenario inventory (33 native, 28 container), current manual/periodic refresh,
 attachment tabs/standalone reader, bilingual/auth boundaries, zero retries, timeouts,
@@ -1102,7 +1108,7 @@ scenario annotations validated in each target's report.
 | W12, TI6–TI7 | `detail-navigation`, `keyboard-focus`, `narrow-layout`, `project-view-tabs`, `refresh-staleness`, `task-attachments`: centered 1440px/320px dialog geometry, independently scrolling content and persistent controls; graph/standalone entry, layered fullscreen Escape, trigger disappearance, inert/scroll release and same-origin frame keys |
 | W13 | `task-approval`, `task-approval-conflicts`, `task-approval-recovery`, `task-unapproval`: same-data packed-CLI/ordinary-graph lifecycle, ready/blocked withdrawal, metadata/attachment preservation, both title-row confirmations and tabs, cancel/Escape/focus, invalidation, stale CLI metadata, CLI/Web same-version competition, pending protection, exact int64 digits, real-commit response loss, real graph failure and task/SPA-project identity/focus/browsing preservation |
 | W14 | `task-agent-permission`: real-service bidirectional confirmation, cancellation, exact versions, in-progress locking, conflict and unknown-result reconciliation, cross-close request ownership, shared writes and bilingual narrow-screen control geometry |
-| W15 | `task-platform`: real-service explicit set/clear without selection auto-save, conflict and unknown-result readback, shared write locks, late response ownership, list/detail propagation, manual-claim lock and bilingual narrow-screen containment |
+| W15 | `task-platform`: real-service status-row selection and confirmation, zero-write dismissal and select-focus restoration, set/clear, conflict and unknown-result readback, shared write locks, late response ownership, list/detail propagation, manual-claim lock and bilingual narrow-screen containment |
 | TT3 | `project-settings`: real-service direct entry/reload, administrator save and independent member read, project isolation, exact settings versions above 2^53, stale conflict and demotion, read-only member recovery, actual commit with lost response and failed-read retry without PATCH replay, bilingual 320px/390px form/control/navigation containment and unclipped text |
 | TT1–TT2, TT4–TT6 | `task-execution-time`: real PostgreSQL crossing with graph deliveries held and an incorrect client wall clock, one-second local progress, stable focus/DOM/geometry/edges/viewport, real saved-threshold changes, installed-CLI completion and frozen polling, unknown legacy starts, sub-minute/multi-day/shared/external cards and standalone rows, bilingual 320px/390px layout; browser GET/HEAD only, with fixture mutations through authenticated API or installed CLI |
 | FA1–FA12 | `task-attachments`: installed CLI and production UI share real task/files on native and container targets; exact bytes, file mutations, detail tabs, shared full attachment panel, unique preview scroll owners, rendered formats, standalone address/history and embedded-local selection. Independent real-service probes add end-of-document wheel/keyboard, native PDF final-page paint, fault/retry and unchanged task/graph proof |

@@ -13,7 +13,7 @@ import { TaskApproval } from './TaskApproval';
 import { matchesAgentPermissionReview, TaskAgentPermissionConfirmation, TaskAgentPermissionFeedback, TaskAgentPermissionSwitch, type AgentPermissionConfirmation } from './TaskAgentPermission';
 import { matchesApprovalReview, TaskApprovalConfirmation, type ApprovalConfirmation } from './TaskApprovalConfirmation';
 import { TaskDetailReading } from './TaskDetailReading';
-import { TaskPlatform, TaskPlatformBadge, TaskPlatformFeedback } from './TaskPlatform';
+import { matchesPlatformReview, TaskPlatformConfirmation, TaskPlatformFeedback, TaskPlatformSelect, type PlatformConfirmation } from './TaskPlatform';
 import { TaskId } from './TaskId';
 import { TaskPullRequests } from './TaskPullRequests';
 import '../../styles/task-detail.css';
@@ -27,6 +27,10 @@ export type TaskDetailDialogProps = {
   readonly onRestoreFocus: () => void;
   readonly onRefreshGraph: () => void;
 };
+
+type DetailConfirmation = { readonly kind: 'approval'; readonly review: ApprovalConfirmation } |
+  { readonly kind: 'permission'; readonly review: AgentPermissionConfirmation } |
+  { readonly kind: 'platform'; readonly review: PlatformConfirmation };
 
 const StatusBadge = ({ status }: { readonly status: TaskStatus }) => {
   const { messages } = useI18n();
@@ -51,18 +55,26 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
   const m = messages.inspection.detail;
   const task = useTaskDetail(projectId, taskId, snapshot.revision, snapshot.index.nodes.get(taskId));
   const { detail, status, error, retry } = task;
-  const [confirmation, setConfirmation] = useState<ApprovalConfirmation | null>(null);
-  const [permissionConfirmation, setPermissionConfirmation] = useState<AgentPermissionConfirmation | null>(null);
+  const [confirmation, setConfirmation] = useState<DetailConfirmation | null>(null);
+  const requestConfirmation = (review: DetailConfirmation): void => setConfirmation((current) => current === null ? review : current);
   const action = approvalAction(detail);
   const canAct = action === 'approve' ? task.canApprove : action === 'unapprove' ? task.canUnapprove : false;
-  const confirmationValid = confirmation !== null && matchesApprovalReview(confirmation, detail) &&
-    confirmation.action === action && canAct;
-  const permissionConfirmationValid = permissionConfirmation !== null && matchesAgentPermissionReview(permissionConfirmation, detail) && task.canSetAgentPermission;
-  const confirmationOpen = confirmation !== null && confirmationValid || permissionConfirmation !== null && permissionConfirmationValid;
+  const confirmationValid = confirmation !== null && (confirmation.kind === 'approval'
+    ? matchesApprovalReview(confirmation.review, detail) && confirmation.review.action === action && canAct
+    : confirmation.kind === 'permission' ? matchesAgentPermissionReview(confirmation.review, detail) && task.canSetAgentPermission
+      : matchesPlatformReview(confirmation.review, detail) && task.canSetRequiredPlatform);
+  const confirmationOpen = confirmation !== null && confirmationValid;
   useLayoutEffect(() => { if (confirmation !== null && !confirmationValid) setConfirmation(null); }, [confirmation, confirmationValid]);
-  useLayoutEffect(() => { if (permissionConfirmation !== null && !permissionConfirmationValid) setPermissionConfirmation(null); }, [permissionConfirmation, permissionConfirmationValid]);
+  const confirm = (): void => {
+    if (confirmation === null || !confirmationValid) return;
+    setConfirmation(null);
+    if (confirmation.kind === 'approval') task.performApproval(confirmation.review.action, confirmation.review.detail.version);
+    else if (confirmation.kind === 'permission') task.setAgentPermission(confirmation.review.allowAgents, confirmation.review.detail.version);
+    else task.setRequiredPlatform(confirmation.review.requiredPlatform, confirmation.review.detail.version);
+  };
   const headingId = useId();
   const automationFeedbackId = useId();
+  const platformFeedbackId = useId();
   const dialogRef = useRef<HTMLElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -139,7 +151,7 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
         <header className="task-detail-header">
           <div className="task-detail-title-row">
             <h2 id={headingId} className="task-detail-title" ref={titleRef} tabIndex={detail === null ? -1 : 0} title={detail?.title}>{detail === null ? status === 'error' ? m.failed : m.loading : detail.title}</h2>
-            {detail !== null && action !== null && <button className={`button task-detail-title-action${action === 'approve' ? ' primary' : ''}`} type="button" disabled={!canAct} onClick={() => setConfirmation({ action, detail })}>{task.mutation.phase === 'pending' && (task.mutation.operation?.action === 'approve' || task.mutation.operation?.action === 'unapprove') ? messages.inspection.approval.submitting : action === 'approve' ? messages.inspection.approval.approve : messages.inspection.approval.unapprove}</button>}
+            {detail !== null && action !== null && <button className={`button task-detail-title-action${action === 'approve' ? ' primary' : ''}`} type="button" disabled={!canAct} onClick={() => requestConfirmation({ kind: 'approval', review: { action, detail } })}>{task.mutation.phase === 'pending' && (task.mutation.operation?.action === 'approve' || task.mutation.operation?.action === 'unapprove') ? messages.inspection.approval.submitting : action === 'approve' ? messages.inspection.approval.approve : messages.inspection.approval.unapprove}</button>}
           </div>
           <button className="button task-detail-close" type="button" ref={closeRef} aria-label={m.close} onClick={onClose}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
@@ -165,7 +177,7 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
           )}
           {detail === null && task.mutation.phase !== 'idle' && <div className="task-detail-approval">
             <TaskApproval detail={null} approval={task.mutation} onReconcile={task.reconcile} />
-            <TaskPlatformFeedback mutation={task.mutation} onReconcile={task.reconcile} />
+            <TaskPlatformFeedback detail={null} mutation={task.mutation} onReconcile={task.reconcile} />
           </div>}
           {detail !== null && (
             <>
@@ -174,12 +186,14 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
                   <div className="task-detail-badges">
                     <StatusBadge status={detail.status} />
                     {detail.status === 'todo' && <span className={detail.ready ? 'task-detail-ready' : 'task-detail-blocked'}>{detail.ready ? m.ready : m.blocked}</span>}
-                    <TaskPlatformBadge requiredPlatform={detail.requiredPlatform} />
+                    <TaskPlatformSelect detail={detail} disabled={!task.canSetRequiredPlatform} describedBy={platformFeedbackId}
+                      onReview={(requiredPlatform) => requestConfirmation({ kind: 'platform', review: { detail, requiredPlatform } })} />
                   </div>
                   <TaskAgentPermissionSwitch detail={detail} disabled={!task.canSetAgentPermission} describedBy={automationFeedbackId}
-                    onClick={() => setPermissionConfirmation({ detail, allowAgents: !detail.allowAgents })} />
+                    onClick={() => requestConfirmation({ kind: 'permission', review: { detail, allowAgents: !detail.allowAgents } })} />
                 </div>
                 <TaskAgentPermissionFeedback key={`${projectId}/${taskId}`} id={automationFeedbackId} detail={detail} mutation={task.mutation} onReconcile={task.reconcile} />
+                <TaskPlatformFeedback id={platformFeedbackId} detail={detail} mutation={task.mutation} onReconcile={task.reconcile} />
                 {retainedDetail && <p className="task-detail-retained" role="status">{m.retainedDetail}</p>}
                 {stale && (
                   <div className="task-detail-stale" role="status">
@@ -196,7 +210,6 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
                       <h4>{m.description}</h4>
                       {description}
                     </section>
-                    <TaskPlatform detail={detail} disabled={!task.canSetRequiredPlatform} mutation={task.mutation} onSave={task.setRequiredPlatform} onReconcile={task.reconcile} />
                     <TaskPullRequests pullRequests={detail.properties.pullRequests} />
                   </div>
                   <aside className="task-detail-aside" aria-label={m.relationsMetadata}>
@@ -226,18 +239,11 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
         </div>
         <footer className="task-detail-footer">{m.footer}</footer>
       </section>
-      {confirmation !== null && confirmationValid && <TaskApprovalConfirmation confirmation={confirmation} owner={dialogRef} fallbackFocus={titleRef}
-        onCancel={() => setConfirmation(null)} onConfirm={() => {
-          if (!confirmationValid) return;
-          setConfirmation(null);
-          task.performApproval(confirmation.action, confirmation.detail.version);
-        }} />}
-      {permissionConfirmation !== null && permissionConfirmationValid && <TaskAgentPermissionConfirmation confirmation={permissionConfirmation} owner={dialogRef} fallbackFocus={titleRef}
-        onCancel={() => setPermissionConfirmation(null)} onConfirm={() => {
-          if (!permissionConfirmationValid) return;
-          setPermissionConfirmation(null);
-          task.setAgentPermission(permissionConfirmation.allowAgents, permissionConfirmation.detail.version);
-        }} />}
+      {confirmation !== null && confirmationValid && (confirmation.kind === 'approval'
+        ? <TaskApprovalConfirmation confirmation={confirmation.review} owner={dialogRef} fallbackFocus={titleRef} onCancel={() => setConfirmation(null)} onConfirm={confirm} />
+        : confirmation.kind === 'permission'
+          ? <TaskAgentPermissionConfirmation confirmation={confirmation.review} owner={dialogRef} fallbackFocus={titleRef} onCancel={() => setConfirmation(null)} onConfirm={confirm} />
+          : <TaskPlatformConfirmation confirmation={confirmation.review} owner={dialogRef} fallbackFocus={titleRef} onCancel={() => setConfirmation(null)} onConfirm={confirm} />)}
     </div>,
     document.body,
   );

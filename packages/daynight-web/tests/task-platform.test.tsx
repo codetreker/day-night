@@ -1,3 +1,4 @@
+import userEvent from '@testing-library/user-event';
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, getTask, setTaskAgentPermission, setTaskRequiredPlatform } from '../src/api/client';
@@ -38,92 +39,136 @@ const open = async (value = detail, locale: 'en' | 'zh-CN' = 'en') => {
   return { ...view, props };
 };
 const select = () => screen.getByRole('combobox', { name: 'Execution platform' });
-const save = () => screen.getByRole('button', { name: 'Save platform' });
+const confirmation = () => screen.getByRole('alertdialog', { name: 'Change execution platform?' });
+const review = (value: string) => { select().focus(); fireEvent.change(select(), { target: { value } }); };
+const confirm = () => fireEvent.click(within(confirmation()).getByRole('button', { name: 'Change platform' }));
 
-describe('explicit platform editor', () => {
-  it('saves only after an explicit action and preserves the confirmed badge while pending', async () => {
+describe('confirmed status-row platform selection', () => {
+  it('shows one header select and submits only confirmation while retaining the confirmed value', async () => {
     await open(); const pending = deferred<TaskDetail>(); writes.mockReturnValueOnce(pending.promise);
-    expect(select()).toHaveValue(''); expect(save()).toBeDisabled();
-    fireEvent.change(select(), { target: { value: 'linux' } });
-    expect(writes).not.toHaveBeenCalled(); expect(save()).toBeEnabled();
-    expect(document.querySelector('.task-detail-badges .task-platform')).toHaveTextContent('Any platform');
-    fireEvent.click(save());
+    expect(select().closest('.task-detail-status-row')).not.toBeNull();
+    expect(screen.getAllByRole('combobox')).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'Save platform' })).toBeNull();
+    expect(document.querySelector('.task-detail-badges .task-platform')).toBeNull();
+    expect(select()).toHaveValue('');
+    review('linux');
+    expect(writes).not.toHaveBeenCalled(); expect(select()).toHaveValue('');
+    expect(within(confirmation()).getByText('Current platform: Any platform. New platform: Linux.')).toBeVisible();
+    expect(within(confirmation()).getByText(detail.title)).toBeVisible();
+    confirm();
     expect(writes).toHaveBeenCalledExactlyOnceWith(projectId, taskId, 'linux', detail.version, expect.any(AbortSignal));
-    expect(select()).toBeDisabled(); expect(save()).toBeDisabled(); expect(screen.getByRole('switch')).toBeDisabled();
+    expect(select()).toHaveValue(''); expect(select()).toBeDisabled(); expect(screen.getByRole('switch')).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Approve task' })).toBeDisabled();
+    expect(screen.queryByRole('alertdialog')).toBeNull();
     await act(async () => pending.resolve({ ...detail, requiredPlatform: 'linux', version: detail.version + 1n }));
     await screen.findByText('Execution platform updated.');
-    expect(select()).toHaveValue('linux'); expect(save()).toBeDisabled(); expect(screen.getByRole('switch')).toBeEnabled();
-    expect(document.querySelector('.task-detail-badges .task-platform')).toHaveTextContent('Linux');
+    expect(select()).toHaveValue('linux'); expect(select()).toBeEnabled(); expect(screen.getByRole('switch')).toBeEnabled();
     expect(screen.queryByRole('region', { name: 'Task approval' })).toBeNull();
   });
-  it('clears with Any platform and sends null', async () => {
-    await open({ ...detail, requiredPlatform: 'windows' });
-    writes.mockResolvedValueOnce({ ...detail, version: detail.version + 1n });
-    fireEvent.change(select(), { target: { value: '' } }); fireEvent.click(save());
-    expect(writes).toHaveBeenCalledExactlyOnceWith(projectId, taskId, null, detail.version, expect.any(AbortSignal));
-    await screen.findByText('Execution platform updated.'); expect(select()).toHaveValue('');
+  it.each([
+    { from: null, to: 'windows' }, { from: 'windows', to: 'linux' }, { from: 'linux', to: 'macos' }, { from: 'macos', to: null },
+  ] as const)('confirms $from to $to with the exact reviewed version', async ({ from, to }) => {
+    await open({ ...detail, requiredPlatform: from });
+    writes.mockResolvedValueOnce({ ...detail, requiredPlatform: to, version: detail.version + 1n });
+    review(to === null ? '' : to); expect(select()).toHaveValue(from === null ? '' : from); expect(writes).not.toHaveBeenCalled();
+    confirm(); expect(writes).toHaveBeenCalledExactlyOnceWith(projectId, taskId, to, detail.version, expect.any(AbortSignal));
+    await screen.findByText('Execution platform updated.'); expect(select()).toHaveValue(to === null ? '' : to);
   });
-  it('resets a draft when a refreshed version changes the task, then saves only the newly reviewed choice', async () => {
-    const { rerender, props } = await open(); fireEvent.change(select(), { target: { value: 'linux' } });
+  it.each([null, 'windows', 'linux', 'macos'] as const)('does not review or write the current value %s', async (value) => {
+    await open({ ...detail, requiredPlatform: value }); review(value === null ? '' : value);
+    expect(select()).toHaveValue(value === null ? '' : value); expect(screen.queryByRole('alertdialog')).toBeNull(); expect(writes).not.toHaveBeenCalled();
+  });
+  it.each(['Cancel', 'Close confirmation', 'Escape', 'backdrop'])('cancels with %s without a write and restores select focus', async (action) => {
+    const { props } = await open({ ...detail, requiredPlatform: 'windows' }); review('linux');
+    expect(document.querySelector('.task-detail-dialog')).toHaveAttribute('inert');
+    expect(within(confirmation()).getByRole('button', { name: 'Cancel' })).toHaveFocus();
+    if (action === 'Escape') fireEvent.keyDown(document, { key: 'Escape' });
+    else if (action === 'backdrop') fireEvent.click(document.querySelector('.task-approval-confirmation-backdrop')!);
+    else fireEvent.click(within(confirmation()).getByRole('button', { name: action }));
+    expect(screen.queryByRole('alertdialog')).toBeNull(); expect(select()).toHaveValue('windows'); expect(select()).toHaveFocus();
+    expect(document.querySelector('.task-detail-dialog')).not.toHaveAttribute('inert'); expect(props.onClose).not.toHaveBeenCalled();
+    expect(writes).not.toHaveBeenCalled();
+  });
+  it('traps focus in the platform confirmation and preserves the parent through Escape', async () => {
+    await open(); review('windows'); const dialog = confirmation(); const user = userEvent.setup();
+    await user.tab({ shift: true }); expect(dialog.querySelector('.dialog-body')).toHaveFocus();
+    await user.tab({ shift: true }); expect(within(dialog).getByRole('button', { name: 'Close confirmation' })).toHaveFocus();
+    await user.tab({ shift: true }); expect(within(dialog).getByRole('button', { name: 'Change platform' })).toHaveFocus();
+    await user.tab(); expect(within(dialog).getByRole('button', { name: 'Close confirmation' })).toHaveFocus();
+    await user.keyboard('{Escape}'); expect(select()).toHaveFocus(); expect(screen.getByRole('dialog', { name: detail.title })).toBeVisible();
+    expect(writes).not.toHaveBeenCalled();
+  });
+  it('invalidates an open review on a refreshed version and requires a newly reviewed choice', async () => {
+    const { rerender, props } = await open(); review('linux');
     const changed = { ...detail, requiredPlatform: 'windows' as const, version: detail.version + 1n, updatedAt: '2026-10-24T00:01:00Z' };
     vi.mocked(getTask).mockResolvedValueOnce(changed); rerender(<TaskDetailDialog {...props} snapshot={snapshot(changed, 2)} />);
-    await waitFor(() => expect(select()).toHaveValue('windows')); expect(save()).toBeDisabled(); expect(writes).not.toHaveBeenCalled();
-    fireEvent.change(select(), { target: { value: 'macos' } }); writes.mockResolvedValueOnce({ ...changed, requiredPlatform: 'macos', version: changed.version + 1n });
-    fireEvent.click(save()); expect(writes).toHaveBeenCalledExactlyOnceWith(projectId, taskId, 'macos', changed.version, expect.any(AbortSignal));
+    await waitFor(() => expect(select()).toHaveValue('windows')); expect(screen.queryByRole('alertdialog')).toBeNull(); expect(writes).not.toHaveBeenCalled();
+    review('macos'); writes.mockResolvedValueOnce({ ...changed, requiredPlatform: 'macos', version: changed.version + 1n });
+    expect(within(confirmation()).getByText('Current platform: Windows. New platform: macOS.')).toBeVisible();
+    confirm(); expect(writes).toHaveBeenCalledExactlyOnceWith(projectId, taskId, 'macos', changed.version, expect.any(AbortSignal));
     await screen.findByText('Execution platform updated.');
   });
-  it('retains attachment state during a save and locks platform writes while automatic execution is pending', async () => {
+  it('keeps platform, permission and approval confirmation mutually exclusive', async () => {
+    await open(); const automation = screen.getByRole('switch'); const approval = screen.getByRole('button', { name: 'Approve task' });
+    review('linux'); fireEvent.click(automation); fireEvent.click(approval);
+    expect(screen.getAllByRole('alertdialog')).toHaveLength(1); expect(confirmation()).toBeVisible(); expect(writes).not.toHaveBeenCalled();
+    fireEvent.click(within(confirmation()).getByRole('button', { name: 'Cancel' }));
+    fireEvent.click(automation); review('windows');
+    const permission = screen.getByRole('alertdialog', { name: 'Enable automatic execution' });
+    expect(screen.getAllByRole('alertdialog')).toHaveLength(1); fireEvent.click(within(permission).getByRole('button', { name: 'Cancel' }));
+    fireEvent.click(approval); review('macos'); expect(screen.getAllByRole('alertdialog')).toHaveLength(1);
+    expect(screen.getByRole('alertdialog', { name: 'Approve task' })).toBeVisible(); expect(writes).not.toHaveBeenCalled();
+  });
+  it('keeps the header control usable on Attachments and retains its state during platform and permission writes', async () => {
     await open(); fireEvent.click(screen.getByRole('tab', { name: 'Attachments' }));
     const draft = screen.getByRole('textbox', { name: 'Attachment draft' }); fireEvent.change(draft, { target: { value: 'Preserve attachment draft' } });
-    fireEvent.click(screen.getByRole('tab', { name: 'Overview' }));
+    review('linux'); const platformPending = deferred<TaskDetail>(); writes.mockReturnValueOnce(platformPending.promise); confirm();
+    expect(draft).toHaveValue('Preserve attachment draft'); expect(select()).toBeDisabled();
+    await act(async () => platformPending.resolve({ ...detail, requiredPlatform: 'linux', version: detail.version + 1n }));
+    await screen.findByText('Execution platform updated.'); expect(select()).toHaveValue('linux');
     const pending = deferred<TaskDetail>(); vi.mocked(setTaskAgentPermission).mockReturnValueOnce(pending.promise);
     fireEvent.click(screen.getByRole('switch')); fireEvent.click(screen.getByRole('button', { name: 'Enable automatic execution' }));
-    expect(select()).toBeDisabled(); expect(save()).toBeDisabled(); expect(writes).not.toHaveBeenCalled();
-    await act(async () => pending.resolve({ ...detail, allowAgents: true, version: detail.version + 1n }));
-    await waitFor(() => expect(select()).toBeEnabled());
-    fireEvent.click(screen.getByRole('tab', { name: 'Attachments' })); expect(draft).toHaveValue('Preserve attachment draft');
+    expect(select()).toBeDisabled(); expect(writes).toHaveBeenCalledTimes(1);
+    await act(async () => pending.resolve({ ...detail, requiredPlatform: 'linux', allowAgents: true, version: detail.version + 2n }));
+    await waitFor(() => expect(select()).toBeEnabled()); expect(draft).toHaveValue('Preserve attachment draft');
+    expect(screen.getByRole('tab', { name: 'Attachments' })).toHaveAttribute('aria-selected', 'true');
   });
-  it('keeps the old platform and draft after a permission refusal, requiring a fresh explicit save', async () => {
+  it('keeps the saved platform after a refusal and requires a fresh confirmation', async () => {
     await open(); writes.mockRejectedValueOnce(new ApiError('server', 403, 'forbidden', 'platform-refusal'));
-    fireEvent.change(select(), { target: { value: 'linux' } }); fireEvent.click(save());
-    await screen.findByText('platform-refusal'); expect(select()).toHaveValue('linux');
-    expect(document.querySelector('.task-detail-badges .task-platform')).toHaveTextContent('Any platform');
-    expect(writes).toHaveBeenCalledTimes(1); expect(save()).toBeEnabled();
+    review('linux'); confirm(); await screen.findByText('platform-refusal'); expect(select()).toHaveValue('');
+    expect(writes).toHaveBeenCalledTimes(1); expect(select()).toBeEnabled();
+    review('windows'); expect(confirmation()).toBeVisible(); expect(writes).toHaveBeenCalledTimes(1);
   });
-  it('reconciles a conflict and resets the draft to the current platform without retry', async () => {
+  it('reconciles a conflict to the current platform without retry', async () => {
     const current = { ...detail, requiredPlatform: 'macos' as const, version: detail.version + 1n };
     await open(); vi.mocked(getTask).mockResolvedValueOnce(current); writes.mockRejectedValueOnce(new ApiError('server', 409, 'version_conflict'));
-    fireEvent.change(select(), { target: { value: 'linux' } }); fireEvent.click(save());
-    await screen.findByText('The task changed. Review its current platform before saving another change.');
-    expect(select()).toHaveValue('macos'); expect(save()).toBeDisabled(); expect(writes).toHaveBeenCalledTimes(1);
+    review('linux'); confirm(); await screen.findByText('The task changed. Review its current platform before confirming another change.');
+    expect(select()).toHaveValue('macos'); expect(screen.queryByRole('alertdialog')).toBeNull(); expect(writes).toHaveBeenCalledTimes(1);
   });
   it('blocks every write after an unknown result until the actual task is read', async () => {
     await open(); vi.mocked(getTask).mockRejectedValueOnce(new ApiError('network')); writes.mockRejectedValueOnce(new ApiError('network'));
-    fireEvent.change(select(), { target: { value: 'linux' } }); fireEvent.click(save());
-    const check = await screen.findByRole('button', { name: 'Check actual task' });
-    await waitFor(() => expect(check).toBeEnabled());
-    expect(select()).toBeDisabled(); expect(screen.getByRole('switch')).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Approve task' })).toBeDisabled();
+    review('linux'); confirm(); const check = await screen.findByRole('button', { name: 'Check actual task' });
+    await waitFor(() => expect(check).toBeEnabled()); expect(select()).toHaveValue('');
+    expect(select()).toBeDisabled(); expect(screen.getByRole('switch')).toBeDisabled(); expect(screen.getByRole('button', { name: 'Approve task' })).toBeDisabled();
     vi.mocked(getTask).mockResolvedValueOnce({ ...detail, requiredPlatform: 'linux', version: detail.version + 1n }); fireEvent.click(check);
     await screen.findByText('The actual task has been read. The displayed platform is confirmed.');
     expect(select()).toHaveValue('linux'); expect(select()).toBeEnabled(); expect(writes).toHaveBeenCalledTimes(1);
   });
-  it('locks an executing task and renders all Chinese platform labels', async () => {
+  it('locks an executing task and renders all Chinese platform labels in the header', async () => {
     await open({ ...detail, status: 'in_progress', requiredPlatform: 'windows' }, 'zh-CN');
     const platform = screen.getByRole('combobox', { name: '执行平台' });
-    expect(platform).toBeDisabled(); expect(platform).toHaveValue('windows'); expect(screen.getByRole('button', { name: '保存平台' })).toBeDisabled();
+    expect(platform).toBeDisabled(); expect(platform).toHaveValue('windows'); expect(screen.queryByRole('button', { name: '保存平台' })).toBeNull();
     expect(within(platform).getAllByRole('option').map((option) => option.textContent)).toEqual(['不限平台', 'Windows', 'Linux', 'macOS']);
     expect(screen.getByText('任务已被领取，执行结束或解除领取前无法修改执行平台。')).toBeVisible();
   });
-  it('localizes badges and ignores platform feedback for other operation kinds', () => {
+  it('localizes readonly badges and leaves feedback empty for another operation kind', () => {
     const idle: TaskMutationState = { operation: null, phase: 'idle', error: null, reconciling: false, reconciliationError: null };
-    const view = renderWithLocale(<><TaskPlatformBadge requiredPlatform={null} compact /><TaskPlatformFeedback mutation={idle} onReconcile={vi.fn()} /></>, { locale: 'zh-CN' });
-    expect(screen.getByText('不限平台')).toHaveClass('task-platform-compact'); expect(document.querySelector('.task-platform-feedback')).toBeNull(); view.unmount();
+    const view = renderWithLocale(<><TaskPlatformBadge requiredPlatform={null} compact /><TaskPlatformFeedback detail={null} mutation={idle} onReconcile={vi.fn()} /></>, { locale: 'zh-CN' });
+    expect(screen.getByText('不限平台')).toHaveClass('task-platform-compact'); expect(document.querySelector('.task-platform-feedback')).toBeEmptyDOMElement(); view.unmount();
   });
   it.each([new ApiError('protocol'), new ApiError('server', 409, 'invalid_transition'), new ApiError('server', 404, 'not_found'), new Error('unexpected')])('renders actionable platform failures %#', (error) => {
     const mutation: TaskMutationState = { operation: { action: 'requiredPlatform', requiredPlatform: 'linux', version: detail.version }, phase: 'refused', error, reconciling: false, reconciliationError: null };
-    renderWithLocale(<TaskPlatformFeedback mutation={mutation} onReconcile={vi.fn()} />, { locale: 'en' });
+    renderWithLocale(<TaskPlatformFeedback detail={null} mutation={mutation} onReconcile={vi.fn()} />, { locale: 'en' });
     expect(screen.getByRole('alert')).toBeVisible();
   });
 });

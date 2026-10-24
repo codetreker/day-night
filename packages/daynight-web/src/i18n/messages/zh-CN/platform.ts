@@ -2,12 +2,15 @@ import type { PlatformMessages } from "../platform";
 
 export const platform: PlatformMessages = {
   title: "执行平台", any: "不限平台", names: { windows: "Windows", linux: "Linux", macos: "macOS" },
-  save: "保存平台",
-  help: "Worker 必须在指定平台运行；不限平台会清除要求。选择选项后保存。",
+  confirmTitle: "修改执行平台？", confirmQuestion: "确认修改此任务的执行平台？",
+  transition: ({ from, to }) => `当前平台：${from}。目标平台：${to}。`,
+  explanation: "只有确认后才会修改任务要求。Worker 必须在指定平台运行；不限平台会清除要求。",
+  confirm: "修改平台", cancel: "取消", closeConfirmation: "关闭确认框",
+  help: "Worker 必须在指定平台运行；不限平台会清除要求。选择选项后审阅并确认修改。",
   locked: "任务已被领取，执行结束或解除领取前无法修改执行平台。",
   pending: "正在保存执行平台。可以关闭详情，结果会保留。",
   confirmed: "执行平台已更新。",
-  conflict: "任务已发生变化，请检查当前平台后重新保存修改。",
+  conflict: "任务已发生变化，请检查当前平台后重新确认修改。",
   unknown: "平台修改结果尚未确认，再次操作前请先核对实际任务。",
   reconciled: "已读取实际任务，当前显示的平台已确认。",
   checking: "正在核对实际任务…", checkState: "核对实际任务",

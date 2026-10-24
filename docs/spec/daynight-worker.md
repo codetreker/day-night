@@ -32,8 +32,8 @@ Worker 作为前台常驻进程，通过 Daynight HTTP REST API 领取配置仓�
 ### W-03：可选执行平台
 
 - Task 的必填 `requiredPlatform` 值为 `null`、`windows`、`linux` 或 `macos`；null 表示任意支持平台，新旧 task 默认均不限制。创建可省略或显式提供 null/枚举；更新省略保持，显式 null 清除，非法类型和枚举拒绝。
-- 服务端、CLI 和 Web 一致支持设置、清除、展示及兼容筛选。CLI create/update 使用 `--required-platform windows|linux|macos`，update 使用互斥的 `--clear-required-platform` 清除，list/ready 使用 `--compatible-platform windows|linux|macos`；查询平台不充当运行环境配置。Web 平台选择不提交，显式保存 Any platform、Windows、Linux、macOS。
-- in_progress 与自动执行许可一并锁定实际变化，完成或合法人工解除后才可修改；精确版本同值更新保留版本与时间，旧版本仍冲突。普通人工 claim 不受平台要求限制。平台保存、许可和审批共享每任务写入控制，未知结果先核对，迟到响应保持原 task 归属。
+- 服务端、CLI 和 Web 一致支持设置、清除、展示及兼容筛选。CLI create/update 使用 `--required-platform windows|linux|macos`，update 使用互斥的 `--clear-required-platform` 清除，list/ready 使用 `--compatible-platform windows|linux|macos`；查询平台不充当运行环境配置。Web 详情状态行使用单一平台下拉框展示已确认值，提供不限平台/Any platform、Windows、Linux、macOS。选择不同值后弹窗展示当前与目标平台，确认才提交；选择当前值或取消、Escape、关闭、遮罩关闭均不提交，取消后恢复下拉框焦点。概览没有独立平台编辑区或保存按钮，成功前保持已确认值。
+- in_progress 与自动执行许可一并锁定实际变化，完成或合法人工解除后才可修改；精确版本同值更新保留版本与时间，旧版本仍冲突。普通人工 claim 不受平台要求限制。平台确认、许可和审批共享每任务写入控制，未知结果先核对，迟到响应保持原 task 归属。
 - 平台条件不改变 task 的 ready 语义，不匹配的候选不占名额、不创建资源、不消耗恢复次数。
 - `compatiblePlatform` 包含 null 和与查询平台相同的任务要求。自动执行许可、ready 与平台条件须在有界候选排序和分页前按 AND 组合，并绑定游标范围，不能让较早的未开启许可或不兼容任务遮住后续合格任务。
 - 平台字段、领域匹配与候选查询的验收独立于后续运行时。随包自动工作流已经按实际执行平台筛选和领取前重验；worker daemon 的原生平台识别、自动 worker claim 事务重验、资源启动及历史执行平台由对应 worker 能力提供运行证据。

@@ -1173,11 +1173,18 @@ write gate, retaining pending/unknown results across detail close/reopen.
 Actual permission changes are locked during `in_progress`; permission changes
 do not approve, withdraw, stop or transfer work. Independent task rows and graph
 nodes show each task's permission and required platform without treating root
-values as chain-wide. Task details provide a separate Any platform / Windows /
-Linux / macOS select and explicit Save platform action. Selection alone sends no
-request; saving Any platform clears the requirement. Platform controls are
-locked during `in_progress`, use the reviewed exact task version and retain
-unknown-write reconciliation and request ownership across dialog changes.
+values as chain-wide. Task details use one platform select in the left status
+group to display the confirmed requirement and offer Any platform, Windows,
+Linux and macOS. Choosing a different value opens confirmation showing the
+current and target platforms; only confirmation submits the reviewed exact task
+version. Choosing the saved value, Cancel, close, backdrop dismissal and Escape
+send no request. Cancellation returns focus to the select. The confirmed value
+remains displayed until success, and Any platform clears the requirement.
+Overview has no separate platform editor or Save action. The control stays
+available on either detail tab, is locked during `in_progress`, and retains
+unknown-write reconciliation and request ownership across dialog changes. The
+[confirmed platform control decision](.agents/notes/implemented/simplification/2026-10-24-task-platform-confirmation-control.md)
+records its allocation and focus behavior.
 The [lifecycle decision](.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)
 and [withdrawal decision](.agents/notes/implemented/feature/2026-10-23-task-unapprove.md)
 record the state and approval boundaries.

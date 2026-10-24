@@ -45,16 +45,16 @@ Create/update expose `--required-platform`; update's mutually exclusive
 `--clear-required-platform` sends null. Human output shows any for null and the
 enum for a restriction, while JSON retains the nullable field.
 
-The Web displays task-specific platform badges and a separate platform select
-with an explicit Save platform action. Selection alone sends no request, and
-saving Any platform clears the requirement. Platform saves share the existing
-task session's write gate, exact-version freshness and unknown-result
-reconciliation with permission and approval. Closing details or navigating does
-not release a submitted operation or let its late result reach another task.
-In-progress controls are locked. The left status group can wrap platform badges
-while the automatic-execution control remains right aligned with the first line.
-The [Web architecture](../../../../docs/design/daynight-web.md#平台要求与显式保存)
-owns component and request behavior.
+The original Web allocation used a platform badge in the detail status row and
+a separate Overview select with an explicit Save platform action. That separated
+choosing from submitting while the platform field, versioned updates and shared
+write ownership were introduced. The [confirmed platform control decision](../simplification/2026-10-24-task-platform-confirmation-control.md)
+supersedes that UI allocation: one status-row select now displays the confirmed
+requirement and opens confirmation for a different value. List and graph badges
+remain read-only. This note continues to own the nullable field, domain and query
+decisions; their authorization, no-op, lifecycle and reconciliation guarantees
+are unchanged. The [Web architecture](../../../../docs/design/daynight-web.md#平台要求与确认下拉框)
+owns the current component and request behavior.
 
 ## Alternatives
 
