@@ -43,10 +43,10 @@ confirmed. New API reads and writes wait for identity confirmation, resuming for
 the same account and cancelling on an account change. Failed checks retain the
 blocking recovery overlay and request wait through recovery.
 TaskDetailSessionProvider lives in that identity domain
-and retains each project/task approval operation across dialog close/reopen;
+and retains each project/task status/permission operation across dialog close/reopen;
 identity changes discard its pending and unknown-outcome state. The existing
-[approval lifecycle](2026-10-22-task-approval-lifecycle.md) uses the same member
-resource permission, not an admin-only approval role. Auth-specific JSON parsing
+[status assignment decision](../architecture/2026-10-24-task-status-assignment.md) uses the same member
+resource permission, not an admin-only status role. Auth-specific JSON parsing
 and mutation encoding preserve member observation versions as `bigint` throughout
 the positive int64 range.
 

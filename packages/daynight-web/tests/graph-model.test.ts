@@ -21,7 +21,7 @@ const graph = (seeds: readonly Seed[]): TaskGraph => {
     project: { settings: { version: 1n, executionWarningMinutes: 60 }, id: id("P"), name: "Private project", repoUrl: "git@github.com:owner/repo.git", createdAt: time, updatedAt: time },
     tasks,
     summary: {
-      total: tasks.length, proposed: tasks.filter((task) => task.status === "proposed").length, todo: todo.length, inProgress: tasks.filter((task) => task.status === "in_progress").length,
+      total: tasks.length, todo: todo.length, inProgress: tasks.filter((task) => task.status === "in_progress").length,
       done: tasks.filter((task) => task.status === "done").length,
       ready: todo.filter((task) => task.ready).length, blocked: todo.filter((task) => !task.ready).length,
     },
@@ -70,14 +70,10 @@ describe("ordinary dependency components", () => {
   });
 
   it.each([
-    { root: "proposed", child: "proposed", done: 0, status: "proposed" },
-    { root: "proposed", child: "todo", done: 0, status: "todo" },
-    { root: "todo", child: "proposed", done: 0, status: "todo" },
-    { root: "in_progress", child: "proposed", done: 0, status: "in_progress" },
-    { root: "done", child: "proposed", done: 1, status: "in_progress" },
     { root: "todo", child: "todo", done: 0, status: "todo" },
     { root: "in_progress", child: "todo", done: 0, status: "in_progress" },
     { root: "done", child: "todo", done: 1, status: "in_progress" },
+    { root: "done", child: "in_progress", done: 1, status: "in_progress" },
     { root: "done", child: "done", done: 2, status: "done" },
   ] as const)("derives chain status $status from root $root and child $child", ({ root, child, done, status }) => {
     const index = buildGraphIndex(graph([{ id: A, status: root }, { id: B, status: child, dependsOn: [A] }]));
@@ -168,17 +164,17 @@ describe("ordinary dependency components", () => {
     for (const position of singletonPositions) expect(index.components.get(names[position]!)!.memberIds.size).toBe(1);
   });
 
-  it("retains proposed readiness and prerequisite details independently of todo counters", () => {
+  it("counts all waiting tasks and preserves their prerequisite details", () => {
     const input = graph([
-      { id: A, status: "proposed" }, { id: B, status: "proposed", dependsOn: [A] },
+      { id: A, status: "todo" }, { id: B, status: "todo", dependsOn: [A] },
       { id: C, status: "todo", dependsOn: [A] }, { id: D, status: "done" },
-      { id: E, status: "proposed", dependsOn: [D] },
+      { id: E, status: "todo", dependsOn: [D] },
     ]);
     const index = buildGraphIndex(input);
-    expect(input.summary).toEqual({ total: 5, proposed: 3, todo: 1, inProgress: 0, done: 1, ready: 0, blocked: 1 });
-    expect(index.nodes.get(A)).toMatchObject({ ready: false, blockedBy: [] });
+    expect(input.summary).toEqual({ total: 5, todo: 4, inProgress: 0, done: 1, ready: 2, blocked: 2 });
+    expect(index.nodes.get(A)).toMatchObject({ ready: true, blockedBy: [] });
     expect(index.nodes.get(B)).toMatchObject({ ready: false, blockedBy: [A] });
-    expect(index.nodes.get(E)).toMatchObject({ ready: false, blockedBy: [] });
+    expect(index.nodes.get(E)).toMatchObject({ ready: true, blockedBy: [] });
   });
 
   it("accepts unordered blocked sets and preserves snapshots and independent projection sets", () => {
@@ -258,15 +254,15 @@ describe("complete prerequisite projection", () => {
     expect(projectChain(index, B).edges).toEqual([]);
   });
 
-  it("keeps all-proposed members proposed and external progress outside its counters", () => {
+  it("keeps waiting members todo and external progress outside its counters", () => {
     const index = buildGraphIndex(graph([
-      { id: A, status: "proposed" }, { id: B, status: "todo" },
-      { id: C, status: "proposed", dependsOn: [A, B], externalDependsOn: [B] },
-      { id: D, status: "proposed", dependsOn: [A, C] }, { id: E, dependsOn: [B] },
+      { id: A, status: "todo" }, { id: B, status: "todo" },
+      { id: C, status: "todo", dependsOn: [A, B], externalDependsOn: [B] },
+      { id: D, status: "todo", dependsOn: [A, C] }, { id: E, dependsOn: [B] },
     ]));
     expect(projectChain(index, A).mainIds).toEqual(new Set([A, C, D]));
     expect(projectChain(index, A).externalIds).toEqual(new Set([B]));
-    expect(index.components.get(A)!.progress).toEqual({ total: 3, done: 0, status: "proposed" });
+    expect(index.components.get(A)!.progress).toEqual({ total: 3, done: 0, status: "todo" });
     expect(index.components.get(B)!.progress).toEqual({ total: 2, done: 0, status: "todo" });
   });
 
@@ -319,10 +315,10 @@ describe("complete prerequisite projection", () => {
 });
 
 describe("complete prerequisite inspection", () => {
-  it("deduplicates shared completed and proposed prerequisites without following successors", () => {
+  it("deduplicates shared completed and waiting prerequisites without following successors", () => {
     const input = deepFreeze(graph([
       { id: A, status: "done" }, { id: B, status: "done", dependsOn: [A] },
-      { id: C, status: "proposed", dependsOn: [A] }, { id: D, dependsOn: [B, C] },
+      { id: C, status: "todo", dependsOn: [A] }, { id: D, dependsOn: [B, C] },
       { id: E, dependsOn: [A] }, { id: F, dependsOn: [D] },
     ]));
     const index = buildGraphIndex(input);
@@ -401,11 +397,10 @@ describe("invalid graph snapshots", () => {
     graph([{ id: A }, { id: B, status: "done", dependsOn: [A] }]),
     changedTask(graph([{ id: A, status: "done" }]), A, { ready: true }),
     changedTask(graph([{ id: A, status: "in_progress" }]), A, { ready: true }),
-    changedTask(graph([{ id: A, status: "proposed" }]), A, { ready: true }),
-    changedTask(graph([{ id: A }, { id: B, status: "proposed", dependsOn: [A] }]), B, { ready: true }),
+    changedTask(valid, A, { status: "proposed" as TaskStatus }),
     graph([{ id: A, dependsOn: [B] }, { id: B, dependsOn: [A] }]),
     graph([{ id: A }, { id: B, dependsOn: [C] }, { id: C, dependsOn: [D] }, { id: D, dependsOn: [B] }]),
-    ...["total", "proposed", "todo", "inProgress", "done", "ready", "blocked"].flatMap((field) => [-1, 99, null, undefined, "0"].map((value) =>
+    ...["total", "todo", "inProgress", "done", "ready", "blocked"].flatMap((field) => [-1, 99, null, undefined, "0"].map((value) =>
       ({ ...valid, summary: { ...valid.summary, [field]: value } }))),
   ])("rejects incomplete or inconsistent input %# with a safe error", expectRejected);
 

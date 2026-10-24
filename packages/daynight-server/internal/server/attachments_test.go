@@ -464,22 +464,20 @@ func TestAttachmentHTTPPendingTaskAndLifecyclePreserveAttachment(t *testing.T) {
 	handler := attachmentTestHandler(t, projectTestStore(t), attachmentTestFiles(t), io.Discard)
 	project := taskProject(t, handler)
 	prerequisite := createHTTPTask(t, handler, project.ID, "Prerequisite")
-	task := createHTTPTask(t, handler, project.ID, "Attached proposed task", prerequisite.ID)
+	task := createHTTPTask(t, handler, project.ID, "Attached todo task", prerequisite.ID)
 	task = updateHTTPTask(t, handler, task, map[string]any{"properties": api.TaskProperties{PullRequests: []api.PullRequestProperty{{URL: "https://example.com/pr/1", Title: "Implementation"}}}})
 	location := attachmentFilePath(task, "plan.md")
 	created := decodeResponse[api.Attachment](t, attachmentRequest(handler, http.MethodPut, location, "text/markdown", []byte("Acceptance criteria")), http.StatusCreated)
-	if actual := readHTTPTask(t, handler, task); !reflect.DeepEqual(actual, task) || actual.Status != "proposed" || len(actual.BlockedBy) != 1 {
-		t.Fatalf("upload changed blocked proposed task: %+v", actual)
+	if actual := readHTTPTask(t, handler, task); !reflect.DeepEqual(actual, task) || actual.Status != "todo" || len(actual.BlockedBy) != 1 {
+		t.Fatalf("upload changed blocked todo task: %+v", actual)
 	}
-	task = transitionHTTPTask(t, handler, task, "approve")
 	if task.Status != "todo" || task.Ready || !slices.Equal(task.BlockedBy, []string{prerequisite.ID}) {
-		t.Fatalf("approval unexpectedly completed prerequisite: %+v", task)
+		t.Fatalf("attachment upload unexpectedly completed prerequisite: %+v", task)
 	}
-	prerequisite = transitionHTTPTask(t, handler, prerequisite, "approve")
-	prerequisite = transitionHTTPTask(t, handler, prerequisite, "claim")
-	prerequisite = transitionHTTPTask(t, handler, prerequisite, "complete")
-	for _, action := range []string{"claim", "complete"} {
-		task = transitionHTTPTask(t, handler, task, action)
+	prerequisite = setHTTPTask(t, handler, prerequisite, "in_progress")
+	prerequisite = setHTTPTask(t, handler, prerequisite, "done")
+	for _, action := range []string{"in_progress", "done"} {
+		task = setHTTPTask(t, handler, task, action)
 		if !slices.Equal(task.Properties.PullRequests, []api.PullRequestProperty{{URL: "https://example.com/pr/1", Title: "Implementation"}}) {
 			t.Fatalf("%s changed PR properties: %+v", action, task)
 		}

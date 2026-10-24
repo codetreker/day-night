@@ -17,7 +17,7 @@ const defaultDependencies: TaskCommandDependencies = {
   resolveProject: async (...args) => (await import("../../repository/index.js")).resolveProject(...args),
 };
 
-const taskPriority = (task: Task): number => task.status === "in_progress" ? 0 : task.ready ? 1 : task.status === "todo" ? 2 : task.status === "proposed" ? 3 : 4;
+const taskPriority = (task: Task): number => task.status === "in_progress" ? 0 : task.ready ? 1 : task.status === "todo" ? 2 : 3;
 
 const compileDependencies = async (
   ordinary: readonly string[] | undefined,
@@ -59,7 +59,7 @@ export const runTaskCommand = async (
   }
   const help = `${command.path.join(" ")} --help`;
   const name = command.command.name;
-  const action = name === "approve" || name === "unapprove" || name === "claim" || name === "complete" ? name : undefined;
+  const setsStatus = name === "set-status";
   const title = command.options.get("--title") as string | undefined;
   const description = command.options.get("--description") as string | undefined;
   const status = command.options.get("--status") as TaskFilters["status"];
@@ -93,13 +93,13 @@ export const runTaskCommand = async (
   const rawProjectId = command.options.get("--project") as string | undefined;
   let projectId: string | undefined;
   let taskId: string | undefined;
-  if (rawProjectId !== undefined || name === "show" || name === "update" || action !== undefined) {
+  if (rawProjectId !== undefined || name === "show" || name === "update" || setsStatus) {
     const { canonicalId } = await import("../../api/parse.js");
     if (rawProjectId !== undefined) {
       projectId = canonicalId(rawProjectId) ?? undefined;
       if (projectId === undefined) throw new UsageError("project-id must be a hyphenated UUID.", help);
     }
-    if (name === "show" || name === "update" || action !== undefined) {
+    if (name === "show" || name === "update" || setsStatus) {
       taskId = canonicalId(command.values[0]!) ?? undefined;
       if (taskId === undefined) throw new UsageError("task-id must be a hyphenated UUID.", help);
     }
@@ -153,12 +153,10 @@ export const runTaskCommand = async (
     }
     const version = expectedVersion === undefined ? (await api.getTask(project.id, taskId!)).version : expectedVersion;
     operation.check();
-    if (action !== undefined) {
-      const mutate = { approve: api.approveTask, unapprove: api.unapproveTask, claim: api.claimTask, complete: api.completeTask }[action];
-      const task = await mutate(project.id, taskId!, { version });
+    if (setsStatus) {
+      const task = await api.setTaskStatus(project.id, taskId!, { version, status: command.values[1] as Task["status"] });
       operation.check();
-      const result = { approve: "approved", unapprove: "unapproved", claim: "claimed", complete: "completed" }[action];
-      return `Task ${result}.\n${renderTask(task)}`;
+      return `Task status set.\n${renderTask(task)}`;
     }
     const task = await api.updateTask(project.id, taskId!, { ...changes, version });
     operation.check();

@@ -11,10 +11,11 @@ not communicate how many unfinished tasks remain in each view.
 
 ## Decision
 
-Both tab badges count unfinished tasks from the complete snapshot. Proposed,
-pending and in-progress tasks contribute one; done contributes zero. The
-[four-state reader decision](2026-10-22-proposed-task-readers.md) extends the
-original pending/in-progress inventory without changing its unit. Under the
+Both tab badges count unfinished tasks from the complete snapshot. Pending and
+in-progress tasks contribute one; done contributes zero. The historical
+[four-state reader decision](2026-10-22-proposed-task-readers.md) extended the
+inventory; the [status assignment decision](../architecture/2026-10-24-task-status-assignment.md)
+removes that fourth state without changing the counting unit. Under the
 [external dependency decision](../architecture/2026-10-23-external-dependency-design.md),
 an ordinary singleton contributes to Standalone tasks and every multi-member
 component task contributes to Task chains. Each ID is counted once; a finished
@@ -47,7 +48,7 @@ unfinished count from one consistent snapshot.
 
 ## Consequences
 
-The two badges use the same unit and sum to the project's proposed plus pending plus
+The two badges use the same unit and sum to the project's pending plus
 in-progress total. A dependency edit may move unfinished tasks between the two
 badges on refresh. A chain badge can exceed the number of chain rows because it
 counts their unique tasks. The ordinary-component list, all-edge graph contexts, aggregate chain status,

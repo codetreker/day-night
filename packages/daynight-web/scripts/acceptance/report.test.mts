@@ -41,7 +41,7 @@ test('rejects retries, flaky tests, global errors, and invalid result evidence',
 const functionalNames = ['project-list', 'project-graph', 'detail-navigation', 'refresh-staleness',
   'failure-recovery', 'deep-links', 'keyboard-focus', 'narrow-layout', 'task-attachments', 'project-view-tabs',
   'language-startup-preferences', 'language-state-preservation', 'language-errors-and-narrow',
-  'task-description-markdown', 'task-approval', 'task-approval-conflicts', 'task-approval-recovery', 'task-unapproval', 'task-agent-permission',
+  'task-description-markdown', 'task-status', 'task-status-conflicts', 'task-status-recovery', 'task-status-transitions', 'task-agent-permission',
   'auth-login-session', 'auth-project-isolation', 'auth-project-members', 'auth-personal-tokens', 'auth-invitations', 'auth-resource-session', 'project-settings', 'task-execution-time'] as const;
 const capacityNames = ['capacity-chain', 'capacity-merge', 'capacity-shared', 'capacity-external', 'capacity-limits'] as const;
 const nativeNames = [...functionalNames, ...capacityNames];

@@ -201,14 +201,14 @@ func TestInstalledCLIAttachmentAcceptance(t *testing.T) {
 			t.Fatal("attachment operations changed the full task resource")
 		}
 		metadata := acceptanceCLIJSON[[]api.Attachment](t, cli.run(t, cli.repo, "task", "attachment", "list", task.ID, "--json"))
-		for index, action := range []string{"approve", "claim", "complete"} {
-			cli.run(t, cli.repo, "task", action, task.ID)
+		for _, status := range []string{"in_progress", "todo", "done"} {
+			cli.run(t, cli.repo, "task", "set-status", task.ID, status)
 			after := cli.task(t, task.ID)
-			acceptanceTaskTimingTransition(t, before, after, action)
+			acceptanceTaskTimingTransition(t, before, after, status)
 			preserved := after
 			preserved.StartedAt, preserved.CompletedAt = before.StartedAt, before.CompletedAt
 			preserved.Status, preserved.Ready, preserved.Version, preserved.UpdatedAt = before.Status, before.Ready, before.Version, before.UpdatedAt
-			if expected := []string{"todo", "in_progress", "done"}[index]; after.Status != expected || after.Version != before.Version+1 || !after.UpdatedAt.After(before.UpdatedAt) || !reflect.DeepEqual(preserved, before) {
+			if after.Status != status || after.Version != before.Version+1 || !after.UpdatedAt.After(before.UpdatedAt) || !reflect.DeepEqual(preserved, before) {
 				t.Fatal("installed lifecycle action did not preserve the attachment task metadata")
 			}
 			if actual := acceptanceCLIJSON[[]api.Attachment](t, cli.run(t, cli.repo, "task", "attachment", "list", task.ID, "--json")); !reflect.DeepEqual(actual, metadata) {

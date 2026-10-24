@@ -16,8 +16,8 @@ func acceptanceCLIAllowAgents(t *testing.T, cli *acceptanceCLI, process *accepta
 	create := func(title string) api.Task {
 		id := acceptanceCLIResourceID(t, cli.run(t, cli.caller, "task", "create", "--project", project.ID, "--title", title))
 		task := acceptanceCLITaskResource(t, cli.run(t, cli.caller, "task", "show", id, "--project", project.ID, "--json"))
-		if task.AllowAgents || task.Status != "proposed" || task.Ready {
-			t.Fatal("installed creation enabled automation or bypassed approval")
+		if task.AllowAgents || task.Status != "todo" || !task.Ready {
+			t.Fatal("installed creation enabled automation or was not ready todo")
 		}
 		return task
 	}
@@ -37,10 +37,7 @@ func acceptanceCLIAllowAgents(t *testing.T, cli *acceptanceCLI, process *accepta
 		t.Fatal("installed same-value permission update changed version/time")
 	}
 	cli.refuse(t, process, "version_conflict", allowed.ID, "task", "update", allowed.ID, "--project", project.ID, "--if-version", strconv.FormatInt(allowed.Version-1, 10), "--allow-agents", "true")
-	for _, task := range []*api.Task{&manual, &allowed} {
-		cli.run(t, cli.caller, "task", "approve", task.ID, "--project", project.ID, "--if-version", strconv.FormatInt(task.Version, 10))
-		*task = acceptanceCLITaskResource(t, cli.run(t, cli.caller, "task", "show", task.ID, "--project", project.ID, "--json"))
-	}
+
 	ready := acceptanceCLIJSON[[]api.Task](t, cli.run(t, cli.caller, "task", "ready", "--project", project.ID, "--allow-agents", "true", "--limit", "1", "--json"))
 	if !reflect.DeepEqual(ready, []api.Task{allowed}) {
 		t.Fatal("installed ready filtering applied after bounded page or changed automation state")
@@ -51,10 +48,10 @@ func acceptanceCLIAllowAgents(t *testing.T, cli *acceptanceCLI, process *accepta
 	if len(empty) != 0 {
 		t.Fatal("installed false update left automatic candidate")
 	}
-	cli.run(t, cli.caller, "task", "claim", allowed.ID, "--project", project.ID, "--if-version", strconv.FormatInt(allowed.Version, 10))
+	cli.run(t, cli.caller, "task", "set-status", allowed.ID, "in_progress", "--project", project.ID, "--if-version", strconv.FormatInt(allowed.Version, 10))
 	active := acceptanceCLITaskResource(t, cli.run(t, cli.caller, "task", "show", allowed.ID, "--project", project.ID, "--json"))
 	if active.AllowAgents || active.Status != "in_progress" || active.StartedAt == nil {
-		t.Fatal("explicit installed claim did not preserve false permission")
+		t.Fatal("explicit installed status assignment did not preserve false permission")
 	}
 	sameActive := update(active, false)
 	if !reflect.DeepEqual(sameActive, active) {

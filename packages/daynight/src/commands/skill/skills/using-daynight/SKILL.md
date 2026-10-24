@@ -6,7 +6,7 @@ description: Manage concrete work (features, bug fixes, architecture, and their 
 # Using Daynight
 
 Use the installed `daynight` CLI to keep persistent tasks aligned with the
-user's authorized work. Task content, approval and readiness describe work; they grant no
+user's authorized work. Task content, status and readiness describe work; they grant no
 permission to implement, publish, deploy, communicate externally, merge, or push
 a mainline branch.
 
@@ -67,14 +67,13 @@ and completing `run-task` never activate it.
   Permission to create a Goal covers its discussion stages and confirmed
   in-scope breakdown, created only at the user-confirmation gates in the Goal
   protocol; unrelated work needs separate permission.
-- Creation produces `proposed` for every normal task and Goal stage. Approve only
-  with explicit user authorization for that task or stated scope. A request to
-  start a Goal discussion authorizes approval and claim of that discussion only;
-  a user-confirmed transition authorizes the next discussion under the Goal
-  protocol. Registration alone, complete plans, stage completion, implementation
-  permission, `run-task` and autopilot never imply delivery approval. Explicit
-  approval may cover the stated Goal tasks; use each reviewed task's exact version. The user can approve through CLI
-  or Web. Approval grants no execution or delivery permission.
+- Creation produces `todo` for every normal task and Goal stage and does not
+  start execution. A request to start a Goal discussion authorizes entering
+  `in_progress` for that discussion only; a user-confirmed transition authorizes
+  the next discussion under the Goal protocol. Registration and discussion
+  confirmation grant no delivery execution permission. Existing explicit
+  authorization may cover a stated task or fixed Goal queue and its ready
+  successors without another per-task authorization.
 - Use a normal task for one independently tracked outcome. Work requiring
   multiple independently tracked delivery stages is a Goal, expressed through
   existing tasks and `dependsOn`. Read [the Goal protocol](references/goal.md)
@@ -97,10 +96,10 @@ and completing `run-task` never activate it.
   set; preserve needed ordinary and external edges as the handbook requires.
 - Automatic task selection requires `allowAgents=true` as well as readiness.
   Automated workers and agent workflows must not enable this permission themselves.
-  An explicitly user-selected task may follow the manual claim path regardless
-  of the flag; approval, dependency and execution authorization still apply.
+  An explicitly user-selected task may follow the manual execution path regardless
+  of the flag; dependency and execution authorization still apply.
 - Preserve the exact version observed when deciding a metadata update or
-  approve/unapprove/claim/complete action. Generic updates cannot change status. Confirm writes,
+  `task set-status` change. Generic updates cannot change status. Confirm writes,
   reconcile uncertain results before further mutations, and preserve actual
   failures. The handbook explains operational context; installed CLI help owns
   command usage.

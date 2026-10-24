@@ -19,7 +19,7 @@ const graphTask = { allowAgents: false, startedAt: null, completedAt: null,
   id: taskId, titlePreview: "A task", titleTruncated: false, status: "todo",
   dependsOn: [], externalDependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time,
 };
-const summary = { total: 1, proposed: 0, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 };
+const summary = { total: 1, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 };
 const graph = { observedAt: "2026-10-20T12:00:00Z", project, summary, tasks: [graphTask] };
 const rawProject = (version: string): string => `${JSON.stringify({ ...project, settings: undefined }).slice(0, -1)},"settings":{"version":${version},"executionWarningMinutes":60}}`;
 const rawGraph = (projectSource: string): string => `${JSON.stringify({ ...graph, project: undefined }).slice(0, -1)},"project":${projectSource}}`;
@@ -155,12 +155,12 @@ describe("response parsing", () => {
     }
   });
 
-  it("accepts proposed tasks with unfinished prerequisites without marking them ready", () => {
-    const proposed = { ...graphTask, status: "proposed", ready: false, dependsOn: [otherId], blockedBy: [otherId] };
-    const input = { ...graph, tasks: [proposed], summary: { total: 1, proposed: 1, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 } };
-    expect(parseTaskGraph(input, projectId)).toEqual(input);
-    expect(parseTaskDetail({ ...task, ...proposed }, projectId, taskId)).toMatchObject({ status: "proposed", ready: false, dependsOn: [otherId], blockedBy: [otherId] });
-    expect(() => parseTaskDetail({ ...task, status: "proposed", ready: true }, projectId, taskId)).toThrow("invalid response");
+  it("rejects the removed proposed state in graph and detail responses", () => {
+    for (const ready of [false, true]) {
+      const legacy = { ...graphTask, status: "proposed", ready };
+      expect(() => parseTaskGraph({ ...graph, tasks: [legacy] }, projectId)).toThrow("invalid response");
+      expect(() => parseTaskDetail({ ...task, ...legacy }, projectId, taskId)).toThrow("invalid response");
+    }
   });
 
   it("preserves complete ordered PR strings and duplicates without interpreting their content", () => {
@@ -191,10 +191,8 @@ describe("response parsing", () => {
     { ...graph, tasks: null },
     { ...graph, tasks: [graphTask, graphTask] },
     { ...graph, summary: null },
-    { ...graph, summary: { ...summary, proposed: undefined } },
-    { ...graph, summary: { ...summary, proposed: 1 } },
     { ...graph, summary: { ...summary, ready: 0 } },
-    ...["total", "proposed", "todo", "inProgress", "done", "ready", "blocked"].flatMap((field) => [-1, 0.5, Number.MAX_SAFE_INTEGER + 1, "1", null].map((value) =>
+    ...["total", "todo", "inProgress", "done", "ready", "blocked"].flatMap((field) => [-1, 0.5, Number.MAX_SAFE_INTEGER + 1, "1", null].map((value) =>
       ({ ...graph, summary: { ...summary, [field]: value } }))),
     ...["titlePreview", "titleTruncated", "ready", "status", "dependsOn", "blockedBy", "id", "createdAt", "updatedAt"].map((field) =>
       ({ ...graph, tasks: [{ ...graphTask, [field]: null }] })),

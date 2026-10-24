@@ -4,7 +4,7 @@ import { ProjectPage } from '../../src/features/projects/ProjectPage';
 import { LocaleProvider, useI18n } from '../../src/i18n/LocaleProvider';
 import { LanguageSelector } from '../../src/i18n/LanguageSelector';
 import { resolveInitialLocale } from '../../src/i18n/locale';
-import { browsingProjects, browsingScenarioLabels, installBrowsingFixture, isApprovalScenario, readBrowsingDetailScenario, readBrowsingScenario, type BrowsingDetailScenario, type BrowsingFixture, type BrowsingScenario } from './browsing-fixture';
+import { browsingProjects, browsingScenarioLabels, installBrowsingFixture, isStatusScenario, readBrowsingDetailScenario, readBrowsingScenario, type BrowsingDetailScenario, type BrowsingFixture, type BrowsingScenario } from './browsing-fixture';
 import '../../src/styles/app.css';
 
 const BrowsingMockup = ({ fixture }: { readonly fixture: BrowsingFixture }) => {
@@ -86,10 +86,10 @@ const BrowsingMockup = ({ fixture }: { readonly fixture: BrowsingFixture }) => {
               <option value="loading">详情加载中</option>
               <option value="error">详情加载失败</option>
             </select>
-            <p>两个页签旁的数字均表示未完成任务数，任务链中的共享任务跨链只计一次，显示已完成项不改变数字。任务链状态汇总根及全部后续任务：全部完成才显示已完成，有任务开始或完成后显示进行中，有待处理任务时显示待处理，其余全部待审批时显示待审批。待审批任务始终不可开始，未完成前置仍完整显示。图的完整投影包含全部上游前置，外部前置保留自身状态，不计入链内进度，也不引入其无关后续。超过 50 个任务或 100 条依赖时先显示根锚定概览，卡片底部控件每次最多展开 20 个直接前置或后续并显示新增任务、依赖和剩余数量；收起到概览恢复初始范围。卡片主体追踪全部前置，隐藏上游去重计数；独立详情入口阅读任务，展开控件分开操作，刷新保留当前实际可见任务。依赖选择及详情不会展开或移动画布。任务链按创建时间倒序排列，浏览设置按项目保存；展开图后可全屏查看、缩放和打开详情，Esc 先关闭详情，再退出全屏。</p>
-            {isApprovalScenario(scenario) && <p>真实任务详情的标题行右侧显示当前可用的“批准任务”或“撤回审批”，概览和附件页均可操作。点击后先审阅确认窗口，取消或 Escape 不提交；明确确认后才发送对应操作。批准后进入待处理，未完成前置继续阻止开始；撤回后回到待审批，资料和附件保留。两种操作可重复切换，故障场景分别作用于每个动作的首次提交。当前场景使用超过 JavaScript 安全整数范围的精确版本号。切换场景不会改变其他项目的任务；重新加载页面可重置全部场景。</p>}
+            <p>两个页签旁的数字均表示未完成任务数，任务链中的共享任务跨链只计一次，显示已完成项不改变数字。任务链状态汇总根及全部后续任务：全部完成才显示已完成，有任务开始或完成后显示进行中，其余显示待处理。未完成前置仍完整显示并阻止开始或直接完成。图的完整投影包含全部上游前置，外部前置保留自身状态，不计入链内进度，也不引入其无关后续。超过 50 个任务或 100 条依赖时先显示根锚定概览，卡片底部控件每次最多展开 20 个直接前置或后续并显示新增任务、依赖和剩余数量；收起到概览恢复初始范围。卡片主体追踪全部前置，隐藏上游去重计数；独立详情入口阅读任务，展开控件分开操作，刷新保留当前实际可见任务。依赖选择及详情不会展开或移动画布。任务链按创建时间倒序排列，浏览设置按项目保存；展开图后可全屏查看、缩放和打开详情，Esc 先关闭详情，再退出全屏。</p>
+            {isStatusScenario(scenario) && <p>任务详情的标题行右侧显示当前状态，点击后打开待处理、进行中和已完成三项菜单，概览和附件页均可操作。选择目标后审阅完整任务名、当前状态、目标状态与计时后果，取消或 Escape 不提交。状态可以任意切换；开始和直接完成仍要求前置全部完成，已完成任务有进行中或已完成后继时不可重开。同状态也核对精确版本且不修改时间。状态和自动执行许可共用写入会话，未知结果仅核对读取。当前场景使用超过 JavaScript 安全整数范围的精确版本号。切换场景不会改变其他项目的任务；重新加载页面可重置全部场景。</p>}
             {(scenario === 'pending' || scenario === 'task-switch') && <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginTop: 12 }}>
-              <button className="button" type="button" disabled={controls.pending === 0} onClick={() => fixture.settlePending(scenario)}>完成待处理审批响应</button>
+              <button className="button" type="button" disabled={controls.pending === 0} onClick={() => fixture.settlePending(scenario)}>完成待处理状态响应</button>
               <span>待处理响应：{controls.pending}。可关闭并重开详情检查提交防重；关闭详情后使用此预览控件完成响应。</span>
             </div>}
             {scenario === 'unknown-reconcile-error' && <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginTop: 12 }}>
@@ -98,7 +98,7 @@ const BrowsingMockup = ({ fixture }: { readonly fixture: BrowsingFixture }) => {
             </div>}
             {scenario === 'graph-refresh-error' && <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginTop: 12 }}>
               <button className="button" type="button" disabled={!controls.graphReadFailure} onClick={() => fixture.recoverReads(scenario)}>恢复任务图读取</button>
-              <span>已确认的审批操作结果保持；关闭详情并恢复读取后，使用项目或详情中的刷新按钮更新任务图。</span>
+              <span>已确认的状态操作结果保持；关闭详情并恢复读取后，使用项目或详情中的刷新按钮更新任务图。</span>
             </div>}
           </section>
           <ProjectPage key={scenario} projectId={browsingProjects[scenario].project.id} />

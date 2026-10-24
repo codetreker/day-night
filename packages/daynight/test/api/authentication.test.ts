@@ -112,7 +112,7 @@ describe("API bearer authentication", () => {
     ]);
   });
 
-  it.each(["approve", "unapprove", "claim", "complete"] as const)("authenticates the %s lifecycle request with exact int64 JSON", async (action) => {
+  it("authenticates the status request with exact int64 JSON", async () => {
     const received: { authorization: string | undefined; method: string | undefined; path: string | undefined; body: string }[] = [];
     const url = await server((request, response) => {
       let body = "";
@@ -120,11 +120,11 @@ describe("API bearer authentication", () => {
       request.on("data", (value: string) => { body += value; });
       request.on("end", () => {
         received.push({ authorization: request.headers.authorization, method: request.method, path: request.url, body });
-        json(response, task);
+        json(response, { ...task, version: 9_223_372_036_854_775_807n });
       });
     });
-    await createApiClient({ serverUrl: url, serverToken: token, operation: operation() })[`${action}Task`](projectId, taskId, { version: 9_223_372_036_854_775_807n });
-    expect(received).toEqual([{ authorization: `Bearer ${token}`, method: "POST", path: `/api/v1/projects/${projectId}/tasks/${taskId}/${action}`, body: '{"version":9223372036854775807}' }]);
+    await createApiClient({ serverUrl: url, serverToken: token, operation: operation() }).setTaskStatus(projectId, taskId, { version: 9_223_372_036_854_775_807n, status: "todo" });
+    expect(received).toEqual([{ authorization: `Bearer ${token}`, method: "PUT", path: `/api/v1/projects/${projectId}/tasks/${taskId}/status`, body: '{"version":9223372036854775807,"status":"todo"}' }]);
   });
 
   it("accepts the complete visible ASCII token without normalization", async () => {
@@ -183,7 +183,7 @@ describe("API bearer authentication", () => {
       requests++;
       json(response, { error: { code, message: "Actual server explanation.", requestId: "req-refusal" } }, status);
     });
-    const error: unknown = await createApiClient({ serverUrl: url, serverToken: token, operation: operation() }).completeTask(projectId, taskId, { version: 1n }).catch((failure: unknown) => failure);
+    const error: unknown = await createApiClient({ serverUrl: url, serverToken: token, operation: operation() }).setTaskStatus(projectId, taskId, { version: 1n, status: "done" }).catch((failure: unknown) => failure);
 
     expect(error).toBeInstanceOf(ApiError);
     expect(error).toMatchObject({ status, code, requestId: "req-refusal", phase: "response", confirmedRefusal: true, outcomeUnconfirmed: false, message: expect.stringContaining("Actual server explanation.") });

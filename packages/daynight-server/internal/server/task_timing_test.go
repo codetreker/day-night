@@ -27,15 +27,14 @@ func TestTaskHTTPTimingIsServerOwnedFrozenAndSharedAcrossResources(t *testing.T)
 		}
 		assertProjectError(t, projectRequest(handler, http.MethodPost, taskCollection(project.ID), `{"title":"Rejected","`+name+`":"2026-01-01T00:00:00Z"}`), http.StatusBadRequest, "invalid_input")
 		assertProjectError(t, projectRequest(handler, http.MethodPatch, taskPath(task), `{"version":1,"title":"Rejected","`+name+`":null}`), http.StatusBadRequest, "invalid_input")
-		assertProjectError(t, projectRequest(handler, http.MethodPost, taskPath(task)+"/approve", `{"version":1,"`+name+`":null}`), http.StatusBadRequest, "invalid_input")
+		assertProjectError(t, projectRequest(handler, http.MethodPut, taskPath(task)+"/status", `{"version":1,"status":"todo","`+name+`":null}`), http.StatusBadRequest, "invalid_input")
 	}
-	task = transitionHTTPTask(t, handler, task, "approve")
 	if task.StartedAt != nil || task.CompletedAt != nil {
-		t.Fatalf("approval started an execution: %+v", task)
+		t.Fatalf("creation started an execution: %+v", task)
 	}
-	task = transitionHTTPTask(t, handler, task, "claim")
+	task = setHTTPTask(t, handler, task, "in_progress")
 	if task.StartedAt == nil || task.CompletedAt != nil || !task.StartedAt.Equal(task.UpdatedAt) || task.StartedAt.Location() != time.UTC {
-		t.Fatalf("claim did not expose the database start: %+v", task)
+		t.Fatalf("start did not expose the database start: %+v", task)
 	}
 	start := *task.StartedAt
 	previous := task
@@ -43,12 +42,15 @@ func TestTaskHTTPTimingIsServerOwnedFrozenAndSharedAcrossResources(t *testing.T)
 	if !task.StartedAt.Equal(start) || task.CompletedAt != nil {
 		t.Fatalf("metadata edit reset the running interval: %+v", task)
 	}
-	assertProjectError(t, projectRequest(handler, http.MethodPost, taskPath(task)+"/claim", jsonBody(t, api.TaskTransitionRequest{Version: task.Version})), http.StatusConflict, "invalid_transition")
-	assertProjectError(t, projectRequest(handler, http.MethodPost, taskPath(task)+"/complete", jsonBody(t, api.TaskTransitionRequest{Version: previous.Version})), http.StatusConflict, "version_conflict")
+	same := setHTTPTask(t, handler, task, "in_progress")
+	if !reflect.DeepEqual(same, task) {
+		t.Fatal("same state changed execution timing")
+	}
+	assertProjectError(t, projectRequest(handler, http.MethodPut, taskPath(task)+"/status", jsonBody(t, api.TaskStatusUpdateRequest{Version: previous.Version, Status: "done"})), http.StatusConflict, "version_conflict")
 	if !reflect.DeepEqual(readHTTPTask(t, handler, task), task) {
 		t.Fatal("rejected lifecycle write changed execution timing")
 	}
-	task = transitionHTTPTask(t, handler, task, "complete")
+	task = setHTTPTask(t, handler, task, "done")
 	if task.CompletedAt == nil || !task.StartedAt.Equal(start) || task.CompletedAt.Before(start) || !task.CompletedAt.Equal(task.UpdatedAt) {
 		t.Fatalf("completion did not freeze its real interval: %+v", task)
 	}

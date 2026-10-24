@@ -48,11 +48,11 @@ describe('automatic execution presentation', () => {
     const control = screen.getByRole('switch', { name: 'Automatic execution' });
     expect(control).toBeDisabled();
     expect(control).toHaveAttribute('aria-checked', 'true');
-    expect(control).toHaveAccessibleDescription('This task is already claimed. Automatic execution is locked until execution ends or is released.');
+    expect(control).toHaveAccessibleDescription('This task is in progress. Automatic execution settings cannot change while it remains in progress.');
     fireEvent.click(control);
     expect(view.onClick).not.toHaveBeenCalled();
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'zh-CN' } });
-    expect(control).toHaveAccessibleDescription('任务已被领取，自动执行设置在执行结束或合法解除领取前保持锁定。');
+    expect(control).toHaveAccessibleDescription('任务正在进行中，保持此状态时无法修改自动执行设置。');
   });
 
   it('announces a pending write while preserving the saved switch and hiding any retry action', () => {
@@ -148,9 +148,9 @@ describe('automatic execution presentation', () => {
     expect(screen.queryByText('unexpected adapter failure')).toBeNull();
   });
 
-  it('does not present approval feedback as an automation result when no permission operation exists', () => {
-    const approval: TaskMutationState = { ...idle, phase: 'unknown', operation: { action: 'approve', version: 12n }, error: new ApiError('network'), reconciliationError: new Error('read failed') };
-    const view = mount(approval);
+  it('does not present status feedback as an automation result when no permission operation exists', () => {
+    const status: TaskMutationState = { ...idle, phase: 'unknown', operation: { action: 'status', status: 'in_progress', version: 12n }, error: new ApiError('network'), reconciliationError: new Error('read failed') };
+    const view = mount(status);
     expect(view.container.querySelector(`#${feedbackId}`)).toBeEmptyDOMElement();
     expect(screen.queryByRole('alert')).toBeNull();
     expect(screen.queryByRole('status')).toBeNull();

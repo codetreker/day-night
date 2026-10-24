@@ -20,7 +20,7 @@ const indexOf = (seeds: readonly Seed[], defaultStatus: TaskStatus = 'todo') => 
   const count = (status: TaskStatus) => tasks.filter((task) => task.status === status).length;
   const graph: TaskGraph = { observedAt: "2026-10-20T12:00:00Z",
     project: { settings: { version: 1n, executionWarningMinutes: 60 }, id: 'project', name: 'Project', repoUrl: '', createdAt: '2026-10-22T00:00:00Z', updatedAt: '2026-10-22T00:00:00Z' }, tasks,
-    summary: { total: tasks.length, proposed: count('proposed'), todo: count('todo'), inProgress: count('in_progress'), done: count('done'),
+    summary: { total: tasks.length, todo: count('todo'), inProgress: count('in_progress'), done: count('done'),
       ready: tasks.filter((task) => task.ready).length, blocked: tasks.filter((task) => task.status === 'todo' && task.blockedBy.length > 0).length },
   };
   return buildGraphIndex(graph);
@@ -146,12 +146,12 @@ describe('progressive task graph visibility', () => {
     expect(view.completed).toBe(80); expect(index.components.get('n0')!.progress).toEqual({ total: 80, done: 80, status: 'done' });
   });
 
-  it('retains proposed ancestors and hidden todo members in the full-chain progress', () => {
-    const seeds: Seed[] = [{ id: 'external', status: 'proposed' }, ...chain(80).map((seed, index): Seed => ({
-      ...seed, status: index === 79 ? 'todo' : 'proposed', dependsOn: index === 79 ? ['n78', 'external'] : seed.dependsOn!, externalDependsOn: index === 79 ? ['external'] : [],
+  it('retains waiting ancestors and hidden todo members in the full-chain progress', () => {
+    const seeds: Seed[] = [{ id: 'external', status: 'todo' }, ...chain(80).map((seed, index): Seed => ({
+      ...seed, status: 'todo', dependsOn: index === 79 ? ['n78', 'external'] : seed.dependsOn!, externalDependsOn: index === 79 ? ['external'] : [],
     }))];
     const index = indexOf(seeds); const projection = projectChain(index, 'n0'); const visible = createGraphOverview(index, projection);
-    expect([...visible].every((id) => index.nodes.get(id)!.status === 'proposed')).toBe(true);
+    expect([...visible].every((id) => index.nodes.get(id)!.status === 'todo')).toBe(true);
     expect(visible.has('external')).toBe(false); expect(visible.has('n79')).toBe(false);
     expect(projection.externalIds).toEqual(new Set(['external'])); expect(projection.mainIds.size).toBe(80);
     expect(getTaskExpansion(index, projection, visible, 'n49', 'successors')).toEqual({ ids: ['n50'], totalHidden: 1, addedEdges: 1 });

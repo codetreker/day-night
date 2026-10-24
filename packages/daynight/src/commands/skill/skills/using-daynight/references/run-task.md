@@ -29,15 +29,15 @@ applicable prototype. When a prototype is a required input, view and exercise it
 with its resources. An unfinished output of the current stage is not a missing
 input.
 
-An explicitly user-selected task may use the manual claim path regardless of
+An explicitly user-selected task may use the manual execution path regardless of
 `allowAgents`; this flag gates automatic selection, not explicit task assignment.
 Automated task selection requires true and must not enable the flag itself.
 
 Check state, every direct prerequisite, authorized scope, and required stage
 inputs. Read `dependsOn` and its `externalDependsOn` subset: ordinary edges
 express same-chain prerequisites, external marks distinguish verified cross-chain
-ownership. Both kinds must be done for claim and completion. Classification
-never grants permission to execute a prerequisite, approve it, enable automatic
+ownership. Both kinds must be done before entering in_progress or done. Classification
+never grants permission to execute a prerequisite, enable automatic
 execution, or remove a blocker.
 A missing or unreadable primary Markdown, missing Solution or Acceptance criteria,
 or absent required input leaves execution unready. Resolve it within the
@@ -46,27 +46,20 @@ from a title, silently invent acceptance criteria, or move detailed plans into
 the description. Do not execute prerequisites as an implicit expansion of the
 requested task.
 
-For `proposed`, keep execution pending approval. A run request or autopilot
-activation does not authorize approval of ordinary or delivery tasks. An explicit
-request to start the current Goal discussion, or the user-directed transition
-that starts solution discussion, authorizes approval and claim of that discussion
-under the Goal protocol; registration alone does not. Only if the user explicitly authorized
-approval of this task or stated scope, review its current content and use
-`task approve` with that exact observed version, then confirm the resulting todo
-state. The user can also approve directly through the CLI or Web. Approval does
-not expand implementation or delivery authorization.
-
-If approval is withdrawn before claim, the task is proposed again and waits for
-new explicit approval. Do not infer approval from its earlier todo state or
-retry a failed claim with a newer version.
+Creation leaves a task `todo` and does not execute it. An explicit request to
+start the current Goal discussion, or the user-directed transition that starts
+solution discussion, authorizes entering in_progress for that discussion under
+the Goal protocol; registration alone does not. Existing execution authorization
+may cover the stated task or fixed Goal queue and its ready successors. Task
+status never expands implementation or delivery authorization.
 
 For ready `todo`, begin only when dependencies are done, required stage inputs are complete
-and the work is authorized. Use `task claim` with the exact version observed for
+and the work is authorized. Use `task set-status <task-id> in_progress` with the exact version observed for
 that decision and confirm in_progress before starting. A stale version or
 changed prerequisite requires rereading and reconsidering, with no automatic
-claim retry. For `in_progress`, recover existing work and coordinate using the
+mutation retry. For `in_progress`, recover existing work and coordinate using the
 project's established mechanisms; the state is not an assignee lock or lease.
-A task already `done` is reported as such; there is no reopening operation.
+A task already `done` is reported as such unless reopening is within the explicit requested scope; use the same versioned status setter and dependency protection.
 Preserve the requested task ID through recovery and waiting.
 
 ## Execute and maintain continuity
@@ -132,7 +125,7 @@ pending and successors blocked.
 
 For tasks without a development or PR delivery path, use their stated stage
 acceptance. In every case, confirm required evidence is recorded and readable,
-then reread the complete in-progress task and use `task complete` with its exact
+then reread the complete in-progress task and use `task set-status <task-id> done` with its exact
 observed version. For Goal discussions, use their confirmation gates and verified
 accepted materials; for delivery tasks, use their acceptance and required authorized PR
 merges.
@@ -144,8 +137,7 @@ actual verified breakdown are delivered. Neither establishes whole-Goal completi
 Continue ordinary CI and review waits as this task. When progress requires
 external intervention, preserve the target, actual state, concrete blocker,
 existing work, and next action in the checkpoint, then return the waiting result.
-Unapproved work stays `proposed`; approved unstarted work stays `todo`; claimed
-work stays `in_progress`. Do not declare
+Unstarted work stays `todo`; active work stays `in_progress`. Do not declare
 completion or select other work to bypass a wait. After completion, return
 without selecting a successor, except for an explicit user-directed discussion
 transition under the Goal protocol. That transition does not activate autopilot

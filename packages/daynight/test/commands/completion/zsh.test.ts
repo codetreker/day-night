@@ -28,14 +28,11 @@ describe("native zsh completion", () => {
     expect(script).toContain("(--path)--path=[Attachment relative path (default\\: source basename)]:relative-path:->text_value");
   });
 
-  it("offers explicit lifecycle commands and proposed filtering without metadata status updates", () => {
+  it("offers unified status command and three-state filtering without metadata status updates", () => {
     const script = renderZshCompletion(commandTree);
     expect(script).toContain("compdef _daynight 'daynight' 'dn'\n");
-    expect(script).toContain("'approve:Approve a proposed task, moving it to todo'");
-    expect(script).toContain("'unapprove:Withdraw approval from a todo task, moving it to proposed'");
-    expect(script).toContain("'claim:Claim an approved todo task, moving it to in_progress'");
-    expect(script).toContain("'complete:Complete an in_progress task, moving it to done'");
-    expect(script).toContain("(--status)--status=[Task status]:status:('\\''proposed'\\'' '\\''todo'\\'' '\\''in_progress'\\'' '\\''done'\\'')");
+    expect(script).toContain("(--status)--status=[Task status]:status:('\\''todo'\\'' '\\''in_progress'\\'' '\\''done'\\'')");
+    expect(script).toContain("'set-status:Set a task to todo, in_progress, or done'");
     const update = renderZshCompletion(taskDefinition.commands!.find(({ name }) => name === "update")!);
     expect(update).not.toContain("--status");
     expect(update).toContain("--if-version");
@@ -43,12 +40,14 @@ describe("native zsh completion", () => {
     expect(update).toContain("*--external-depends-on=[External prerequisite UUID; repeat for the complete external set]:task-id:->text_value");
   });
 
-  it.each(["approve", "unapprove", "claim", "complete"])("completes %s with one task ID and version/project text options", (action) => {
-    const script = renderZshCompletion(taskDefinition.commands!.find(({ name }) => name === action)!);
+  it("completes set-status with a task ID, status choices, and version/project text options", () => {
+    const script = renderZshCompletion(taskDefinition.commands!.find(({ name }) => name === "set-status")!);
     expect(script).toContain("(--if-version)--if-version=[Use this expected task version without reading a newer version]:version:->text_value");
     expect(script).toContain("(--project)--project=[Use this project UUID for this invocation]:project-id:->text_value");
     expect(script).toContain("(- *)--help[Show this help]");
     expect(script).toContain("specifications+=( '1:Task UUID:->argument_1' )");
+    expect(script).toContain("2:Target task status:->argument_2");
+    expect(script).toContain("'todo' 'in_progress' 'done'");
     expect(script).not.toContain("--status");
     expect(script).not.toContain("--json");
     expect(script).not.toContain("_files");

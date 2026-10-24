@@ -26,13 +26,19 @@ possible. Do not select another task because CI, review, or merge is pending.
 
 ## Select one related task
 
-When there is no current task, query:
+When the user explicitly supplies a task or fixed Goal queue, inspect its next
+unfinished task by ID and use the manual execution path regardless of
+`allowAgents`. Preserve readiness, stage inputs, and the existing execution
+scope; a fixed queue does not authorize unrelated discovery. Existing scoped
+authorization covers its ready successors without per-task reauthorization.
+
+Otherwise, when there is no current task, query:
 
 ```bash
 daynight task ready --allow-agents true --json
 ```
 
-Pick exactly one approved ready `todo` task with `allowAgents=true` most relevant to the confirmed Goal and
+Pick exactly one ready `todo` task with `allowAgents=true` most relevant to the confirmed Goal and
 authorized work. Compare concrete actions, scope, deliverables, solution,
 acceptance criteria, and actual dependencies; creation order does not establish
 relevance. Read full details and actual task-specific and shared inputs for
@@ -41,19 +47,17 @@ plausible candidates before choosing. Inspect complete `dependsOn` and the
 cross-chain classification does not authorize executing them or expand the
 confirmed scope. Readiness checks all prerequisites, not stage artifact
 completeness or execution authorization. Pass the selected ID to
-`run-task`, which claims the version observed for that decision before starting.
-Autopilot never auto-approves proposed work. Goal registration, completed
-discussions, and permission to execute do not authorize task approval for delivery.
-An explicit user request to start a Goal discussion or direct its next discussion
-uses the Goal protocol's scoped approval and manual claim path, not automatic
-approval or backlog selection. Autopilot cannot supply user confirmation of
-requirements or solution.
+`run-task`, which enters in_progress using the version observed for that decision before starting.
+Autopilot cannot supply user confirmation of requirements or solution. An
+explicit request to start a Goal discussion uses the Goal protocol's scoped
+manual execution path. Existing explicit authorization for a fixed task queue
+covers its ready successors without additional per-task authorization.
 
 Ready returns at most 10 candidates by default, or the requested bounded
 `--limit`; it is not a complete backlog. If this page is empty or no candidate
 matches, obtain the additional context actually needed through selected reads,
 the graph, or `daynight task list --allow-agents true --json` as described in the handbook. Distinguish
-completed scope, work awaiting explicit approval, prerequisite-blocked work, other
+completed scope, work lacking execution authorization, prerequisite-blocked work, other
 ongoing work, and insufficient
 candidates. Do not take unrelated work to stay busy or report completion from an
 empty or unrelated bounded page.
@@ -67,13 +71,13 @@ permission already granted for that scope or obtain it, then use
 confirmed in-scope breakdown at the Goal protocol's user-confirmation gates.
 Do not create architecture placeholders or delivery tasks before their gate.
 Delivery registration follows explicit user solution confirmation, and leaves
-proposed tasks pending separate explicit approval. Complete the solution
+todo tasks without starting execution. Complete the solution
 discussion only after the accepted solution and actual breakdown are verified;
 its completion does not start delivery.
 
 Automatic selection never enables `allowAgents` on a task. If the user explicitly
-selects a task for execution, its manual claim path remains available regardless
-of the flag; preserve all approval, prerequisite and authorization checks.
+selects a task or fixed Goal queue for execution, its manual execution path remains available regardless
+of the flag; preserve all prerequisite and authorization checks.
 
 ## Advance serially and accept the scope
 
@@ -83,12 +87,11 @@ separate task. Ordinary CI, review, and merge waits keep that target. After
 task within the same authorized scope. For Goal discussions, stop at each user
 confirmation gate; completing requirements and starting solution discussion
 requires the user's explicit confirmation and direction under the Goal protocol.
-Solution confirmation permits proposed delivery registration, not delivery
-execution. Later delivery selection requires an approved ready todo with complete
-inputs, explicit autopilot activation, and execution authorization. Discussion
-completion satisfies a dependency; it never approves delivery tasks. Explicit
-scoped user approval may cover stated delivery tasks; Goal registration and
-discussion confirmation do not.
+Solution confirmation permits todo delivery registration. Later delivery selection
+requires a ready todo with complete inputs, explicit autopilot activation, and
+execution authorization. Discussion completion satisfies a dependency and grants
+no delivery execution permission. Existing scoped execution authorization
+continues to apply to its stated ready successors.
 
 If `run-task` returns a wait requiring external intervention, preserve its
 current-task checkpoint and report the blocker and required next action. An

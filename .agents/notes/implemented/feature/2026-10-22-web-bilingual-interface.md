@@ -13,6 +13,12 @@ current language.
 
 ## Decision
 
+The [status assignment decision](../architecture/2026-10-24-task-status-assignment.md) owns the current three-state
+protocol. Status journeys use exact registered PUT status writes; current
+inventory is 32 native and 27 container results. The rollout counts below retain
+their original delivery context; repeatable current commands and mappings belong
+to the Web README.
+
 The production entry resolves the initial locale before React rendering, sets
 the initial document language and route title, and mounts one persistent
 `LocaleProvider`. The initial interface used `App`; the
@@ -63,9 +69,9 @@ functional scenarios and native retained five capacity/limit scenarios.
 Authentication and the [Markdown description delivery](../architecture/2026-10-22-task-description-markdown.md)
 later produced twenty functional scenarios per target and twenty-five unique
 native scenarios. The [approval lifecycle](2026-10-22-task-approval-lifecycle.md)
-adds three approval scenarios per target; the later
-[withdrawal decision](2026-10-23-task-unapprove.md) adds one more. The current inventory
-is twenty-four functional per target and twenty-nine native, fifty-three across both targets,
+added three approval scenarios per target; the later
+[withdrawal decision](2026-10-23-task-unapprove.md) added one more. The inventory at that delivery
+was twenty-four functional per target and twenty-nine native, fifty-three across both targets,
 retaining all five capacity/limit cases. The existing single project, one worker, zero retries,
 capacity matrix, strict coverage and cleanup gates remain required. The
 [pipeline decision](../testing/2026-10-21-web-acceptance-pipeline.md) owns phase

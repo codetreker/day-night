@@ -52,21 +52,24 @@ const fixture = async (handler: (request: Request, response: ServerResponse, raw
 };
 
 describe("task commands over HTTP", () => {
-  it.each(["approve", "unapprove", "claim", "complete"] as const)("sends exactly one %s POST after its version read or with a supplied version", async (action) => {
-    const f = await fixture((request, response) => respond(response, request.method === "GET" ? task : { ...task, version: task.version + 1n }));
-    await f.run([action, taskId.toUpperCase()]);
-    expect(f.requests.map(({ method, path: pathname }) => `${method} ${pathname}`)).toEqual([`GET /api/v1/projects/${projectId}`, `GET /api/v1/projects/${projectId}/tasks/${taskId}`, `POST /api/v1/projects/${projectId}/tasks/${taskId}/${action}`]);
-    expect(f.requests.at(-1)!.body).toBe('{"version":9007199254740993}');
+  it.each(["todo", "in_progress", "done"] as const)("sends one %s status PUT after reading or with an exact supplied version", async (status) => {
+    const f = await fixture((request, response) => {
+      const version = request.method === "GET" ? task.version : (parseApiJson(request.body) as { version: bigint }).version;
+      respond(response, request.method === "GET" ? task : { ...task, version, status, ready: status === "todo" });
+    });
+    await f.run(["set-status", taskId.toUpperCase(), status]);
+    expect(f.requests.map(({ method, path: pathname }) => `${method} ${pathname}`)).toEqual([`GET /api/v1/projects/${projectId}`, `GET /api/v1/projects/${projectId}/tasks/${taskId}`, `PUT /api/v1/projects/${projectId}/tasks/${taskId}/status`]);
+    expect(f.requests.at(-1)!.body).toBe(`{"version":9007199254740993,"status":"${status}"}`);
     f.requests.length = 0;
-    await f.run([action, taskId, "--if-version", "9223372036854775807"]);
-    expect(f.requests.map(({ method }) => method)).toEqual(["GET", "POST"]);
-    expect(f.requests.at(-1)!.body).toBe('{"version":9223372036854775807}');
+    await f.run(["set-status", taskId, status, "--if-version", "9223372036854775807"]);
+    expect(f.requests.map(({ method }) => method)).toEqual(["GET", "PUT"]);
+    expect(f.requests.at(-1)!.body).toBe(`{"version":9223372036854775807,"status":"${status}"}`);
   });
 
-  it.each(["approve", "unapprove", "claim", "complete"] as const)("reports an unconfirmed %s after dispatch without retrying", async (action) => {
+  it("reports an unconfirmed status write after dispatch without retrying", async () => {
     const f = await fixture((_request, _response, raw) => { raw.socket.destroy(); });
-    await expect(f.run([action, taskId, "--if-version", "1"])).rejects.toMatchObject({ operation: `task.${action}`, projectId, taskId, outcomeUnconfirmed: true });
-    expect(f.requests.map(({ method }) => method)).toEqual(["GET", "POST"]);
+    await expect(f.run(["set-status", taskId, "done", "--if-version", "1"])).rejects.toMatchObject({ operation: "task.set-status", projectId, taskId, outcomeUnconfirmed: true });
+    expect(f.requests.map(({ method }) => method)).toEqual(["GET", "PUT"]);
     expect(f.context.stdout).not.toHaveBeenCalled();
   });
 
@@ -153,14 +156,14 @@ describe("task commands over HTTP", () => {
       if (request.method === "GET") respond(response, task);
       else respond(response, { error: { code: "version_conflict", message: "Concurrent update", requestId: "task-conflict", details: { taskIds: [taskId] } } }, 409);
     });
-    await expect(f.run(["complete", taskId])).rejects.toMatchObject({ operation: "task.complete", taskId, code: "version_conflict", requestId: "task-conflict", details: { taskIds: [taskId] }, confirmedRefusal: true });
-    expect(f.requests.map(({ method }) => method)).toEqual(["GET", "GET", "POST"]);
+    await expect(f.run(["set-status", taskId, "done"])).rejects.toMatchObject({ operation: "task.set-status", taskId, code: "version_conflict", requestId: "task-conflict", details: { taskIds: [taskId] }, confirmedRefusal: true });
+    expect(f.requests.map(({ method }) => method)).toEqual(["GET", "GET", "PUT"]);
     expect(f.context.stdout).not.toHaveBeenCalled();
   });
 
   it("renders complete graph data and exposes graph limit refusal details", async () => {
     let limit = false;
-    const graph: TaskGraph = { observedAt: time, project, summary: { total: 2, proposed: 0, todo: 2, inProgress: 0, done: 0, ready: 1, blocked: 1 }, tasks: [
+    const graph: TaskGraph = { observedAt: time, project, summary: { total: 2, todo: 2, inProgress: 0, done: 0, ready: 1, blocked: 1 }, tasks: [
       { id: taskId, titlePreview: "T".repeat(160), titleTruncated: true, allowAgents: false, status: "todo", ready: false, dependsOn: [otherId], externalDependsOn: [], blockedBy: [otherId], startedAt: null, completedAt: null, createdAt: time, updatedAt: time },
       { id: otherId, titlePreview: "Dependency", titleTruncated: false, allowAgents: false, status: "todo", ready: true, dependsOn: [], externalDependsOn: [], blockedBy: [], startedAt: null, completedAt: null, createdAt: time, updatedAt: time },
     ] };
@@ -187,7 +190,7 @@ describe("task commands over HTTP", () => {
     let entered: () => void = () => {};
     const ready = new Promise<void>((resolve) => { entered = resolve; });
     const f = await fixture((_request, response) => { response.writeHead(200, { "Content-Type": "application/json" }); response.write("{"); entered(); });
-    const pending = f.run(["complete", taskId]);
+    const pending = f.run(["set-status", taskId, "done"]);
     await ready; f.signals.emit("SIGINT");
     await expect(pending).rejects.toMatchObject({ operation: "task.show", projectId, taskId, cause: { kind: "cancelled" } });
     expect(f.requests.some(({ method }) => method === "POST")).toBe(false);

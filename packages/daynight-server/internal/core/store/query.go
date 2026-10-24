@@ -2,6 +2,7 @@ package store
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/codetreker/daynight/packages/daynight-server/internal/core"
@@ -86,6 +87,9 @@ func scanTask(row pgx.Row) (core.Task, error) {
 		&task.Version, &task.CreatedAt, &task.UpdatedAt, &task.StartedAt, &task.CompletedAt, &task.AllowAgents, &properties, &task.DependsOn, &task.ExternalDependsOn, &task.BlockedBy, &task.Ready)
 	if err != nil {
 		return core.Task{}, err
+	}
+	if !task.Status.Valid() {
+		return core.Task{}, fmt.Errorf("stored task status is invalid")
 	}
 	task.Properties, err = taskproperties.Decode([]byte(properties))
 	if err != nil {

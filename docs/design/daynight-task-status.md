@@ -1,12 +1,12 @@
 # 任务三状态与统一状态修改架构
 
-状态：已确认三状态目标的设计，业务实现待交付。本文定义协调切换后的结构；当前代码仍有旧动作与旧状态。[需求 TS1–TS5](../spec/daynight-task-status.md)拥有完整可观察行为。
+状态：已实现。本文定义三状态模型、统一状态资源与跨端写入机制。[需求 TS1–TS5](../spec/daynight-task-status.md)拥有完整可观察行为。
 
-状态与事务机制源码依据为 `18c794918ef0506a04bf294dad9cd8058ef2696b`；详情头部继承 `7b426bc0b632e57bb80dea0d5aca35b1e8f71a6e` 已交付的紧凑布局。[决策记录](../../.agents/notes/proposed/architecture/2026-10-24-task-status-assignment.md)保存选择与代价；[交互原型](mockups/task-status/index.html)演示生产样式的三状态交互。任务拆分与执行收据由 Daynight 所有。
+状态与事务机制源码依据为 `18c794918ef0506a04bf294dad9cd8058ef2696b`；详情头部继承 `7b426bc0b632e57bb80dea0d5aca35b1e8f71a6e` 已交付的紧凑布局。[决策记录](../../.agents/notes/implemented/architecture/2026-10-24-task-status-assignment.md)保存选择与代价；[交互原型](mockups/task-status/index.html)演示生产样式的三状态交互。任务拆分与执行收据由 Daynight 所有。
 
 ## 问题与结构选择
 
-四个公开动作把状态修改绑定到有限前态，并让任务审批成为单独阶段。目标结构仅保留 todo、in_progress、done，默认 todo，任意状态对通过一个 setter 表达。旧 proposed 数据必须迁移，不以解码回退或兼容分支留在运行时。
+原四个公开动作把状态修改绑定到有限前态，并让任务审批成为单独阶段。当前结构仅保留 todo、in_progress、done，默认 todo，任意状态对通过一个 setter 表达。旧 proposed 数据必须迁移，不以解码回退或兼容分支留在运行时。
 
 现有 [task_lifecycle.go](https://github.com/codetreker/daynight/blob/18c794918ef0506a04bf294dad9cd8058ef2696b/packages/daynight-server/internal/service/task_lifecycle.go)已将动作汇入一个事务函数；[Tasks.write](https://github.com/codetreker/daynight/blob/18c794918ef0506a04bf294dad9cd8058ef2696b/packages/daynight-server/internal/service/task.go#L139-L176)拥有锁后成员核验、changed=false 返回和错误传播。保留这些机制，替换公开契约、前态规则与旧状态读取模型。
 
@@ -38,7 +38,7 @@ flowchart TD
 
 ## 历史数据、默认值与读取协议
 
-在现有迁移链后追加迁移；当前下一个编号为 013，执行前核对主线是否已有新编号。保留 007/008 及其他已应用文件和 checksum。迁移内容为：
+迁移 `013_task_status_assignment.sql` 在现有迁移链后执行。保留 007/008 及其他已应用文件和 checksum。迁移内容为：
 
 ```sql
 ALTER TABLE tasks ALTER COLUMN status SET DEFAULT 'todo';
@@ -58,7 +58,7 @@ ALTER TABLE tasks ADD CONSTRAINT tasks_status_check
 
 转换行的状态与 ready 语义真实改变，所以 version 和 updatedAt 必须变化，使迁移前的审阅版本失效。迁移保留已有起止事实、createdAt、allowAgents、属性、Markdown、PR、全部边及外部分类和附件；非 proposed 行全部保留。该归类不调用运行时“退回 todo 清空时间”规则。再次迁移不重复转换或修改 ledger 时间。
 
-移除运行时 TaskProposed、创建默认 proposed、status union/enum 和 summary.proposed。图统计满足：
+运行时状态类型、创建默认值和读取模型仅包含三状态，summary 不返回 proposed。图统计满足：
 
 ```text
 total = todo + inProgress + done

@@ -25,12 +25,12 @@ const render = createLocaleRender('zh-CN');
 const time = '2026-10-22T00:00:00Z';
 const graph: GraphData = { observedAt: "2026-10-20T12:00:00Z",
   project: { settings: { version: 1n, executionWarningMinutes: 60 }, id: 'project', name: 'Project', repoUrl: '', createdAt: time, updatedAt: time },
-  summary: { total: 5, proposed: 1, todo: 1, inProgress: 0, done: 3, ready: 1, blocked: 0 },
+  summary: { total: 5, todo: 2, inProgress: 0, done: 3, ready: 2, blocked: 0 },
   tasks: [
     { allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null, id: 'A', titlePreview: 'A', titleTruncated: false, status: 'done', dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
     { allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null, id: 'B', titlePreview: 'B', titleTruncated: false, status: 'done', dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
     { allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null, id: 'C', titlePreview: 'C', titleTruncated: false, status: 'done', dependsOn: ['B'], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
-    { allowAgents: false, externalDependsOn: ['C'], startedAt: null, completedAt: null, id: 'D', titlePreview: 'D', titleTruncated: false, status: 'proposed', dependsOn: ['A', 'C'], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
+    { allowAgents: false, externalDependsOn: ['C'], startedAt: null, completedAt: null, id: 'D', titlePreview: 'D', titleTruncated: false, status: 'todo', dependsOn: ['A', 'C'], blockedBy: [], ready: true, createdAt: time, updatedAt: time },
     { allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null, id: 'X', titlePreview: 'X', titleTruncated: false, status: 'todo', dependsOn: ['C'], blockedBy: [], ready: true, createdAt: time, updatedAt: time },
   ],
 };
@@ -59,7 +59,7 @@ describe('graph-local prerequisite inspection', () => {
     expect(card(view.container, 'X')).toBeNull();
     fireEvent.click(body(view.container, 'D'));
     expect(card(view.container, 'D')).toHaveAttribute('data-inspection', 'selected');
-    expect(card(view.container, 'D')).toHaveClass('task-node-proposed');
+    expect(card(view.container, 'D')).toHaveClass('task-node-todo');
     for (const id of ['A', 'B', 'C']) {
       expect(card(view.container, id)).toHaveAttribute('data-inspection', 'prerequisite');
       expect(card(view.container, id)).toHaveClass('task-node-done');
@@ -145,7 +145,7 @@ describe('graph-local prerequisite inspection', () => {
     expect(body(view.container, 'D')).toHaveAttribute('aria-pressed', 'true');
     expect(card(view.container, 'A')).toHaveAttribute('data-inspection', 'prerequisite');
     body(view.container, 'D').focus();
-    const removed = buildGraphIndex({ ...graph, tasks: graph.tasks.filter((task) => task.id !== 'D'), summary: { ...graph.summary, total: 4, proposed: 0 } });
+    const removed = buildGraphIndex({ ...graph, tasks: graph.tasks.filter((task) => task.id !== 'D'), summary: { ...graph.summary, total: 4, todo: 1, ready: 1 } });
     view.rerender(<TaskGraph index={removed} rootId="A" onOpenTask={noop} />);
     await ready(view.container, 1);
     expect(screen.getByRole('button', { name: '全屏查看' })).toHaveFocus();

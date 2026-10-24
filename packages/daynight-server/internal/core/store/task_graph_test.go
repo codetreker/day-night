@@ -23,10 +23,10 @@ func TestTaskGraphProjectionAndUnicodeBounds(t *testing.T) {
 	pending := queryTask(t, s, project.ID, 11, core.TaskTodo)
 	blocked := queryTask(t, s, project.ID, 12, core.TaskTodo, pending.ID, done.ID)
 	active := queryTask(t, s, project.ID, 13, core.TaskInProgress, done.ID)
-	proposed := queryTask(t, s, project.ID, 14, core.TaskProposed, done.ID)
-	proposedBlocked := queryTask(t, s, project.ID, 15, core.TaskProposed, pending.ID)
-	titles := []string{strings.Repeat("汉", 160), strings.Repeat("😀", 161), strings.Repeat("e\u0301", 81), "Plain title", "Proposed", "Proposed with prerequisite"}
-	for index, task := range []core.Task{done, pending, blocked, active, proposed, proposedBlocked} {
+	waiting := queryTask(t, s, project.ID, 14, core.TaskTodo, done.ID)
+	waitingBlocked := queryTask(t, s, project.ID, 15, core.TaskTodo, pending.ID)
+	titles := []string{strings.Repeat("汉", 160), strings.Repeat("😀", 161), strings.Repeat("e\u0301", 81), "Plain title", "Waiting", "Waiting with prerequisite"}
+	for index, task := range []core.Task{done, pending, blocked, active, waiting, waitingBlocked} {
 		mustQueryExec(t, s, "UPDATE tasks SET title = $1, description = repeat('large description', 100000) WHERE id = $2", titles[index], task.ID)
 	}
 	stamp := time.Date(2026, 1, 2, 3, 4, 5, 123456000, time.UTC)
@@ -58,10 +58,10 @@ func TestTaskGraphProjectionAndUnicodeBounds(t *testing.T) {
 				t.Fatalf("bounded projection %d: %#v", index, task)
 			}
 		}
-		if tasks[0].Ready || !tasks[1].Ready || tasks[2].Ready || tasks[3].Ready || tasks[4].Ready || tasks[5].Ready ||
+		if tasks[0].Ready || !tasks[1].Ready || tasks[2].Ready || tasks[3].Ready || !tasks[4].Ready || tasks[5].Ready ||
 			!slices.Equal(tasks[2].DependsOn, []string{done.ID, pending.ID}) ||
 			!slices.Equal(tasks[2].BlockedBy, []string{pending.ID}) || len(tasks[3].BlockedBy) != 0 || len(tasks[4].BlockedBy) != 0 ||
-			!slices.Equal(tasks[5].BlockedBy, []string{pending.ID}) || tasks[4].Status != core.TaskProposed || tasks[5].Status != core.TaskProposed {
+			!slices.Equal(tasks[5].BlockedBy, []string{pending.ID}) || tasks[4].Status != core.TaskTodo || tasks[5].Status != core.TaskTodo {
 			t.Fatalf("graph derived fields: %#v", tasks)
 		}
 		empty, err := snapshot.TaskGraphTasks(ctx, queryID(999), 160)

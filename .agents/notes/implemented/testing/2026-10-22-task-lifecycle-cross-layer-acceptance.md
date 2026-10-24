@@ -13,8 +13,8 @@ Agent decisions.
 
 ## Decision
 
-The existing acceptance owners provide complementary evidence for the explicit
-[approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md). The Go
+The existing acceptance owners provide complementary evidence for the
+[three-state setter](../architecture/2026-10-24-task-status-assignment.md). The Go
 command fixture retains its built race binary, isolated PostgreSQL schema,
 project-row barriers, structured request logs and restart/cleanup ownership. The
 production Web runner reuses its existing packed CLI, native and container
@@ -30,79 +30,64 @@ authorization bypass or production transition is added.
 
 ### Historical migration and real CLI processes
 
-`installed_cli_pre_lifecycle_migration_restart` prepares a new isolated schema
-with the checked-in SQL migrations through 006 and their exact raw-byte checksum
-ledger. It captures the original ledger and todo/in_progress/done rows before
-starting the current built service. Production startup applies 007 and 008.
-The logged-in nonmember first observes 404 for the legacy project. The fixture
-then explicitly provisions admin membership for the actual `/api/v1/me` user,
-verifies the members API and confirms the raw historical task rows remain
-unchanged. This is authorized fixture preparation; startup does not automatically
-adopt legacy resources or invent an identity. Packed CLI show/list/ready/graph
-reads verify preserved historical resources and
-new proposed creation; explicit actions exercise blocked refusal and the complete
-prerequisite/dependent lifecycle. Actual restart compares old rows and ledger,
-new states, metadata and readable attachment contents again. The fixture never
-starts the current schema and then rewrites its history to look old.
+`installed_cli_v12_status_migration_restart` prepares a genuine isolated v12
+schema using checked-in migrations 001–012 and records raw rows and checksum
+ledgers before starting the built service. Production startup applies 013.
+Only proposed rows become todo with version/update-time advancement; all other
+fields, timing, permission, properties, ordinary/external edges and attachment
+bytes survive. Non-proposed rows remain unchanged. Default/CHECK conversion,
+overflow rollback and restart idempotence are independent assertions. Explicit
+fixture membership establishes authorized access without startup adoption or
+rewritten migration history. The installed CLI reads the new state/defaults and
+refusals through normal authenticated HTTP.
 
-`installed_cli_same_version_claim` and
-`installed_cli_same_version_dependency_edit_and_claim` start two installed CLI
-processes with the same observed version. The existing real project lock and
-observed database waiters hold both mutations before release. Correlated request
-logs and process results require one success, one visible version conflict and
-no automatic retry. Complete snapshots distinguish the permitted winner states,
-exact version progression, timestamp behavior, unchanged metadata and attachment
-bytes. In-progress and done tasks cannot acquire an unfinished prerequisite. These process
-observations supplement deterministic service/HTTP interleaving tests; one
-observed scheduler outcome does not prove every interleaving.
+Installed same-version races separately cover start, done, distinct targets,
+dependency-edit/start and same-state requests. Two genuine CLI processes wait
+behind project-row locks with observed database waiters. Changed races require
+one commit and one visible version_conflict; current same-state requests both
+succeed with no stored change. Correlated logs, process exits, full snapshots and
+attachment bytes prove exact revision/timing effects and no hidden retry.
+Native service/HTTP cases separately order ordinary/external reopening against
+successor start/done. One observed process scheduling outcome does not prove
+every interleaving.
 
 ### One task graph across CLI and browser
 
-The existing `task-approval`, `task-approval-conflicts` and
-`task-approval-recovery` annotations include the same-data lifecycle journey,
-reviewed-version competition and response/identity recovery. The installed CLI
-creates an ordinary prerequisite/dependent graph with meaningful descriptions,
-PR references and attachment bytes. The production Details control opens the
-ordinary graph task; body activation retains prerequisite inspection. The browser
-approves the blocked dependent; CLI reads verify todo, blockedBy and readiness. CLI progression of the
-prerequisite unlocks dependent claim/completion; that derived readiness change
-preserves the dependent's own version and timestamp. Graph/detail/list checks
-observe the same resources. Completion visibility and graph browsing state
-remain part of the browser oracle.
+Production annotations task-status, task-status-conflicts, task-status-recovery
+and task-status-transitions use the packed CLI, real authenticated service,
+PostgreSQL and browser on the same tasks. They cover arbitrary transitions,
+direct completion, reopening, current same-state +0, stale same-state conflicts,
+shared status/permission gating, exact +1 changes and material preservation.
+Prerequisite and active/done dependent refusals include ordinary/external edges.
+Derived readiness can change without changing the dependent's own version.
+Graph/detail/list readback, complete descriptions versus list omission, PRs,
+timing, classifications and raw attachment bytes remain separate observations.
 
-A real CLI metadata update makes an already-reviewed Web version stale. A real
-CLI/Web same-version approval competition permits one commit and exposes the
-losing version conflict without another automatic mutation. SPA cross-project
-navigation, task switching, closure/reopening and pending activation retain the
-existing identity and request-count checks. The later
-[withdrawal decision](../feature/2026-10-23-task-unapprove.md) adds `task-unapproval`
-for ready/blocked withdrawal, preserved metadata/attachment bytes, title-row
-confirmations, cancellation, invalidation, reapproval and committed-response loss.
-Only registered project/task approve or unapprove writes and exact fixture file
-writes are admitted. The original three journeys keep their source-bound receipts;
-the new scenario requires its own current-source run.
+Only registered project/task status PUTs with exact request counts and declared
+fixture-file mutations are admitted. CLI metadata changes invalidate reviewed
+Web versions; new writes require another decision. Pending operations retain
+ownership across SPA navigation, detail closure and identity boundaries. Unknown
+outcomes first confirm an actual service commit and then drop its browser response;
+failed reconciliation GET is controlled separately. GET-only recovery never
+resubmits or attributes observed state to the uncertain request. Large-int64
+cases use actual GET/PUT digits and database results independently of multi-hop
+version growth. Graph failures use owned real failure paths. Redacting request
+forwarding preserves original method, headers, body and Origin validation.
 
-The SQL-seeded large-int64 approval is a separate case inside those existing
-annotations: a maximum version cannot support an arbitrary multi-hop sequence.
-Its actual GET/POST digits and database result remain the oracle. Response loss
-is injected after a real service commit; graph-read failure uses the owned real
-failure path. Timing barriers and browser response handling are declared
-controls, not substitutes for actual state-changing service/database requests.
-Forwarded browser requests use the existing credential-redacting authenticated
-API wrapper, preserve original request/CSRF fields and return actual status,
-headers and body. Action evidence retains identities and outcomes without tokens
-or private configuration contents. Authentication retains its own management
-annotations; this extension changes only the three existing approval annotations.
-The production native/container inventory, capacity topology, strict coverage,
-performance, one-worker/no-retry and cleanup gates remain unchanged.
+Production inventory remains 27 functional scenarios per target plus five native
+capacity/limit cases (32 native, 27 container). Source-bound runtime receipts,
+strict coverage, performance, one-worker/no-retry and cleanup gates are unchanged.
+Transport barriers and offline fixtures establish their declared boundaries;
+they do not replace actual status-changing database requests.
 
 ### Installed instructions and source attribution
 
 The installed skill fixture validates all six resources, YAML frontmatter,
 contained prose references and content digests on the packed installation and
 published target copies. Fenced task examples remain examples. Bounded
-cross-reference instruction contracts check registration, proposed run requests without approval, explicit approval,
-claim, resume, conflict, unknown outcome, open-PR retention, accepted completion
+cross-reference instruction contracts check todo registration without execution, explicit
+execution scope, ready successors, manual fixed queues versus permission-filtered discovery,
+versioned status setting, resume, conflict, unknown outcome, open-PR retention, accepted completion
 and shared Markdown/Goal ownership. Their receipt identifies the input,
 obligation and resource/section evidence, with agentExecution false. Existing
 native terminal installation and byte-copy checks remain distinct. Artifact

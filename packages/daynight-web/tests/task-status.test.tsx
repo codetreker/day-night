@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import userEvent from '@testing-library/user-event';
-import { ApiError, approveTask, checkAttachmentPreview, getTask, getTaskGraph, listAttachments, putAttachment, readAttachmentText } from '../src/api/client';
+import { ApiError, setTaskStatus, checkAttachmentPreview, getTask, getTaskGraph, listAttachments, putAttachment, readAttachmentText } from '../src/api/client';
 import type { TaskDetail, TaskGraph } from '../src/api/types';
 import { App } from '../src/app/App';
 import { ProjectPage } from '../src/features/projects/ProjectPage';
@@ -9,20 +9,21 @@ import { renderWithLocale } from './helpers/renderWithLocale';
 import { installGraphMeasurements } from './graph-measurements';
 
 vi.mock('../src/api/client', async (original) => ({ ...await original<typeof import('../src/api/client')>(),
-  getTask: vi.fn(), getTaskGraph: vi.fn(), approveTask: vi.fn(), listAttachments: vi.fn(), putAttachment: vi.fn(),
+  getTask: vi.fn(), getTaskGraph: vi.fn(), setTaskStatus: vi.fn(), listAttachments: vi.fn(), putAttachment: vi.fn(),
   readAttachmentText: vi.fn(), checkAttachmentPreview: vi.fn(),
 }));
-const confirmApproval = (button: HTMLElement) => {
+const confirmStatus = (button: HTMLElement) => {
   fireEvent.click(button);
-  const confirmation = screen.getByRole('alertdialog', { name: 'Approve task' });
-  fireEvent.click(within(confirmation).getByRole('button', { name: 'Confirm approval' }));
+  fireEvent.click(screen.getByRole('menuitemradio', { name: 'In progress' }));
+  const confirmation = screen.getByRole('alertdialog', { name: 'Set task status' });
+  fireEvent.click(within(confirmation).getByRole('button', { name: 'Confirm status' }));
 };
 const id = (value: number) => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
 const project = id(100); const parent = id(1); const child = id(2); const standalone = id(3);
 const time = '2026-10-22T00:00:00Z';
 const seed = (number: number, dependsOn: readonly string[] = []): TaskDetail => ({ allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null, id: id(number), projectId: project,
   version: 9007199254740993n, title: `Task ${number}`, description: `Complete description ${number}`, properties: { pullRequests: [] },
-  status: 'proposed', dependsOn, blockedBy: dependsOn, ready: false, createdAt: time, updatedAt: time });
+  status: 'todo', dependsOn, blockedBy: [], ready: true, createdAt: time, updatedAt: time });
 let records: Map<string, TaskDetail>;
 const graph = (): TaskGraph => {
   const tasks = [...records.values()].map((task) => {
@@ -31,14 +32,14 @@ const graph = (): TaskGraph => {
       blockedBy, ready: task.status === 'todo' && blockedBy.length === 0, createdAt: time, updatedAt: task.updatedAt };
   });
   return { observedAt: "2026-10-20T12:00:00Z", project: { settings: { version: 1n, executionWarningMinutes: 60 }, id: project, name: 'Approval project', repoUrl: 'https://example.com/repo', createdAt: time, updatedAt: time }, tasks,
-    summary: { total: tasks.length, proposed: tasks.filter((task) => task.status === 'proposed').length,
+    summary: { total: tasks.length, 
       todo: tasks.filter((task) => task.status === 'todo').length, inProgress: tasks.filter((task) => task.status === 'in_progress').length, done: tasks.filter((task) => task.status === 'done').length,
       ready: tasks.filter((task) => task.ready).length, blocked: tasks.filter((task) => task.status === 'todo' && !task.ready).length } };
 };
 const commit = (taskId = child): TaskDetail => {
   const prior = records.get(taskId)!;
-  const result: TaskDetail = { ...prior, status: 'todo', version: prior.version + 1n,
-    ready: prior.blockedBy.length === 0, updatedAt: '2026-10-22T00:01:00Z' };
+  const result: TaskDetail = { ...prior, status: 'in_progress', version: prior.version + 1n, startedAt: '2026-10-22T00:01:00Z',
+    ready: false, updatedAt: '2026-10-22T00:01:00Z' };
   records.set(taskId, result); return result;
 };
 const deferred = <T,>() => {
@@ -50,10 +51,10 @@ let root: HTMLDivElement;
 beforeEach(() => {
   installGraphMeasurements();
   root = document.createElement('div'); root.id = 'root'; document.body.append(root);
-  records = new Map([seed(1), seed(2, [parent]), seed(3)].map((task) => [task.id, task]));
+  records = new Map([{ ...seed(1), status: 'done' as const, ready: false }, seed(2, [parent]), seed(3)].map((task) => [task.id, task]));
   vi.mocked(getTaskGraph).mockReset().mockImplementation(async () => graph());
   vi.mocked(getTask).mockReset().mockImplementation(async (_project, taskId) => records.get(taskId)!);
-  vi.mocked(approveTask).mockReset();
+  vi.mocked(setTaskStatus).mockReset();
   vi.mocked(listAttachments).mockReset().mockResolvedValue({ items: [], nextCursor: null });
   vi.mocked(putAttachment).mockReset();
   vi.mocked(readAttachmentText).mockReset().mockResolvedValue('Selected attachment content');
@@ -69,28 +70,28 @@ const openChild = async () => {
   return dialog;
 };
 
-describe('approval in shared production task details', () => {
-  it.each(['approval', 'automatic poll'] as const)('keeps another task Markdown-linked attachment draft and upload mounted during a background detail refresh triggered by %s', async (trigger) => {
+describe('status in shared production task details', () => {
+  it.each(['status', 'automatic poll'] as const)('keeps another task Markdown-linked attachment draft and upload mounted during a background detail refresh triggered by %s', async (trigger) => {
     if (trigger === 'automatic poll') vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     const mutation = deferred<TaskDetail>();
     const refresh = deferred<TaskDetail>();
     const kept = { path: 'kept.txt', contentType: 'text/plain', sizeBytes: 27, createdAt: time, updatedAt: time };
     const uploaded = { ...kept, path: 'drafts/new.txt', sizeBytes: 18 };
     const upload = deferred<typeof uploaded>();
-    vi.mocked(approveTask).mockReturnValueOnce(mutation.promise);
+    vi.mocked(setTaskStatus).mockReturnValueOnce(mutation.promise);
     vi.mocked(putAttachment).mockReturnValueOnce(upload.promise);
     vi.mocked(listAttachments).mockResolvedValue({ items: [kept], nextCursor: null });
     records.set(standalone, { ...records.get(standalone)!, description: '# Task materials\n\n[Selected attachment](kept.txt)' });
     let otherReads = 0;
     vi.mocked(getTask).mockImplementation(async (_project, taskId) => taskId === standalone && ++otherReads === 2 ? refresh.promise : records.get(taskId)!);
     mount(); let dialog = await openChild();
-    confirmApproval(within(dialog).getByRole('button', { name: 'Approve task' }));
+    confirmStatus(within(dialog).getByRole('button', { name: 'To do' }));
     fireEvent.click(within(dialog).getByRole('button', { name: 'Close task details' }));
     fireEvent.click(screen.getByRole('tab', { name: 'Standalone tasks' }));
     fireEvent.click(screen.getByRole('button', { name: /Task 3/ }));
     dialog = screen.getByRole('dialog');
     await within(dialog).findByRole('heading', { name: 'Task 3' });
-    const approvalButton = within(dialog).getByRole('button', { name: 'Approve task' });
+    const statusButton = within(dialog).getByRole('button', { name: 'To do' });
     const tab = within(dialog).getByRole('tab', { name: 'Attachments' });
     fireEvent.click(within(dialog).getByRole('link', { name: 'Selected attachment' }));
     expect(tab).toHaveAttribute('aria-selected', 'true');
@@ -109,7 +110,7 @@ describe('approval in shared production task details', () => {
     const changed = { ...prior, title: 'Task 3 revised', description: 'Fresh task metadata', version: prior.version + 1n, updatedAt: '2026-10-22T00:02:00Z' };
     records.set(standalone, changed);
     await act(async () => {
-      if (trigger === 'approval') mutation.resolve(commit());
+      if (trigger === 'status') mutation.resolve(commit());
       else await vi.advanceTimersByTimeAsync(5_000);
     });
     await waitFor(() => expect(otherReads).toBe(2));
@@ -124,14 +125,14 @@ describe('approval in shared production task details', () => {
     expect(signal.aborted).toBe(false); expect(putAttachment).toHaveBeenCalledTimes(1);
     expect(vi.mocked(putAttachment).mock.calls[0]?.[3]).toBe(file);
     expect(within(dialog).getByRole('heading', { name: 'Task 3' })).toBeVisible();
-    expect(approvalButton).toBeDisabled();
+    expect(statusButton).toBeDisabled();
     expect(dialog.querySelector('.task-detail-stale')).toBeNull();
-    expect(within(dialog).getByText('Showing previously loaded task details. Approval actions are unavailable until the current details can be confirmed.')).toBeVisible();
+    expect(within(dialog).getByText('Showing previously loaded task details. Task changes are unavailable until the current details can be confirmed.')).toBeVisible();
     await act(async () => { refresh.resolve(changed); });
     await within(dialog).findByRole('heading', { name: 'Task 3 revised' });
     expect(dialog.querySelector('.task-attachments')).toBe(attachments); expect(tab).toHaveFocus();
     expect(input.files?.[0]).toBe(file); expect(path).toHaveValue('drafts/new.txt'); expect(signal.aborted).toBe(false);
-    expect(approvalButton).toBeEnabled(); expect(selection).toHaveAttribute('aria-pressed', 'true');
+    expect(statusButton).toBeEnabled(); expect(selection).toHaveAttribute('aria-pressed', 'true');
     expect(vi.mocked(listAttachments).mock.calls.filter((call) => call[1] === standalone)).toHaveLength(1);
     expect(within(dialog).getByText('Selected attachment content', { selector: 'pre' })).toBe(preview);
     vi.mocked(listAttachments).mockResolvedValue({ items: [kept, uploaded], nextCursor: null });
@@ -140,7 +141,7 @@ describe('approval in shared production task details', () => {
     expect(putAttachment).toHaveBeenCalledTimes(1);
   });
 
-  it('reconciles an uncertain approval again after a not-found detail response removes the cached panels', async () => {
+  it('reconciles an uncertain status again after a not-found detail response removes the cached panels', async () => {
     const original = new ApiError('network');
     const missing = new ApiError('server', 404, 'not_found', 'lost-detail-reconciliation');
     let reads = 0;
@@ -148,45 +149,45 @@ describe('approval in shared production task details', () => {
       if (taskId === child && ++reads === 2) throw missing;
       return records.get(taskId)!;
     });
-    vi.mocked(approveTask).mockRejectedValueOnce(original);
+    vi.mocked(setTaskStatus).mockRejectedValueOnce(original);
     mount(); const dialog = await openChild();
-    confirmApproval(within(dialog).getByRole('button', { name: 'Approve task' }));
+    confirmStatus(within(dialog).getByRole('button', { name: 'To do' }));
     const failed = await within(dialog).findByRole('heading', { name: 'Task details could not be loaded' });
     const alert = within(dialog).getByRole('alert', { name: failed.textContent! });
     expect(alert).toHaveTextContent('This task can no longer be read. Refresh the task graph.');
     expect(alert).toHaveTextContent('lost-detail-reconciliation');
-    const operation = within(dialog).getByRole('region', { name: 'Task approval' });
-    expect(operation).toHaveTextContent('The approval operation outcome is unknown. Check the current task state before another operation.');
-    expect(operation).toHaveTextContent('The approval operation could not reach a confirmed response from the service.');
-    expect(operation).toHaveTextContent('The current task state could not be confirmed. Approval actions remain unavailable until it can be read.');
+    const operation = within(dialog).getByRole('region', { name: 'Task status' });
+    expect(operation).toHaveTextContent('The status request outcome is unknown. Check the current task state before another operation.');
+    expect(operation).toHaveTextContent('The status request did not receive a confirmed response from the service.');
+    expect(operation).toHaveTextContent('The current task state could not be read. Task changes remain unavailable until it can be read.');
     expect(operation).toHaveTextContent('The task or project is no longer available.');
     expect(operation).toHaveTextContent('lost-detail-reconciliation');
     expect(within(operation).getByRole('button', { name: 'Check task state' })).toBeEnabled();
-    expect(within(dialog).queryByRole('button', { name: 'Approve task' })).toBeNull();
-    expect(operation.querySelector('.task-approval-description')).toBeNull();
+    expect(within(dialog).queryByRole('button', { name: 'To do' })).toBeNull();
+    expect(operation.querySelector('.task-status-description')).toBeNull();
     expect(within(dialog).queryByRole('heading', { name: 'Task 2' })).toBeNull();
     expect(within(dialog).queryByText('Complete description 2')).toBeNull();
     expect(dialog.querySelector('.task-detail-panels')).toBeNull();
     fireEvent.click(within(alert).getByRole('button', { name: 'Retry details' }));
     await within(dialog).findByRole('heading', { name: 'Task 2' });
     expect(reads).toBe(4);
-    expect(approveTask).toHaveBeenCalledTimes(1);
-    expect(within(dialog).getByRole('button', { name: 'Approve task' })).toBeEnabled();
-    expect(within(dialog).getByText('The approval operation could not reach a confirmed response from the service.')).toBeVisible();
+    expect(setTaskStatus).toHaveBeenCalledTimes(1);
+    expect(within(dialog).getByRole('button', { name: 'To do' })).toBeEnabled();
+    expect(within(dialog).getByText('The status request did not receive a confirmed response from the service.')).toBeVisible();
   });
 
-  it('owns pending approval across real App project routes and isolates its late result from the current project', async () => {
+  it('owns pending status across real App project routes and isolates its late result from the current project', async () => {
     const otherProject = id(200); const otherTask = id(4);
     const other = { ...seed(4), projectId: otherProject };
     const otherGraph: TaskGraph = { observedAt: "2026-10-20T12:00:00Z",
       project: { ...graph().project, id: otherProject, name: 'Other project' },
-      tasks: [{ allowAgents: other.allowAgents, externalDependsOn: other.externalDependsOn, startedAt: null, completedAt: null, id: otherTask, titlePreview: other.title, titleTruncated: false, status: 'proposed',
-        dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time }],
-      summary: { total: 1, proposed: 1, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 },
+      tasks: [{ allowAgents: other.allowAgents, externalDependsOn: other.externalDependsOn, startedAt: null, completedAt: null, id: otherTask, titlePreview: other.title, titleTruncated: false, status: 'todo',
+        dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time }],
+      summary: { total: 1, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 },
     };
     vi.mocked(getTaskGraph).mockImplementation(async (projectId) => projectId === project ? graph() : otherGraph);
     vi.mocked(getTask).mockImplementation(async (projectId, taskId) => projectId === project ? records.get(taskId)! : other);
-    const mutation = deferred<TaskDetail>(); vi.mocked(approveTask).mockReturnValueOnce(mutation.promise);
+    const mutation = deferred<TaskDetail>(); vi.mocked(setTaskStatus).mockReturnValueOnce(mutation.promise);
     window.history.replaceState(null, '', `/projects/${project}`);
     renderWithLocale(<App />, { locale: 'en', container: root });
     const navigateProject = async (projectId: string, name: string) => {
@@ -203,16 +204,16 @@ describe('approval in shared production task details', () => {
     const close = (dialog: HTMLElement) => fireEvent.click(within(dialog).getByRole('button', { name: 'Close task details' }));
     await screen.findByRole('heading', { name: 'Approval project' });
     let dialog = await openStandalone('Task 3');
-    confirmApproval(within(dialog).getByRole('button', { name: 'Approve task' }));
+    confirmStatus(within(dialog).getByRole('button', { name: 'To do' }));
     close(dialog);
     await navigateProject(otherProject, 'Other project');
     dialog = await openStandalone('Task 4');
-    expect(within(dialog).getByRole('button', { name: 'Approve task' })).toBeEnabled();
+    expect(within(dialog).getByRole('button', { name: 'To do' })).toBeEnabled();
     close(dialog);
     await navigateProject(project, 'Approval project');
     dialog = await openStandalone('Task 3');
-    expect(within(dialog).getByRole('button', { name: 'Submitting…' })).toBeDisabled();
-    expect(approveTask).toHaveBeenCalledTimes(1);
+    expect(within(dialog).getByRole('button', { name: 'To do' })).toBeDisabled();
+    expect(setTaskStatus).toHaveBeenCalledTimes(1);
     expect(vi.mocked(getTask).mock.calls.filter(([projectId, taskId]) => projectId === project && taskId === standalone)).toHaveLength(1);
     close(dialog);
     await navigateProject(otherProject, 'Other project');
@@ -220,45 +221,45 @@ describe('approval in shared production task details', () => {
     const otherGraphCalls = vi.mocked(getTaskGraph).mock.calls.filter(([projectId]) => projectId === otherProject).length;
     await act(async () => { mutation.resolve(commit(standalone)); });
     expect(within(dialog).getByRole('heading', { name: 'Task 4' })).toBeVisible();
-    expect(within(dialog).getByText('Proposed', { selector: '.task-detail-status' })).toBeVisible();
-    expect(within(dialog).getByRole('button', { name: 'Approve task' })).toBeEnabled();
+    expect(within(dialog).getByRole('button', { name: 'To do' })).toBeVisible();
+    expect(within(dialog).getByRole('button', { name: 'To do' })).toBeEnabled();
     expect(vi.mocked(getTaskGraph).mock.calls.filter(([projectId]) => projectId === otherProject)).toHaveLength(otherGraphCalls);
     close(dialog);
     await navigateProject(project, 'Approval project');
     dialog = await openStandalone('Task 3');
-    expect(within(dialog).getByText('To do', { selector: '.task-detail-status' })).toBeVisible();
-    expect(within(dialog).getByText('Approval confirmed.')).toBeVisible();
-    expect(within(dialog).queryByRole('button', { name: 'Approve task' })).toBeNull();
-    expect(approveTask).toHaveBeenCalledExactlyOnceWith(project, standalone, 9007199254740993n, expect.any(AbortSignal));
+    expect(within(dialog).getByRole('button', { name: 'In progress' })).toBeVisible();
+    expect(within(dialog).getByText('Task status confirmed.')).toBeVisible();
+    expect(within(dialog).queryByRole('button', { name: 'To do' })).toBeNull();
+    expect(setTaskStatus).toHaveBeenCalledExactlyOnceWith(project, standalone, 'in_progress', 9007199254740993n, expect.any(AbortSignal));
   });
 
-  it.each(['in_progress', 'done'] as const)('retains approval confirmation when a later detail read reaches %s without claiming it is still todo', async (status) => {
-    vi.mocked(approveTask).mockImplementation(async () => commit(standalone));
+  it.each(['in_progress', 'done'] as const)('retains the status receipt when a later detail read reaches %s', async (status) => {
+    vi.mocked(setTaskStatus).mockImplementation(async () => commit(standalone));
     const view = mount(); await screen.findByRole('tab', { name: 'Standalone tasks' });
     fireEvent.click(screen.getByRole('tab', { name: 'Standalone tasks' }));
     fireEvent.click(screen.getByRole('button', { name: /Task 3/ }));
     let dialog = screen.getByRole('dialog');
     await within(dialog).findByRole('heading', { name: 'Task 3' });
-    confirmApproval(within(dialog).getByRole('button', { name: 'Approve task' }));
-    await within(dialog).findByText('Approval confirmed.');
+    confirmStatus(within(dialog).getByRole('button', { name: 'To do' }));
+    await within(dialog).findByText('Task status confirmed.');
     const current = records.get(standalone)!;
     records.set(standalone, { ...current, status, ready: false, version: current.version + 1n, updatedAt: '2026-10-22T00:02:00Z' });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Close task details' }));
     fireEvent.click(screen.getByRole('button', { name: /Task 3/ }));
     dialog = screen.getByRole('dialog');
-    await within(dialog).findByText(status === 'done' ? 'Done' : 'In progress', { selector: '.task-detail-status' });
-    expect(within(dialog).getByText('Approval confirmed.')).toBeVisible();
-    expect(within(dialog).getByText('The current task state has been loaded.')).toBeVisible();
-    expect(within(dialog).queryByRole('button', { name: 'Approve task' })).toBeNull();
+    await within(dialog).findByRole('button', { name: status === 'done' ? 'Done' : 'In progress' });
+    expect(within(dialog).getByText('Task status confirmed.')).toBeVisible();
+    expect(within(dialog).getByRole('button', { name: status === 'done' ? 'Done' : 'In progress' })).toBeEnabled();
+    expect(within(dialog).queryByRole('button', { name: 'To do' })).toBeNull();
     view.setLocale('zh-CN');
-    expect(within(dialog).getByText('批准成功。')).toBeVisible();
-    expect(within(dialog).getByText(status === 'done' ? '已完成' : '进行中', { selector: '.task-detail-status' })).toBeVisible();
+    expect(within(dialog).getByText('任务状态已确认。')).toBeVisible();
+    expect(within(dialog).getByRole('button', { name: status === 'done' ? '已完成' : '进行中' })).toBeVisible();
   });
 
-  it('approves a blocked graph task once across close/reopen and refreshes rows/counts without losing fullscreen or zoom', async () => {
-    const mutation = deferred<TaskDetail>(); vi.mocked(approveTask).mockReturnValueOnce(mutation.promise);
+  it('starts a ready graph task once across close/reopen and refreshes rows/counts without losing fullscreen or zoom', async () => {
+    const mutation = deferred<TaskDetail>(); vi.mocked(setTaskStatus).mockReturnValueOnce(mutation.promise);
     mount();
-    const inspected = await screen.findByRole('button', { name: 'Task 2, Proposed, blocked' });
+    const inspected = await screen.findByRole('button', { name: 'Task 2, To do' });
     fireEvent.click(inspected);
     expect(inspected).toHaveAttribute('aria-pressed', 'true');
     const inspection = () => [...document.querySelectorAll<HTMLElement>('.task-node,.task-dependency-edge')].map((node) => [node.closest<HTMLElement>('.react-flow__node')?.dataset.id ?? node.dataset.id, node.dataset.inspection]);
@@ -270,23 +271,23 @@ describe('approval in shared production task details', () => {
     const transform = viewport();
     fireEvent.click(screen.getByRole('button', { name: 'View fullscreen' }));
     let dialog = await openChild();
-    expect(within(dialog).getByRole('region', { name: 'Unfinished prerequisites' })).toHaveTextContent('Task 1');
-    const action = within(dialog).getByRole('button', { name: 'Approve task' });
-    confirmApproval(action); fireEvent.click(action);
+    expect(within(dialog).getByRole('region', { name: 'Unfinished prerequisites' })).toHaveTextContent('All prerequisites are complete');
+    const action = within(dialog).getByRole('button', { name: 'To do' });
+    confirmStatus(action); fireEvent.click(action);
     expect(action).toBeDisabled();
-    expect(within(dialog).getByRole('region', { name: 'Task approval' })).toHaveAttribute('aria-busy', 'true');
+    expect(within(dialog).getByRole('region', { name: 'Task status' })).toHaveAttribute('aria-busy', 'true');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Close task details' }));
     dialog = await openChild();
-    expect(within(dialog).getByRole('button', { name: 'Submitting…' })).toBeDisabled();
-    expect(approveTask).toHaveBeenCalledExactlyOnceWith(project, child, 9007199254740993n, expect.any(AbortSignal));
+    expect(within(dialog).getByRole('button', { name: 'To do' })).toBeDisabled();
+    expect(setTaskStatus).toHaveBeenCalledExactlyOnceWith(project, child, 'in_progress', 9007199254740993n, expect.any(AbortSignal));
     expect(getTask).toHaveBeenCalledTimes(1);
     await act(async () => { mutation.resolve(commit()); });
-    await waitFor(() => expect(stat('Proposed')).toHaveTextContent('2'));
-    expect(stat('To do')).toHaveTextContent('1'); expect(stat('Blocked')).toHaveTextContent('1'); expect(stat('Ready')).toHaveTextContent('0');
-    expect(within(dialog).queryByRole('button', { name: 'Approve task' })).toBeNull();
-    expect(within(dialog).getByText('Approval confirmed.')).toBeVisible();
-    expect(within(dialog).getByText('Blocked', { selector: '.task-detail-blocked' })).toBeVisible();
-    expect(document.querySelector('.root-status')).toHaveTextContent('To do');
+    await waitFor(() => expect(stat('In progress')).toHaveTextContent('1'));
+    expect(stat('To do')).toHaveTextContent('1'); expect(stat('Blocked')).toHaveTextContent('0'); expect(stat('Ready')).toHaveTextContent('1');
+    expect(within(dialog).queryByRole('button', { name: 'To do' })).toBeNull();
+    expect(within(dialog).getByText('Task status confirmed.')).toBeVisible();
+    expect(within(dialog).queryByText('Blocked', { selector: '.task-detail-blocked' })).toBeNull();
+    expect(document.querySelector('.root-status')).toHaveTextContent('In progress');
     expect(document.querySelector('.task-graph-canvas')).toBe(canvas); expect(viewport()).toBe(transform);
     expect(screen.getByRole('dialog', { name: 'Task dependency graph fullscreen view', hidden: true })).toBeTruthy();
     fireEvent.keyDown(document, { key: 'Escape' });
@@ -297,30 +298,30 @@ describe('approval in shared production task details', () => {
   });
 
   it('retains confirmed todo details and exposes truthful stale feedback if graph refresh fails', async () => {
-    vi.mocked(approveTask).mockImplementation(async () => commit());
+    vi.mocked(setTaskStatus).mockImplementation(async () => commit());
     vi.mocked(getTaskGraph).mockResolvedValueOnce(graph()).mockRejectedValueOnce(new ApiError('network')).mockImplementation(async () => graph());
     mount(); const dialog = await openChild();
-    confirmApproval(within(dialog).getByRole('button', { name: 'Approve task' }));
-    await within(dialog).findByText('Approval confirmed.');
+    confirmStatus(within(dialog).getByRole('button', { name: 'To do' }));
+    await within(dialog).findByText('Task status confirmed.');
     await screen.findByRole('heading', { name: 'Refresh failed' });
-    expect(within(dialog).getByText(/The approval operation is confirmed and its result is retained/)).toBeVisible();
-    expect(within(dialog).queryByRole('button', { name: 'Approve task' })).toBeNull();
+    expect(within(dialog).getByText(/The status response is confirmed and retained/)).toBeVisible();
+    expect(within(dialog).queryByRole('button', { name: 'To do' })).toBeNull();
     expect(within(dialog).getByRole('heading', { name: 'Task 2' })).toBeVisible();
-    expect(stat('Proposed')).toHaveTextContent('3');
+    expect(stat('To do')).toHaveTextContent('2');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Refresh task graph' }));
-    await waitFor(() => expect(stat('Proposed')).toHaveTextContent('2'));
-    expect(within(dialog).queryByText(/The approval operation is confirmed and its result is retained/)).toBeNull();
-    expect(within(dialog).queryByRole('button', { name: 'Approve task' })).toBeNull();
+    await waitFor(() => expect(stat('In progress')).toHaveTextContent('1'));
+    expect(within(dialog).queryByText(/The status response is confirmed and retained/)).toBeNull();
+    expect(within(dialog).queryByRole('button', { name: 'To do' })).toBeNull();
   });
 
-  it('ignores a graph response started before approval and keeps a later selected task isolated', async () => {
+  it('ignores a graph response started before status and keeps a later selected task isolated', async () => {
     const obsolete = deferred<TaskGraph>(); const fresh = deferred<TaskGraph>(); const mutation = deferred<TaskDetail>();
     vi.mocked(getTaskGraph).mockResolvedValueOnce(graph()).mockReturnValueOnce(obsolete.promise).mockReturnValueOnce(fresh.promise);
-    vi.mocked(approveTask).mockReturnValueOnce(mutation.promise);
+    vi.mocked(setTaskStatus).mockReturnValueOnce(mutation.promise);
     mount(); await screen.findByRole('heading', { name: 'Approval project' });
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
     const oldSignal = vi.mocked(getTaskGraph).mock.calls[1]![1]; const oldGraph = graph();
-    const dialog = await openChild(); confirmApproval(within(dialog).getByRole('button', { name: 'Approve task' }));
+    const dialog = await openChild(); confirmStatus(within(dialog).getByRole('button', { name: 'To do' }));
     fireEvent.click(within(dialog).getByRole('button', { name: 'Close task details' }));
     fireEvent.click(screen.getByRole('tab', { name: 'Standalone tasks' }));
     fireEvent.click(screen.getByRole('button', { name: /Task 3/ }));
@@ -332,10 +333,10 @@ describe('approval in shared production task details', () => {
     expect(within(otherDialog).getByRole('heading', { name: 'Task 3' })).toBeVisible();
     await act(async () => { fresh.resolve(graph()); });
     await within(otherDialog).findByRole('heading', { name: 'Task 3' });
-    expect(stat('Proposed')).toHaveTextContent('2');
-    expect(within(otherDialog).getByText('Proposed', { selector: '.task-detail-status' })).toBeVisible();
-    expect(within(otherDialog).getByRole('button', { name: 'Approve task' })).toBeEnabled();
-    expect(approveTask).toHaveBeenCalledTimes(1);
+    expect(stat('In progress')).toHaveTextContent('1');
+    expect(within(otherDialog).getByRole('button', { name: 'To do' })).toBeVisible();
+    expect(within(otherDialog).getByRole('button', { name: 'To do' })).toBeEnabled();
+    expect(setTaskStatus).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('tab', { name: 'Standalone tasks', hidden: true })).toHaveAttribute('aria-selected', 'true');
   });
 });

@@ -61,8 +61,8 @@ Git、GitHub CLI、Copilot、npm 或网络请求，不修改 shell 启动文件�
 解析结果使用按首个选项名索引的只读 Map：开关为 `true`，标量值为字符串，
 repeatable 选项为只读字符串数组。未声明 repeatable 的选项只能指定一次；依赖
 值按出现顺序追加，不去重、不拆分 CSV。Task 的 `--description` 声明 `allowEmpty`，
-list 的 `--status` 声明 `proposed`、`todo`、`in_progress`、`done` 四个 choices，
-update 不声明状态选项；approve、unapprove、claim、complete 各声明 task ID、project 和 if-version。update、list 和 ready 的 `--allow-agents` 声明 true/false choices，既有 Bash/zsh 生成器从该枚举产生静态候选；create 不声明此字段。
+list 的 `--status` 与 set-status 的目标位置参数声明 `todo`、`in_progress`、`done` 三个 choices，
+update 不声明状态选项；set-status 声明 task ID、目标状态、project 和 if-version。update、list 和 ready 的 `--allow-agents` 声明 true/false choices，既有 Bash/zsh 生成器从该枚举产生静态候选；create 不声明此字段。
 `--depends-on` 声明
 repeatable。`project create` 的名称是一个必填位置参数，`--repo` 是可选 text 选项，
 查询 `--json` 为开关。位置参数在语法层拒绝缺失和空字符串，业务文本规则由命令

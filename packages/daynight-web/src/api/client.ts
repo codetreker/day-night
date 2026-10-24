@@ -1,7 +1,7 @@
 import mime from "mime";
 import { isTaskVersion, parseApiJson, stringifyApiJson } from "./json";
 import { canonicalId, isAttachmentPath, parseAttachment, parseAttachmentPage, parseProjectPage, parseServerError, parseTaskDetail, parseTaskGraph } from "./parse";
-import type { ApprovalAction, Attachment, AttachmentPage, GraphLimitDetails, ProjectPage, TaskDetail, TaskGraph } from "./types";
+import type { Attachment, AttachmentPage, GraphLimitDetails, ProjectPage, TaskDetail, TaskGraph, TaskStatus } from "./types";
 import { decodeProjectPageJson, decodeTaskGraphJson } from "./project-json";
 
 const serverMessages: Readonly<Record<string, string>> = {
@@ -161,31 +161,24 @@ export const getTask = (projectId: string, taskId: string, signal: AbortSignal):
   return read(`/api/v1/projects/${project}/tasks/${task}`, signal, (data) => parseTaskDetail(data, project, task));
 };
 
-const taskApproval = async (
-  action: ApprovalAction, projectId: string, taskId: string, exactVersion: bigint, signal: AbortSignal,
+export const setTaskStatus = async (
+  projectId: string, taskId: string, status: TaskStatus, exactVersion: bigint, signal: AbortSignal,
 ): Promise<TaskDetail> => {
   const project = requestId(projectId);
   const task = requestId(taskId);
-  if (!isTaskVersion(exactVersion)) throw new ApiError("protocol");
-  const response = await request(`/api/v1/projects/${project}/tasks/${task}/${action}`, signal, {
-    method: "POST", redirect: "error", headers: { Accept: "application/json", "Content-Type": "application/json" },
-    body: stringifyApiJson({ version: exactVersion }),
+  if (!isTaskVersion(exactVersion) || !["todo", "in_progress", "done"].includes(status)) throw new ApiError("protocol");
+  const response = await request(`/api/v1/projects/${project}/tasks/${task}/status`, signal, {
+    method: "PUT", redirect: "error", headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: stringifyApiJson({ version: exactVersion, status }),
   });
   return json(response, signal, (data) => {
     const result = parseTaskDetail(data, project, task);
-    const target = action === "approve" ? "todo" : "proposed";
-    if (response.status !== 200 || result.status !== target || result.version !== exactVersion + 1n) {
+    if (response.status !== 200 || result.status !== status || result.version !== exactVersion && result.version !== exactVersion + 1n) {
       throw new ApiError("protocol", response.status);
     }
     return result;
   });
 };
-
-export const approveTask = (projectId: string, taskId: string, exactVersion: bigint, signal: AbortSignal): Promise<TaskDetail> =>
-  taskApproval("approve", projectId, taskId, exactVersion, signal);
-
-export const unapproveTask = (projectId: string, taskId: string, exactVersion: bigint, signal: AbortSignal): Promise<TaskDetail> =>
-  taskApproval("unapprove", projectId, taskId, exactVersion, signal);
 
 export const setTaskAgentPermission = async (
   projectId: string, taskId: string, allowAgents: boolean, exactVersion: bigint, signal: AbortSignal,

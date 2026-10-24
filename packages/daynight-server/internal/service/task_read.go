@@ -55,7 +55,7 @@ func (s *Tasks) List(ctx context.Context, principal core.Principal, projectID st
 	if err != nil {
 		return TaskPage{}, err
 	}
-	if request.Status != nil && !validTaskStatus(*request.Status) {
+	if request.Status != nil && !request.Status.Valid() {
 		return TaskPage{}, invalidInput("Task status is invalid.")
 	}
 	scope := listScope{Kind: "tasks", ProjectID: projectID, Ready: request.Ready, AllowAgents: request.AllowAgents}

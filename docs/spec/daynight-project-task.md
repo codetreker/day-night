@@ -197,13 +197,12 @@ daynight task show <task-id>
 daynight task update <task-id> --title "新的标题"
 daynight task update <task-id> --allow-agents true --if-version 3
 daynight task update <task-id> --description ""
-daynight task approve <task-id>
-daynight task unapprove <todo-task-id>
-daynight task claim <task-id>
-daynight task complete <task-id>
+daynight task set-status <task-id> in_progress
+daynight task set-status <task-id> todo
+daynight task set-status <task-id> done
 daynight task update <task-id> --depends-on <task-a> --depends-on <task-b>
 daynight task update <task-id> --clear-dependencies
-daynight task complete <task-id> --if-version 3
+daynight task set-status <task-id> done --if-version 3
 daynight task update <task-id> --pull-request-url <url> --pull-request-title <title>
 daynight task update <task-id> --clear-pull-requests
 daynight task graph
@@ -221,14 +220,14 @@ daynight task graph
 
 创建必需符合 PT6 文本规则的非空 task 标题，可选描述、重复的 `--depends-on`、`--external-depends-on` 和
 PR URL/title 配对；省略描述、依赖和 PR 引用分别使用服务规定的空字符串、空集合
-和空数组，新 task 总为 `proposed` 且 `allowAgents=false`，create 不提供许可选项。PR 标题只要求字符串类型，不使用 task 标题的内容
-校验。任务响应解码接受 `proposed`、`todo`、`in_progress`、`done`，列表默认选择
-所有未完成任务，包含 `proposed`；`--all` 选择所有状态，
+和空数组，新 task 总为 `todo` 且 `allowAgents=false`，create 不提供许可选项。PR 标题只要求字符串类型，不使用 task 标题的内容
+校验。任务响应解码接受 `todo`、`in_progress`、`done`，列表默认选择
+所有未完成任务；`--all` 选择所有状态，
 单个 `--status` 选择指定状态，包括 `done`。`--all` 与 `--status` 互斥，组合使用
-属于参数错误；列表状态值为 `proposed`、`todo`、`in_progress`、`done`，共享语法负责校验和静态候选，
+属于参数错误；列表状态值为 `todo`、`in_progress`、`done`，共享语法负责校验和静态候选，
 帮助显示选项说明。`--ready` 表示 `ready=true`，与所选状态按 AND 组合，支持
 `--all --ready`。`list` 与 `ready` 均接受 `--allow-agents true|false`，严格拒绝其他值，未提供时不按许可筛选；所有过滤由服务在分页前执行。列表读完全部匹配分页后，按 `in_progress`、ready、其余 `todo`、
-`proposed`、`done` 分组排序；组内保留跨页的服务顺序，文本和 JSON 使用同一顺序。详情按选定
+`done` 分组排序；组内保留跨页的服务顺序，文本和 JSON 使用同一顺序。详情按选定
 project 和 task ID 查询。显式 project ID、show/update 的 task ID、标题、描述、状态、
 版本及修改字段组合的参数错误必须先于配置读取、Git 和网络访问拒绝；两类依赖 ID 在本地正规化并排序，
 非法 UUID、列表内及跨列表重复（包括大小写等价）先拒绝，服务继续验证引用、项目、环及状态条件。
@@ -245,17 +244,16 @@ limit，每项必须为 ready，且 task ID 不得重复；响应违反任一条
 拒绝，stdout 保持为空。正常的候选选择使用此有界操作，完整依赖关系可按需使用
 `graph` 查看。
 
-approve、unapprove、claim、complete 接受明确 task ID、可选 project 和 `--if-version`。其唯一转换
-分别为 proposed→todo、todo→proposed、todo→in_progress、in_progress→done；审批与撤回允许未完成前置，
-领取及完成要求前置全部 done。撤回仅接受 todo，保留正文、属性、依赖、附件和执行时间，
-返回 proposed、ready=false；不修改后继或释放执行中任务。四种操作均向当前项目成员开放，管理员角色
-额外管理成员、邀请与项目提醒设置。动作输出完整 task，重复或错误前态返回可辨识的
-invalid_transition。显式版本不预读；省略时在提交前读取一次。基于已审阅内容的决策
-必须显式携带其读取版本，不能靠临时 GET 替代。冲突不重试；不确定结果先读取核对，
-不将取消解释为回滚。四状态、事务和错误规则由[服务规范](daynight-server.md)拥有。
+`set-status <task-id> <status>` 接受三状态目标、可选 project 和精确 `--if-version`，
+通过专用 PUT status 提交版本与目标。九种状态对均支持；当前版本同状态 +0，实际改变 +1，
+过期同状态先冲突。实际进入 in_progress/done 检查全部直接前置；done 退回要求没有进行中或已完成直接后继。
+拒绝返回原错误及稳定排序的阻塞 ID，不级联。成员与管理员均可设置，状态不授予执行或交付权限。
+显式版本不预读；省略时提交前只读一次。基于已审阅资料的决策必须带其版本，不能用临时 GET 替代。
+不自动重试写入；不确定结果先 GET 核对，不将取消解释为回滚。输出完整 Task 并保留所有非状态资料。
+[三状态要求](daynight-task-status.md)拥有时间、迁移、依赖和版本细节。旧四动作删除且无别名。
 
-更新至少提供标题、描述、普通/外部依赖、自动执行许可或预定义属性中的一个字段。`update --allow-agents true|false` 显式设置许可，省略保留，false 关闭；服务在 in_progress 拒绝实际切换，同值精确版本不改版本或时间。该选项不批准任务，不改变 ready；普通 claim 仍可显式执行未启用许可的任务。`task update --status`
-作为不支持的选项拒绝，帮助引导使用 approve、unapprove、claim 和 complete。省略字段表示保持，空描述表示
+更新至少提供标题、描述、普通/外部依赖、自动执行许可或预定义属性中的一个字段。`update --allow-agents true|false` 显式设置许可，省略保留，false 关闭；服务在 in_progress 拒绝实际切换，同值精确版本不改版本或时间。该选项不改变 ready；明确指定执行不要求开启许可。`task update --status`
+作为不支持的选项拒绝，帮助引导使用 set-status。省略字段表示保持，空描述表示
 清空描述。两类依赖选项分别形成普通 N 和外部 E，任一出现就提交完整 D=N∪E 及精确 E。
 只给普通选项会显式清空外部子集，只给外部选项会把完整关系替换为这些外部边，不是追加或仅标记。
 --clear-dependencies 提交两个空数组，与任一依赖声明互斥；两类声明可共同使用。
@@ -274,11 +272,10 @@ PR 的 `--pull-request-url` 和 `--pull-request-title` 在 create/update 中分�
 `1..9223372036854775807`，客户端必须保留完整精度，HTTP 与 JSON 输出仍使用数字。冲突必须
 报告失败，不自动读取新版本重试。无变化更新、版本递增和时间戳遵循服务语义。
 
-`graph` 使用现有完整图接口，呈现四种节点状态、依赖、阻塞和汇总；文本汇总
-包含 Proposed，JSON summary 必须包含 `proposed`，总数满足
-`total = proposed + todo + inProgress + done`。proposed 任务无论前置是否完成均不可
-ready，默认清单、show 和 graph 保留其状态。公开列表 `--status proposed` 可筛选待审批
-任务；状态写入只通过 approve、unapprove、claim、complete。标题预览、快照边界、
+`graph` 使用现有完整图接口，呈现三种节点状态、依赖、阻塞和汇总；文本汇总
+只包含三状态，JSON summary 为 total、todo、inProgress、done、ready、blocked，满足
+`total = todo + inProgress + done` 与 `todo = ready + blocked`。ready 只来自全部前置完成的 todo；
+列表、show、graph 均拒绝旧状态，状态写入只通过 set-status。标题预览、快照边界、
 节点和边上限均继承服务要求。完整任务和图节点均严格读取必填布尔 `allowAgents`；缺失、null 或非布尔作为协议错误，JSON 保留原值，可读输出展示自动执行许可。有许可筛选的 list/ready 同时验证返回项匹配该值。图响应还必须包含数据库时间样本 `observedAt`；full task 和图节点均有必填可空的 `startedAt`、`completedAt`。缺失或错误类型作为协议错误拒绝，不从创建、编辑或客户端时间补值。超限时报告数量及上限，不返回部分图。
 
 附件 `put/list/read/remove` 继承相同的 project 选择，逐文件处理完整相对路径。

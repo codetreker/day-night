@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -112,64 +113,66 @@ func TestConcurrentReverseDependenciesCannotCreateCycle(t *testing.T) {
 	}
 }
 
-func TestConcurrentDependencyReplacementAndClaimPreserveStateInvariant(t *testing.T) {
+func TestConcurrentDependencyReplacementAndStartPreserveStateInvariant(t *testing.T) {
 	tasks, database, project, _, principal := taskService(t)
 	predecessor := createTask(t, tasks, principal, project.ID, "Unfinished prerequisite")
 	dependent := createTask(t, tasks, principal, project.ID, "Dependent")
-	dependent = approveTask(t, tasks, principal, dependent)
+
 	results := competeTaskWrites(t, database, project.ID,
 		func(ctx context.Context) (core.Task, error) {
 			return tasks.Update(ctx, principal, project.ID, dependent.ID, UpdateTask{Version: dependent.Version, DependsOn: pointer([]string{predecessor.ID})})
 		},
 		func(ctx context.Context) (core.Task, error) {
-			return tasks.Claim(ctx, principal, project.ID, dependent.ID, dependent.Version)
+			return tasks.SetStatus(ctx, principal, project.ID, dependent.ID, SetTaskStatus{Version: dependent.Version, Status: core.TaskInProgress})
 		})
 	assertOneTaskWinner(t, results, "version_conflict")
 	after, err := tasks.Get(context.Background(), principal, project.ID, dependent.ID)
 	if err != nil || after.Version != dependent.Version+1 {
-		t.Fatalf("concurrent dependency/claim result: %#v, %v", after, err)
+		t.Fatalf("concurrent dependency/start result: %#v, %v", after, err)
 	}
 	if after.Status == core.TaskInProgress {
 		if len(after.DependsOn) != 0 || len(after.BlockedBy) != 0 {
-			t.Fatalf("claimed task acquired unfinished prerequisite: %#v", after)
+			t.Fatalf("started task acquired unfinished prerequisite: %#v", after)
 		}
 	} else if after.Status != core.TaskTodo || len(after.DependsOn) != 1 || after.DependsOn[0] != predecessor.ID || after.Ready {
-		t.Fatalf("dependency replacement lost approved blocked state: %#v", after)
+		t.Fatalf("dependency replacement lost blocked todo state: %#v", after)
 	}
 	assertTaskUnchanged(t, tasks, principal, predecessor)
 }
 
-func TestConcurrentLifecycleSameVersionOnlyChangesOnce(t *testing.T) {
-	tasks, database, project, _, principal := taskService(t)
-	for _, action := range []struct {
-		name  string
-		to    core.TaskStatus
-		apply func(context.Context, core.Principal, string, string, int64) (core.Task, error)
-	}{
-		{"approve", core.TaskTodo, tasks.Approve},
-		{"unapprove", core.TaskProposed, tasks.Unapprove},
-		{"claim", core.TaskInProgress, tasks.Claim},
-		{"complete", core.TaskDone, tasks.Complete},
-	} {
-		t.Run(action.name, func(t *testing.T) {
-			target := createTask(t, tasks, principal, project.ID, "Concurrent lifecycle")
-			if action.name != "approve" {
-				target = approveTask(t, tasks, principal, target)
-			}
-			if action.name == "complete" {
-				target = claimTask(t, tasks, principal, target)
+func TestConcurrentSetStatusSameVersionOnlyChangesOnce(t *testing.T) {
+	for _, to := range []core.TaskStatus{core.TaskTodo, core.TaskInProgress, core.TaskDone} {
+		t.Run(string(to), func(t *testing.T) {
+			tasks, database, project, _, principal := taskService(t)
+			target := createTask(t, tasks, principal, project.ID, "Concurrent status")
+			if to == core.TaskTodo {
+				target = startTask(t, tasks, principal, target)
 			}
 			write := func(ctx context.Context) (core.Task, error) {
-				return action.apply(ctx, principal, project.ID, target.ID, target.Version)
+				return tasks.SetStatus(ctx, principal, project.ID, target.ID, SetTaskStatus{Version: target.Version, Status: to})
 			}
 			results := competeTaskWrites(t, database, project.ID, write, write)
 			assertOneTaskWinner(t, results, "version_conflict")
 			after, err := tasks.Get(context.Background(), principal, project.ID, target.ID)
-			if err != nil || after.Version != target.Version+1 || after.Status != action.to || !after.UpdatedAt.After(target.UpdatedAt) {
-				t.Fatalf("lifecycle competition: before %#v, after %#v, %v", target, after, err)
+			if err != nil || after.Status != to || after.Version != target.Version+1 {
+				t.Fatalf("status competition: %#v %v", after, err)
 			}
 		})
 	}
+}
+
+func TestConcurrentSameStatusIsReadOnly(t *testing.T) {
+	tasks, database, project, _, principal := taskService(t)
+	target := createTask(t, tasks, principal, project.ID, "Same status")
+	write := func(ctx context.Context) (core.Task, error) {
+		return tasks.SetStatus(ctx, principal, project.ID, target.ID, SetTaskStatus{Version: target.Version, Status: core.TaskTodo})
+	}
+	for _, result := range competeTaskWrites(t, database, project.ID, write, write) {
+		if result.err != nil || result.task.Version != target.Version {
+			t.Fatalf("same-state competition: %#v", result)
+		}
+	}
+	assertTaskUnchanged(t, tasks, principal, target)
 }
 
 func TestConcurrentSameVersionUpdatesOnlyChangeOnce(t *testing.T) {
@@ -189,27 +192,40 @@ func TestConcurrentSameVersionUpdatesOnlyChangeOnce(t *testing.T) {
 	}
 }
 
-func TestConcurrentUnapproveAndClaimHaveOneWinner(t *testing.T) {
-	tasks, database, project, _, principal := taskService(t)
-	target := approveTask(t, tasks, principal, createTask(t, tasks, principal, project.ID, "Competing admission"))
-	results := competeTaskWrites(t, database, project.ID,
-		func(ctx context.Context) (core.Task, error) {
-			return tasks.Unapprove(ctx, principal, project.ID, target.ID, target.Version)
-		},
-		func(ctx context.Context) (core.Task, error) {
-			return tasks.Claim(ctx, principal, project.ID, target.ID, target.Version)
-		})
-	assertOneTaskWinner(t, results, "version_conflict")
-	after, err := tasks.Get(context.Background(), principal, project.ID, target.ID)
-	if err != nil || after.Version != target.Version+1 || after.Ready ||
-		(after.Status != core.TaskProposed && after.Status != core.TaskInProgress) {
-		t.Fatalf("withdrawal/claim competition: before %#v, after %#v, %v", target, after, err)
-	}
-	if after.Status == core.TaskProposed && (after.StartedAt != nil || after.CompletedAt != nil) {
-		t.Fatal("withdrawal winner recorded execution timing")
-	}
-	if after.Status == core.TaskInProgress && (after.StartedAt == nil || !after.StartedAt.Equal(after.UpdatedAt) || after.CompletedAt != nil) {
-		t.Fatal("claim winner did not record its execution start")
+func TestConcurrentReopenAndSuccessorStartPreserveStateInvariant(t *testing.T) {
+	for _, external := range []bool{false, true} {
+		for _, to := range []core.TaskStatus{core.TaskInProgress, core.TaskDone} {
+			t.Run(string(to)+fmt.Sprint(external), func(t *testing.T) {
+				tasks, database, project, _, principal := taskService(t)
+				predecessor := finishTask(t, tasks, principal, createTask(t, tasks, principal, project.ID, "Prerequisite"))
+				successor := createTask(t, tasks, principal, project.ID, "Successor", predecessor.ID)
+				if external {
+					successor = updateTask(t, tasks, principal, successor, UpdateTask{ExternalDependsOn: pointer([]string{predecessor.ID})})
+				}
+				results := competeTaskWrites(t, database, project.ID,
+					func(ctx context.Context) (core.Task, error) {
+						return tasks.SetStatus(ctx, principal, project.ID, predecessor.ID, SetTaskStatus{Version: predecessor.Version, Status: core.TaskTodo})
+					},
+					func(ctx context.Context) (core.Task, error) {
+						return tasks.SetStatus(ctx, principal, project.ID, successor.ID, SetTaskStatus{Version: successor.Version, Status: to})
+					})
+				assertOneTaskWinner(t, results, "dependency_unsatisfied")
+				afterPredecessor, err := tasks.Get(context.Background(), principal, project.ID, predecessor.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				afterSuccessor, err := tasks.Get(context.Background(), principal, project.ID, successor.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if afterSuccessor.Status != core.TaskTodo && afterPredecessor.Status != core.TaskDone {
+					t.Fatalf("active successor has reopened prerequisite: %#v %#v", afterPredecessor, afterSuccessor)
+				}
+				if afterPredecessor.Version+afterSuccessor.Version != predecessor.Version+successor.Version+1 {
+					t.Fatal("race mutated more than one task")
+				}
+			})
+		}
 	}
 }
 
@@ -252,5 +268,44 @@ func TestTaskLockWaitCancellationAndIndependentProjectProgress(t *testing.T) {
 	after := updateTask(t, tasks, principal, target, UpdateTask{Title: pointer("Reused lock")})
 	if after.Version != target.Version+1 || after.Title != "Reused lock" {
 		t.Fatalf("lock could not be reused after cancellation: %#v", after)
+	}
+}
+
+func TestConcurrentReopenAndActiveSuccessorEdgeWritePreserveInvariant(t *testing.T) {
+	for _, external := range []bool{false, true} {
+		for _, activeStatus := range []core.TaskStatus{core.TaskInProgress, core.TaskDone} {
+			t.Run(string(activeStatus)+fmt.Sprint(external), func(t *testing.T) {
+				tasks, database, project, _, principal := taskService(t)
+				predecessor := finishTask(t, tasks, principal, createTask(t, tasks, principal, project.ID, "Predecessor"))
+				successor := setStatusTask(t, tasks, principal, createTask(t, tasks, principal, project.ID, "Active successor"), activeStatus)
+				dependencies := []string{predecessor.ID}
+				externalDependencies := []string{}
+				if external {
+					externalDependencies = dependencies
+				}
+				results := competeTaskWrites(t, database, project.ID,
+					func(ctx context.Context) (core.Task, error) {
+						return tasks.SetStatus(ctx, principal, project.ID, predecessor.ID, SetTaskStatus{Version: predecessor.Version, Status: core.TaskTodo})
+					},
+					func(ctx context.Context) (core.Task, error) {
+						return tasks.Update(ctx, principal, project.ID, successor.ID, UpdateTask{Version: successor.Version, DependsOn: &dependencies, ExternalDependsOn: &externalDependencies})
+					})
+				assertOneTaskWinner(t, results, "dependency_unsatisfied")
+				afterPredecessor, err := tasks.Get(context.Background(), principal, project.ID, predecessor.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				afterSuccessor, err := tasks.Get(context.Background(), principal, project.ID, successor.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(afterSuccessor.DependsOn) > 0 && afterPredecessor.Status != core.TaskDone {
+					t.Fatal("active successor gained unfinished prerequisite")
+				}
+				if afterPredecessor.Version+afterSuccessor.Version != predecessor.Version+successor.Version+1 {
+					t.Fatal("edge race changed more than one record")
+				}
+			})
+		}
 	}
 }

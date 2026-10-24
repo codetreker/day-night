@@ -16,7 +16,7 @@ layout stability while a request is pending.
 Routine same-task detail reads retain the mounted content without adding a
 progress paragraph to the heading. Required freshness and read errors continue
 to expose the retained-detail explanation, while stale-snapshot warnings and
-approval reconciliation keep their own feedback. The dialog distinguishes
+status reconciliation keep their own feedback. The dialog distinguishes
 network activity from those actionable states. It still suppresses a stale
 comparison while a read is pending, since the response can reconcile it.
 
@@ -24,16 +24,16 @@ The [automatic-refresh decision](../feature/2026-10-22-project-task-auto-refresh
 continues to own scheduling, request coalescing and full-detail reads after
 every successful graph receipt. Equal graph data does not prove equal
 description or PR properties. The
-[approval decision](../feature/2026-10-22-task-approval-lifecycle.md) continues to
-own precise-version approval and required freshness; ordinary optional reads do
-not change approval eligibility. This decision narrows the presentation of
+[status assignment decision](../architecture/2026-10-24-task-status-assignment.md) continues to
+own precise-version status setting and required freshness; ordinary optional reads do
+not change status-write eligibility. This decision narrows the presentation of
 retained reads without changing either lifecycle.
 
 The production `refresh-staleness` journey measures heading, tabs and the active
 reading panel before, during and after held detail responses triggered by the
 existing scheduler. Repeated unchanged responses isolate request presentation
 from natural layout changes caused by new data. Component checks retain the
-error, required-fresh-read and approval cases; browser checks establish geometry
+error, required-fresh-read and status cases; browser checks establish geometry
 and retained interaction state at supported viewport sizes. Its only browser
 mutation is one registered fixture-file PUT: the real server commits the upload
 and its response stays pending across automatic reads. The scenario requires
@@ -53,7 +53,7 @@ read also recovers detail failures. It would change freshness behavior to solve
 a presentation defect.
 
 **Hide all retained-data and stale-state feedback.** This removes movement but
-also conceals genuine errors and the reason approval requires another read.
+also conceals genuine errors and the reason status setting requires another read.
 Those states remain visible and may legitimately change the layout.
 
 ## Consequences

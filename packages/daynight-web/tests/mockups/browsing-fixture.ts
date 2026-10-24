@@ -3,10 +3,10 @@ import type { GraphTask, TaskDetail, TaskGraph, TaskGraphSummary, TaskStatus } f
 import { isTaskVersion, parseApiJson } from '../../src/api/json';
 
 export const browsingScenarioLabels = {
-  mixed: '四种状态与外部前置',
-  'all-proposed': '全部待审批 · 含未完成前置',
-  'approved-mixed': '待审批与待处理混合链',
-  active: '进行中 · 含待审批后续',
+  mixed: '三种状态与外部前置',
+  'all-todo': '全部待处理 · 含未完成前置',
+  'todo-chain': '待处理任务链',
+  active: '进行中 · 含待处理后续',
   complete: '全部完成',
   external: '外部前置不改变整链状态',
   'chains-only': '只有任务链',
@@ -17,20 +17,20 @@ export const browsingScenarioLabels = {
   error: '初始加载失败 · 可重试',
   'refresh-error': '刷新失败 · 保留快照',
   empty: '空项目',
-  'approval-ready': '批准可开始的任务 · 精确大版本号',
-  'approval-blocked': '批准仍有未完成前置的任务',
-  'unapproval-ready': '撤回可开始任务的审批 · 含重新批准',
-  'unapproval-blocked': '撤回仍有未完成前置的任务审批',
-  pending: '批准处理中 · 可关闭重开详情',
-  failure: '服务拒绝批准 · 显示错误后显式重试',
+  'status-ready': '设置可开始任务的状态 · 精确大版本号',
+  'status-blocked': '设置存在未完成前置的任务状态',
+  'reopen-ready': '已完成任务重新开始',
+  'reopen-blocked': '已完成任务存在进行中的直接后继',
+  pending: '状态请求处理中 · 可关闭重开详情',
+  failure: '服务拒绝状态请求 · 显式重试',
   conflict: '版本冲突 · 重读修改后的任务',
-  'approved-by-other': '其他调用方已批准',
-  'unknown-applied': '响应丢失 · 核查后确认已批准',
-  'unknown-unapplied': '响应丢失 · 核查后仍待审批',
+  'changed-by-other': '其他调用方已修改状态',
+  'unknown-applied': '响应丢失 · 核查当前状态',
+  'unknown-unapplied': '响应丢失 · 核查后仍待处理',
   'unknown-reconcile-error': '结果未知 · 核查失败后显式恢复',
-  'graph-refresh-error': '批准成功 · 任务图刷新失败',
-  'task-switch': '批准处理中切换任务 · 响应身份隔离',
-  long320: '批准长标题任务 · 320px 键盘交互',
+  'graph-refresh-error': '状态已确认 · 任务图刷新失败',
+  'task-switch': '状态请求处理中切换任务 · 响应身份隔离',
+  long320: '设置长标题任务状态 · 320px 键盘交互',
   progressive: '渐进展开 · 主链与外部前置',
   'complete-context': '完整上游与无关分支排除',
   'ordinary-merge': '两个普通起点合流为一条任务链',
@@ -54,31 +54,31 @@ type TaskSeed = {
   readonly externalDependencies: readonly number[];
 };
 
-const approvalScenarios = new Set<BrowsingScenario>([
-  'approval-ready', 'approval-blocked', 'unapproval-ready', 'unapproval-blocked', 'pending', 'failure', 'conflict', 'approved-by-other',
+const statusScenarios = new Set<BrowsingScenario>([
+  'status-ready', 'status-blocked', 'reopen-ready', 'reopen-blocked', 'pending', 'failure', 'conflict', 'changed-by-other',
   'unknown-applied', 'unknown-unapplied', 'unknown-reconcile-error', 'graph-refresh-error', 'task-switch', 'long320',
 ]);
-export const isApprovalScenario = (scenario: BrowsingScenario): boolean => approvalScenarios.has(scenario);
+export const isStatusScenario = (scenario: BrowsingScenario): boolean => statusScenarios.has(scenario);
 
 const id = (number: number): string => `00000000-0000-4000-8000-${String(number).padStart(12, '0')}`;
 const titles = new Map<string, string>();
 const mixed: readonly TaskSeed[] = [
-  { number: 1, title: '讨论任务状态管理方案', status: 'proposed', dependencies: [], externalDependencies: [] },
-  { number: 2, title: '明确待审批任务的最终交付范围', status: 'proposed', dependencies: [1, 3], externalDependencies: [3] },
+  { number: 1, title: '讨论任务状态管理方案', status: 'todo', dependencies: [], externalDependencies: [] },
+  { number: 2, title: '明确待处理任务的最终交付范围', status: 'todo', dependencies: [1, 3], externalDependencies: [3] },
   { number: 3, title: '确认共享服务接口', status: 'todo', dependencies: [], externalDependencies: [] },
   { number: 4, title: '验证外部接口的独立使用场景', status: 'todo', dependencies: [3], externalDependencies: [] },
-  { number: 5, title: '整理已批准任务的执行计划', status: 'todo', dependencies: [], externalDependencies: [] },
-  { number: 6, title: '补齐计划中的验收材料', status: 'proposed', dependencies: [5], externalDependencies: [] },
+  { number: 5, title: '整理任务的执行计划', status: 'todo', dependencies: [], externalDependencies: [] },
+  { number: 6, title: '补齐计划中的验收材料', status: 'todo', dependencies: [5], externalDependencies: [] },
   { number: 7, title: '完成数据模型设计', status: 'done', dependencies: [], externalDependencies: [] },
   { number: 8, title: '实现任务生命周期约束', status: 'in_progress', dependencies: [7], externalDependencies: [] },
-  { number: 9, title: '提交客户端完整验收方案', status: 'proposed', dependencies: [8], externalDependencies: [] },
+  { number: 9, title: '提交客户端完整验收方案', status: 'todo', dependencies: [8], externalDependencies: [] },
   { number: 10, title: '完成配置引导', status: 'done', dependencies: [], externalDependencies: [] },
   { number: 11, title: '完成配置引导验收', status: 'done', dependencies: [10], externalDependencies: [] },
-  { number: 12, title: '评估任务审查提醒', status: 'proposed', dependencies: [], externalDependencies: [] },
+  { number: 12, title: '评估任务审查提醒', status: 'todo', dependencies: [], externalDependencies: [] },
   { number: 13, title: '整理发布说明', status: 'todo', dependencies: [], externalDependencies: [] },
   { number: 14, title: '核对 CLI 的使用说明', status: 'in_progress', dependencies: [], externalDependencies: [] },
   { number: 15, title: '归档已交付材料', status: 'done', dependencies: [], externalDependencies: [] },
-  { number: 16, title: '讨论跨团队审批流程与任务描述：覆盖中文、English identifiers、长标题自然换行和窄屏下的完整访问能力', status: 'proposed', dependencies: [], externalDependencies: [] },
+  { number: 16, title: '讨论跨团队交付流程与任务描述：覆盖中文、English identifiers、长标题自然换行和窄屏下的完整访问能力', status: 'todo', dependencies: [], externalDependencies: [] },
 ];
 
 const completeContext: readonly TaskSeed[] = [
@@ -103,15 +103,15 @@ const progressive: readonly TaskSeed[] = [
 
 const scenarioSeeds = (scenario: BrowsingScenario): readonly TaskSeed[] => {
   const selected = (numbers: readonly number[]) => mixed.filter((task) => numbers.includes(task.number));
-  if (isApprovalScenario(scenario)) {
-    const withdrawing = scenario === 'unapproval-ready' || scenario === 'unapproval-blocked';
+  if (isStatusScenario(scenario)) {
+    const reopening = scenario === 'reopen-ready' || scenario === 'reopen-blocked';
     const seeds: readonly TaskSeed[] = [
-      { number: 1, title: '审阅任务范围并明确审批决定', status: scenario === 'unapproval-ready' ? 'todo' : 'proposed', dependencies: [], externalDependencies: [] },
-      { number: 2, title: '有未完成前置的后续任务', status: withdrawing ? 'todo' : 'proposed', dependencies: [1], externalDependencies: [] },
-      { number: 12, title: '切换查看的独立任务', status: withdrawing ? 'todo' : 'proposed', dependencies: [], externalDependencies: [] },
+      { number: 1, title: '审阅任务范围并设置执行状态', status: reopening ? 'done' : 'todo', dependencies: [], externalDependencies: [] },
+      { number: 2, title: '有前置的后续任务', status: scenario === 'reopen-blocked' ? 'in_progress' : 'todo', dependencies: [1], externalDependencies: [] },
+      { number: 12, title: '切换查看的独立任务', status: 'todo', dependencies: [], externalDependencies: [] },
     ];
     return scenario === 'long320'
-      ? seeds.map((task) => ({ ...task, title: `${task.title}：中文、English identifiers、Keyboard navigation 与完整审批内容的自然换行。`.repeat(4) }))
+      ? seeds.map((task) => ({ ...task, title: `${task.title}：中文、English identifiers、Keyboard navigation 与完整确认内容的自然换行。`.repeat(4) }))
       : seeds;
   }
   switch (scenario) {
@@ -127,8 +127,8 @@ const scenarioSeeds = (scenario: BrowsingScenario): readonly TaskSeed[] => {
       { number: 70, title: '外部交付 · 尚未完成的接口', status: 'todo', dependencies: [], externalDependencies: [] },
       { number: 71, title: '独立消费者 · 等待外部接口', status: 'todo', dependencies: [70], externalDependencies: [70] },
     ];
-    case 'all-proposed': return selected([1, 2]).map((task) => ({ ...task, dependencies: task.dependencies.filter((number) => number !== 3), externalDependencies: task.externalDependencies.filter((number) => number !== 3) }));
-    case 'approved-mixed': return selected([5, 6]);
+    case 'all-todo': return selected([1, 2]).map((task) => ({ ...task, dependencies: task.dependencies.filter((number) => number !== 3), externalDependencies: task.externalDependencies.filter((number) => number !== 3) }));
+    case 'todo-chain': return selected([5, 6]);
     case 'active': return selected([7, 8, 9]);
     case 'complete': return selected([7, 8, 9, 10, 11, 15]).map((task) => ({ ...task, status: 'done' }));
     case 'external': return selected([1, 2, 3, 4]);
@@ -155,7 +155,6 @@ const createGraph = (scenario: BrowsingScenario, number: number): TaskGraph => {
   });
   const summary: TaskGraphSummary = {
     total: tasks.length,
-    proposed: tasks.filter((task) => task.status === 'proposed').length,
     todo: tasks.filter((task) => task.status === 'todo').length,
     inProgress: tasks.filter((task) => task.status === 'in_progress').length,
     done: tasks.filter((task) => task.status === 'done').length,
@@ -215,14 +214,22 @@ const fault = (code: string, status: number): Response => jsonResponse({
   error: { code, message: `Preview request failed: ${code}.`, requestId: `mockup-${code}` },
 }, status);
 
+const currentTask = (state: SceneState, taskId: string): TaskDetail => {
+  const task = state.tasks.get(taskId)!;
+  const blockedBy = task.dependsOn.filter((id) => state.tasks.get(id)!.status !== 'done').sort();
+  return { ...task, blockedBy, ready: task.status === 'todo' && blockedBy.length === 0 };
+};
+
 const graphSnapshot = (state: SceneState): TaskGraph => {
-  const tasks: GraphTask[] = [...state.tasks.values()].map((task) => ({ allowAgents: task.allowAgents, startedAt: task.startedAt, completedAt: task.completedAt,
-    id: task.id, titlePreview: Array.from(task.title).slice(0, 160).join(''), titleTruncated: Array.from(task.title).length > 160,
-    status: task.status, dependsOn: task.dependsOn, externalDependsOn: task.externalDependsOn, blockedBy: task.blockedBy, ready: task.ready,
-    createdAt: task.createdAt, updatedAt: task.updatedAt,
-  }));
+  const tasks: GraphTask[] = [...state.tasks.keys()].map((id) => {
+    const task = currentTask(state, id);
+    return { allowAgents: task.allowAgents, startedAt: task.startedAt, completedAt: task.completedAt,
+      id: task.id, titlePreview: Array.from(task.title).slice(0, 160).join(''), titleTruncated: Array.from(task.title).length > 160,
+      status: task.status, dependsOn: task.dependsOn, externalDependsOn: task.externalDependsOn, blockedBy: task.blockedBy, ready: task.ready,
+      createdAt: task.createdAt, updatedAt: task.updatedAt };
+  });
   return { observedAt: "2026-10-20T12:00:00Z", project: state.initial.project, tasks, summary: {
-    total: tasks.length, proposed: tasks.filter((task) => task.status === 'proposed').length,
+    total: tasks.length,
     todo: tasks.filter((task) => task.status === 'todo').length, inProgress: tasks.filter((task) => task.status === 'in_progress').length,
     done: tasks.filter((task) => task.status === 'done').length, ready: tasks.filter((task) => task.ready).length,
     blocked: tasks.filter((task) => task.status === 'todo' && !task.ready).length,
@@ -238,21 +245,25 @@ export const installBrowsingFixture = (): BrowsingFixture => {
   const states = new Map((Object.keys(browsingProjects) as BrowsingScenario[]).map((scenario) => {
     const initial = browsingProjects[scenario];
     const state: SceneState = { scenario, initial, tasks: new Map(initial.tasks.map((task) => [
-      task.id, detail(initial, task, scenario === 'long320' ? 'long' : 'normal', isApprovalScenario(scenario) ? 9_007_199_254_740_993n : 1n),
+      task.id, detail(initial, task, scenario === 'long320' ? 'long' : 'normal', isStatusScenario(scenario) ? 9_007_199_254_740_993n : 1n),
     ])), attempts: new Map(), failedTaskReads: new Set(), pending: new Map(), graphReads: 0, failedGraphReads: false };
     return [initial.project.id, state];
   }));
   const stateForScenario = (scenario: BrowsingScenario) => states.get(browsingProjects[scenario].project.id)!;
-  const applyApproval = (state: SceneState, taskId: string, version: bigint, action: 'approve' | 'unapprove'): Response => {
-    const current = state.tasks.get(taskId)!;
+  const applyStatus = (state: SceneState, taskId: string, version: bigint, status: TaskStatus): Response => {
+    const current = currentTask(state, taskId);
     if (current.version !== version) return fault('version_conflict', 409);
-    if (current.status !== (action === 'approve' ? 'proposed' : 'todo')) return fault('invalid_transition', 409);
-    const updated: TaskDetail = { ...current, status: action === 'approve' ? 'todo' : 'proposed', version: current.version + 1n,
-      ready: action === 'approve' && current.blockedBy.length === 0, updatedAt: new Date(Date.parse(current.updatedAt) + 1_000).toISOString() };
+    if (current.status === status) return jsonResponse(current);
+    if ((status === 'in_progress' || status === 'done') && current.blockedBy.length !== 0) return fault('dependency_unsatisfied', 409);
+    if (current.status === 'done' && [...state.tasks.values()].some((task) => task.dependsOn.includes(taskId) && task.status !== 'todo')) return fault('dependency_unsatisfied', 409);
+    const now = new Date(Date.parse(current.updatedAt) + 1_000).toISOString();
+    const updated: TaskDetail = { ...current, status, version: current.version + 1n, updatedAt: now,
+      startedAt: status === 'in_progress' ? now : status === 'todo' || current.status === 'todo' ? null : current.startedAt,
+      completedAt: status === 'done' ? now : null };
     state.tasks.set(taskId, updated);
     if (state.scenario === 'graph-refresh-error') state.failedGraphReads = true;
     emit();
-    return jsonResponse(updated);
+    return jsonResponse(currentTask(state, taskId));
   };
   const fixtureFetch: typeof fetch = async (input, init) => {
     const request = input instanceof Request ? input : null;
@@ -262,7 +273,7 @@ export const installBrowsingFixture = (): BrowsingFixture => {
     const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, location.origin);
     if (url.origin !== location.origin) throw new Error(`Unknown browsing preview origin: ${url.origin}`);
     const graphMatch = /^\/api\/v1\/projects\/([^/]+)\/task-graph$/.exec(url.pathname);
-    const taskMatch = /^\/api\/v1\/projects\/([^/]+)\/tasks\/([^/]+)(\/(?:attachments|approve|unapprove))?$/.exec(url.pathname);
+    const taskMatch = /^\/api\/v1\/projects\/([^/]+)\/tasks\/([^/]+)(\/(?:attachments|status))?$/.exec(url.pathname);
     const projectId = graphMatch?.[1] ?? taskMatch?.[1];
     const state = projectId === undefined ? undefined : states.get(projectId);
     if (state !== undefined && graphMatch !== null) {
@@ -274,25 +285,25 @@ export const installBrowsingFixture = (): BrowsingFixture => {
       if (state.scenario === 'error' && count === 0 || state.scenario === 'refresh-error' && count === 1 || state.failedGraphReads) return fault('internal_error', 500);
       return jsonResponse(graphSnapshot(state));
     }
-    const task = state?.tasks.get(taskMatch?.[2] ?? '');
+    const storedTask = state?.tasks.get(taskMatch?.[2] ?? '');
+    const task = state !== undefined && storedTask !== undefined ? currentTask(state, storedTask.id) : undefined;
     if (state !== undefined && task !== undefined && taskMatch !== null) {
-      if (taskMatch[3] === '/approve' || taskMatch[3] === '/unapprove') {
-        const action = taskMatch[3] === '/approve' ? 'approve' : 'unapprove';
-        if (method !== 'POST') return fault('method_not_allowed', 405);
+      if (taskMatch[3] === '/status') {
+        if (method !== 'PUT') return fault('method_not_allowed', 405);
         const body = typeof init?.body === 'string' ? init.body : request === null ? '' : await request.text();
         let data: unknown;
-        try { data = parseApiJson(body); } catch { return fault('validation_failed', 400); }
-        if (typeof data !== 'object' || data === null || Array.isArray(data) || Object.keys(data).length !== 1 || !('version' in data) || !isTaskVersion(data.version)) return fault('validation_failed', 400);
+        try { data = parseApiJson(body); } catch { return fault('invalid_input', 400); }
+        if (typeof data !== 'object' || data === null || Array.isArray(data) || Object.keys(data).length !== 2 || !('version' in data) || !isTaskVersion(data.version) || !('status' in data) || (data.status !== 'todo' && data.status !== 'in_progress' && data.status !== 'done')) return fault('invalid_input', 400);
         const version = data.version;
+        const status = data.status;
         if (version !== task.version) return fault('version_conflict', 409);
-        if (task.status !== (action === 'approve' ? 'proposed' : 'todo')) return fault('invalid_transition', 409);
-        const attemptKey = `${task.id}:${action}`;
+        const attemptKey = `${task.id}:${status}`;
         const attempt = state.attempts.get(attemptKey) ?? 0;
         state.attempts.set(attemptKey, attempt + 1);
         if (state.scenario === 'pending' || state.scenario === 'task-switch') {
           const key = ++pendingId;
           return new Promise<Response>((resolve, reject) => {
-            state.pending.set(key, { settle: () => resolve(applyApproval(state, task.id, version, action)), reject });
+            state.pending.set(key, { settle: () => resolve(applyStatus(state, task.id, version, status)), reject });
             emit();
           });
         }
@@ -302,15 +313,15 @@ export const installBrowsingFixture = (): BrowsingFixture => {
             state.tasks.set(task.id, { ...task, version: version + 1n, title: `${task.title}（范围已更新，请重新审阅）`, updatedAt: '2026-10-22T09:30:00Z' });
             return fault('version_conflict', 409);
           }
-          if (state.scenario === 'approved-by-other') {
-            applyApproval(state, task.id, version, action);
+          if (state.scenario === 'changed-by-other') {
+            applyStatus(state, task.id, version, status);
             return fault('version_conflict', 409);
           }
-          if (state.scenario === 'unknown-applied' || state.scenario === 'unknown-reconcile-error') applyApproval(state, task.id, version, action);
+          if (state.scenario === 'unknown-applied' || state.scenario === 'unknown-reconcile-error') applyStatus(state, task.id, version, status);
           if (state.scenario === 'unknown-reconcile-error') { state.failedTaskReads.add(task.id); emit(); }
-          if (state.scenario === 'unknown-applied' || state.scenario === 'unknown-unapplied' || state.scenario === 'unknown-reconcile-error') throw new TypeError('The preview approval operation response was lost.');
+          if (state.scenario === 'unknown-applied' || state.scenario === 'unknown-unapplied' || state.scenario === 'unknown-reconcile-error') throw new TypeError('The preview status response was lost.');
         }
-        return applyApproval(state, task.id, version, action);
+        return applyStatus(state, task.id, version, status);
       }
       if (method !== 'GET') return fault('method_not_allowed', 405);
       if (taskMatch[3] === '/attachments') return jsonResponse({ items: [], nextCursor: null });

@@ -58,12 +58,10 @@ func TestInstalledCLIExternalDependencyReadAcceptance(t *testing.T) {
 				t.Fatal("installed ordinary update lost external classification")
 			}
 		}
-		for _, step := range []struct{ action, status string }{{"approve", "todo"}, {"unapprove", "proposed"}, {"approve", "todo"}} {
-			target = acceptanceCLIAction(t, cli, process, evidence, target, step.action, step.status)
-		}
-		acceptanceCLIRefusal(t, cli, process, evidence, target, "dependency_unsatisfied", "task", "claim", target.ID, "--project", projectID, "--if-version", strconv.FormatInt(target.Version, 10))
-		for _, step := range []struct{ action, status string }{{"approve", "todo"}, {"claim", "in_progress"}, {"complete", "done"}} {
-			prerequisite = acceptanceCLIAction(t, cli, process, evidence, prerequisite, step.action, step.status)
+		target = acceptanceCLISetStatus(t, cli, process, evidence, target, "todo")
+		acceptanceCLIRefusal(t, cli, process, evidence, target, "dependency_unsatisfied", "task", "set-status", target.ID, "in_progress", "--project", projectID, "--if-version", strconv.FormatInt(target.Version, 10))
+		for _, status := range []string{"in_progress", "done"} {
+			prerequisite = acceptanceCLISetStatus(t, cli, process, evidence, prerequisite, status)
 		}
 		target = cli.task(t, target.ID)
 		ready := acceptanceCLIJSON[[]api.Task](t, cli.run(t, cli.repo, "task", "ready", "--json"))
@@ -73,8 +71,8 @@ func TestInstalledCLIExternalDependencyReadAcceptance(t *testing.T) {
 		if output := cli.run(t, cli.repo, "task", "ready"); !strings.Contains(output, "External dependencies (1): "+prerequisiteID+"\n") {
 			t.Fatal("installed ready text omitted classification")
 		}
-		target = acceptanceCLIAction(t, cli, process, evidence, target, "claim", "in_progress")
-		target = acceptanceCLIAction(t, cli, process, evidence, target, "complete", "done")
+		target = acceptanceCLISetStatus(t, cli, process, evidence, target, "in_progress")
+		target = acceptanceCLISetStatus(t, cli, process, evidence, target, "done")
 		if !target.AllowAgents || !slices.Equal(target.ExternalDependsOn, []string{prerequisiteID}) {
 			t.Fatal("installed execution actions lost classification")
 		}

@@ -258,18 +258,23 @@ func TestRunServesProjectAndTaskAPI(t *testing.T) {
 	var task api.Task
 	err = json.NewDecoder(response.Body).Decode(&task)
 	response.Body.Close()
-	if err != nil || response.StatusCode != http.StatusCreated || task.ProjectID != project.ID || task.Title != "Process task" || task.Status != "proposed" || task.Ready || task.Version != 1 {
+	if err != nil || response.StatusCode != http.StatusCreated || task.ProjectID != project.ID || task.Title != "Process task" || task.Status != "todo" || !task.Ready || task.Version != 1 {
 		t.Fatalf("process task create: %d %+v %v", response.StatusCode, task, err)
 	}
-	for index, action := range []string{"approve", "claim", "complete"} {
-		response, err = client.Post(tasksURL+"/"+task.ID+"/"+action, "application/json", strings.NewReader(fmt.Sprintf(`{"version":%d}`, task.Version)))
+	for index, status := range []string{"in_progress", "done"} {
+		request, requestErr := http.NewRequest(http.MethodPut, tasksURL+"/"+task.ID+"/status", strings.NewReader(fmt.Sprintf(`{"version":%d,"status":%q}`, task.Version, status)))
+		if requestErr != nil {
+			t.Fatal(requestErr)
+		}
+		request.Header.Set("Content-Type", "application/json")
+		response, err = client.Do(request)
 		if err != nil {
 			t.Fatal(err)
 		}
 		err = json.NewDecoder(response.Body).Decode(&task)
 		response.Body.Close()
-		if expected := []string{"todo", "in_progress", "done"}[index]; err != nil || response.StatusCode != http.StatusOK || task.Status != expected || task.Version != int64(index+2) {
-			t.Fatalf("process task %s: %d %+v %v", action, response.StatusCode, task, err)
+		if err != nil || response.StatusCode != http.StatusOK || task.Status != status || task.Version != int64(index+2) {
+			t.Fatalf("process task status %s: %d %+v %v", status, response.StatusCode, task, err)
 		}
 	}
 	response, err = client.Get(tasksURL + "?status=done&ready=false")

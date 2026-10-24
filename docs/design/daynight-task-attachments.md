@@ -592,22 +592,10 @@ Web 新增 `task-attachments` 功能场景，在原生和实际生产容器上�
 完整上下文交付另加入 `capacity-external`，原生容量/超限共五个场景；机制与统计
 由[看板设计](daynight-web.md#验证与-ci)拥有。
 另有 `project-view-tabs` 验证项目内任务视图；[双语界面](daynight-web-i18n.md)增加三个功能场景，
-[审批生命周期](../../.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)另加三个审批场景，
-描述阅读另有 `task-description-markdown`，鉴权增加六个功能场景，审批撤回另有 `task-unapproval`。当前严格 inventory 为原生 29 个、
-容器 24 个，共 53 个场景结果。审批场景单独允许已登记 project/task 的 POST approve 或 unapprove 与
-精确请求次数，鉴权场景仅允许各自登记的精确管理请求。附件场景和
-`language-state-preservation` 仅允许精确 fixture task/file 的 PUT/DELETE，后者验证切换期间
-待完成操作只执行一次；`refresh-staleness` 仅允许一次已登记 fixture task/file PUT，将真实上传响应挂起并跨自动读取验证状态与几何保留。描述阅读、其他图场景、任务视图及其他语言场景继续 GET/HEAD。
-完整 Chromium channel `chromium` 对 PDF 的证明来自 iframe 实际
-compositor 像素中的 fixture 专用色块。判断器将匹配像素按连通区域分组，独立计算
-各个实心色块的像素数、边界和密度，并在延伸到 frame 右半区的页面候选中检查
-最大的色块。此位置规则基于 fixture 与固定查看器布局，排除仅缩略图已绘制的情形；
-独立边界也使单独绘制的缩略图不会稀释页面色块的密度。成功 PNG 与区域指标保留在绘制回执中，
-匹配阈值由[组合验收决策](../../.agents/notes/implemented/testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
-拥有。成功状态、load 和固定等待均不能代替绘制。独立阅读验收另以真实滚轮、
-键盘及多页 PDF 的末页专用绘制标记证明内容可读至末尾；私有查看器 DOM 只提供
-只读偏移诊断，不能替代真实输入和绘制。实际故障来自隔离数据库与存储文件，
-请求屏障仅控制时序，不伪造服务响应。判定与环境限制继续由该决策拥有。
+[三状态架构](daynight-task-status.md)拥有当前状态设置。状态、冲突、恢复与组合场景只允许
+登记资源和精确次数的 PUT status；附件写入保持自己的 fixture-scoped allowlist。
+当前严格 inventory 为原生 32 个、容器 27 个，共 59 个结果，任务描述阅读、鉴权、设置、
+许可和计时场景仍保有独立的写入边界。
 
 运行回执校验 Git SHA/dirty 标记及实际 tarball/entry 摘要；dirty 标记不是脏源码内容
 指纹。CI 继续要求干净 checkout 等于 `GITHUB_SHA`。浏览器、CLI 和辅助子进程/组均

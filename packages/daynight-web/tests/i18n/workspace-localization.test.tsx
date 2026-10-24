@@ -24,8 +24,7 @@ const project = { settings: { version: 1n, executionWarningMinutes: 60 }, id: pr
 const tasks: readonly GraphTask[] = [{ allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null, id: taskId, titlePreview: "Task 用户数据", titleTruncated: false, status: "todo", dependsOn: [], blockedBy: [], ready: true, createdAt: date, updatedAt: date }];
 const graph = (items = tasks): TaskGraph => ({ observedAt: "2026-10-20T12:00:00Z",
   project, tasks: items,
-  summary: { total: items.length, proposed: items.filter((task) => task.status === "proposed").length,
-    todo: items.filter((task) => task.status === "todo").length, done: items.filter((task) => task.status === "done").length,
+  summary: { total: items.length, todo: items.filter((task) => task.status === "todo").length, done: items.filter((task) => task.status === "done").length,
     inProgress: items.filter((task) => task.status === "in_progress").length, ready: items.filter((task) => task.ready).length,
     blocked: items.filter((task) => task.status === "todo" && !task.ready).length },
 });
@@ -46,26 +45,25 @@ beforeEach(() => {
 });
 
 describe("workspace localization", () => {
-  it("retranslates proposed statistics and standalone rows without changing their identity or refetching", async () => {
+  it("retranslates waiting statistics and standalone rows without changing their identity or refetching", async () => {
     window.history.replaceState(null, "", `/projects/${projectId}`);
-    graphRequest.mockResolvedValueOnce(graph([{ ...tasks[0]!, status: "proposed", ready: false }]));
     const user = userEvent.setup();
     renderWithLocale(<App />, { locale: "en" });
     await screen.findByRole("heading", { name: project.name });
     const statistics = screen.getByRole("region", { name: "Project task statistics" });
-    expect(statistics.querySelectorAll(".stat")).toHaveLength(7);
-    const proposed = statistics.querySelector(".stat.proposed")!;
-    expect(proposed).toHaveTextContent("Proposed1Awaiting approval");
+    expect(statistics.querySelectorAll(".stat")).toHaveLength(6);
+    const waiting = statistics.querySelectorAll(".stat")[2]!;
+    expect(waiting).toHaveTextContent("To do1Waiting to start");
     await user.click(screen.getByRole("tab", { name: "Standalone tasks" }));
     const row = screen.getByRole("button", { name: /Task 用户数据/ });
-    expect(row).toHaveTextContent("Proposed");
-    expect(row).not.toHaveTextContent("Ready");
+    expect(row).toHaveTextContent("To do");
+    expect(row).toHaveTextContent("Ready");
     await user.selectOptions(screen.getByRole("combobox"), "zh-CN");
     expect(screen.getByRole("region", { name: "项目任务统计" })).toBe(statistics);
-    expect(proposed).toHaveTextContent("待审批1等待批准");
+    expect(waiting).toHaveTextContent("待处理1等待开始");
     expect(screen.getByRole("button", { name: /Task 用户数据/ })).toBe(row);
-    expect(row).toHaveTextContent("待审批");
-    expect(row).not.toHaveTextContent("可开始");
+    expect(row).toHaveTextContent("待处理");
+    expect(row).toHaveTextContent("可开始");
     expect(graphRequest).toHaveBeenCalledTimes(1);
   });
 

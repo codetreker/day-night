@@ -20,7 +20,6 @@ type GraphTask struct {
 
 type TaskGraphSummary struct {
 	Total      int64
-	Proposed   int64
 	Todo       int64
 	InProgress int64
 	Done       int64

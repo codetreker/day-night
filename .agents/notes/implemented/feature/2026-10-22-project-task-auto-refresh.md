@@ -99,7 +99,7 @@ transport or database cost. Push transport should be reconsidered if this load
 or the five-second visibility delay becomes material. A live detail and graph
 remain independent reads; stale-data detection still offers a full graph refresh.
 The [approval lifecycle](2026-10-22-task-approval-lifecycle.md) separately supplies
-explicit proposed approval and its task sessions. Task descriptors, current read
+versioned status setting and its shared task sessions. Task descriptors, current read
 errors and explicit reconciliation determine whether a fresh read is required;
 receipt-only optional polls do not invalidate an already observed CAS version or
 block approval while their GET runs. loadedRevision remains the successful GET's

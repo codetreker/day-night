@@ -1,5 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
-import { approveTask, claimTask, createProject, createProposedTask, expect, test, updateTask, type Task } from './fixtures';
+import { startTask, createProject, createTask, expect, test, updateTask, type Task } from './fixtures';
 import { expectCenteredTaskDetail } from './detail-dialog';
 
 const scenario = { annotation: { type: 'scenario', description: 'task-agent-permission' } };
@@ -32,8 +32,8 @@ const geometry = async (page: Page): Promise<void> => {
 
 test('task-agent-permission', scenario, async ({ page, api, allowBrowserWrites }, info) => {
   const own = await createProject(api, { name: 'Automatic execution acceptance' });
-  let task = await createProposedTask(api, own.id, { title: '自动执行许可', description: '许可与审批和 ready 独立。' });
-  const other = await createProposedTask(api, own.id, { title: '另一个任务', description: '原任务写入不能污染此任务。' });
+  let task = await createTask(api, own.id, { title: '自动执行许可', description: '许可与任务状态和 ready 独立。' });
+  const other = await createTask(api, own.id, { title: '另一个任务', description: '原任务写入不能污染此任务。' });
   expect(task.allowAgents).toBe(false);
   const base = info.project.use.baseURL;
   if (typeof base !== 'string') throw new Error('Permission acceptance requires the actual service origin.');
@@ -78,7 +78,7 @@ test('task-agent-permission', scenario, async ({ page, api, allowBrowserWrites }
 
     await enable(page, true); await expect(automatic(page)).toBeChecked();
     const enabled = await (await api.get(taskPath(own.id, task.id))).json() as Task;
-    expect(enabled).toMatchObject({ allowAgents: true, status: 'proposed', ready: false });
+    expect(enabled).toMatchObject({ allowAgents: true, status: 'todo', ready: true });
     await enable(page, false); await expect(automatic(page)).not.toBeChecked();
 
     mode = 'conflict'; await enable(page, true);
@@ -89,7 +89,7 @@ test('task-agent-permission', scenario, async ({ page, api, allowBrowserWrites }
     mode = 'unknown'; await enable(page, false);
     await expect(detail(page).getByRole('button', { name: '核对实际任务', exact: true })).toBeEnabled();
     await expect(automatic(page)).toBeDisabled(); await expect(automatic(page)).toBeChecked();
-    await expect(detail(page).getByRole('button', { name: '批准任务', exact: true })).toBeDisabled();
+    await expect(detail(page).getByRole('button', { name: '待处理', exact: true })).toBeDisabled();
     rejectReconciliation = false;
     await detail(page).getByRole('button', { name: '核对实际任务', exact: true }).click();
     await expect(automatic(page)).not.toBeChecked(); await expect(automatic(page)).toBeEnabled(); expect(writes).toHaveLength(5);
@@ -107,12 +107,12 @@ test('task-agent-permission', scenario, async ({ page, api, allowBrowserWrites }
     expect(writes).toHaveLength(7); expect(writes.map((entry) => entry.result)).toEqual(['200', '200', '409', '200', '200', '200', '200']);
 
     task = await (await api.get(taskPath(own.id, task.id))).json() as Task;
-    const claimed = await claimTask(api, own.id, await approveTask(api, own.id, task));
+    const claimed = await startTask(api, own.id, task);
     expect(claimed.allowAgents).toBe(false);
     await detail(page).getByRole('button', { name: '关闭任务详情', exact: true }).click();
     await page.reload(); await open(page, task.id);
     await expect(automatic(page)).toBeDisabled(); await expect(automatic(page)).not.toBeChecked();
-    await expect(detail(page).getByText(/任务已被领取/)).toBeVisible();
+    await expect(detail(page).getByText(/任务正在进行中/)).toBeVisible();
     await page.setViewportSize({ width: 390, height: 844 }); await geometry(page);
     await detail(page).getByRole('button', { name: '关闭任务详情', exact: true }).click();
     await page.getByRole('combobox', { name: '语言 / Language', exact: true }).selectOption('en');

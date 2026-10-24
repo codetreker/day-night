@@ -26,7 +26,7 @@ const taskListItem = (value: Task): Omit<Task, "description"> => ({
 const graph = (): TaskGraph => ({
   observedAt: time,
   project,
-  summary: { total: 1, proposed: 0, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 },
+  summary: { total: 1, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 },
   tasks: [{ id: taskId, titlePreview: "Task 中文", titleTruncated: false, allowAgents: false, status: "todo", dependsOn: [], externalDependsOn: [], blockedBy: [], ready: true, startedAt: null, completedAt: null, createdAt: time, updatedAt: time }],
 });
 const taskPath = `/api/v1/projects/${projectId}/tasks`;
@@ -303,7 +303,7 @@ describe("compiled task commands", () => {
     const f = await fixture();
     try {
       const helpBlocked = ["/api/", "/config/", "/repository/", "/commands/server/", "/commands/task/rendering.js", "better-sqlite3"];
-      for (const args of [[], ["--help"], ...["create", "list", "ready", "show", "update", "approve", "unapprove", "claim", "complete", "graph"].map((name) => [name, "--help"]), ["attachment"], ["attachment", "--help"], ...["put", "list", "read", "remove"].map((name) => ["attachment", name, "--help"])]) {
+      for (const args of [[], ["--help"], ...["create", "list", "ready", "show", "update", "set-status", "graph"].map((name) => [name, "--help"]), ["attachment"], ["attachment", "--help"], ...["put", "list", "read", "remove"].map((name) => ["attachment", name, "--help"])]) {
         const result = await f.invoke(args, { blocked: helpBlocked });
         expect(result.code, result.stderr).toBe(0);
         expect(result.stdout).toContain("Usage: daynight task");
@@ -353,7 +353,7 @@ describe("compiled task commands", () => {
       const current = task({ allowAgents: true, description: "Complete Markdown\n\n```text\nexternal dependency\n```", version: 9_223_372_036_854_775_807n, dependsOn: [secondId, thirdId], externalDependsOn: [thirdId] });
       const graphValue: TaskGraph = {
         ...graph(),
-        summary: { total: 3, proposed: 0, todo: 1, inProgress: 0, done: 2, ready: 1, blocked: 0 },
+        summary: { total: 3, todo: 1, inProgress: 0, done: 2, ready: 1, blocked: 0 },
         tasks: [
           { ...graph().tasks[0]!, allowAgents: current.allowAgents, dependsOn: current.dependsOn, externalDependsOn: current.externalDependsOn },
           { ...graph().tasks[0]!, id: secondId, status: "done", ready: false },
@@ -382,33 +382,33 @@ describe("compiled task commands", () => {
     } finally { await f.close(); }
   }, 60_000);
 
-  it("executes approval, withdrawal, claim and completion with precise observed or supplied versions", async () => {
+  it("sets all three statuses with precise observed or supplied versions and same-status no-ops", async () => {
     const f = await fixture();
     try {
-      let current = task({ status: "proposed", ready: false, description: "Lifecycle details", version: 9_007_199_254_740_993n });
+      let current = task({ description: "Status details", version: 9_007_199_254_740_993n });
       const { requests } = await f.serve((request, response) => {
-        if (request.method === "POST" && request.pathname !== taskPath) {
-          const action = request.pathname.split("/").at(-1)!;
-          const status = action === "approve" ? "todo" : action === "unapprove" ? "proposed" : action === "claim" ? "in_progress" : "done";
-          current = { ...current, status, ready: status === "todo", version: current.version + 1n };
+        if (request.method === "PUT") {
+          const { status } = request.body as { status: Task["status"] };
+          if (current.status !== status) current = { ...current, status, ready: status === "todo", version: current.version + 1n };
         }
         respond(response, current, request.pathname === taskPath ? 201 : 200);
       });
-      const created = await f.invoke(["create", "--title", "Lifecycle", ...explicit]);
+      const created = await f.invoke(["create", "--title", "Status", ...explicit]);
       expect(created.code, created.stderr).toBe(0);
-      expect(created.stdout).toContain("Status: proposed");
-      for (const [action, status] of [["approve", "todo"], ["unapprove", "proposed"], ["approve", "todo"], ["claim", "in_progress"], ["complete", "done"]] as const) {
+      expect(created.stdout).toContain("Status: todo");
+      for (const status of ["todo", "in_progress", "done", "todo"] as const) {
         const version = current.version;
+        const expectedVersion = current.status === status ? version : version + 1n;
         const before = requests.length;
-        const explicitVersion = action === "claim";
-        const result = await f.invoke([action, taskId.toUpperCase(), ...(explicitVersion ? ["--if-version", String(version)] : []), ...explicit]);
+        const explicitVersion = status === "in_progress";
+        const result = await f.invoke(["set-status", taskId.toUpperCase(), status, ...(explicitVersion ? ["--if-version", String(version)] : []), ...explicit]);
         expect(result.code, result.stderr).toBe(0);
         expect(result.stdout).toContain(`Status: ${status}`);
-        expect(result.stdout).toContain(`Version: ${version + 1n}`);
-        expect(result.stdout).toContain("Description: Lifecycle details");
-        expect(requests.slice(before).map(({ method, pathname }) => `${method} ${pathname}`)).toEqual([`GET ${projectPath}`, ...(explicitVersion ? [] : [`GET ${taskPath}/${taskId}`]), `POST ${taskPath}/${taskId}/${action}`]);
-        expect(requests.at(-1)!.body).toEqual({ version });
-        expect(requests.at(-1)!.bodyText).toBe(`{"version":${version}}`);
+        expect(result.stdout).toContain(`Version: ${expectedVersion}`);
+        expect(result.stdout).toContain("Description: Status details");
+        expect(requests.slice(before).map(({ method, pathname }) => `${method} ${pathname}`)).toEqual([`GET ${projectPath}`, ...(explicitVersion ? [] : [`GET ${taskPath}/${taskId}`]), `PUT ${taskPath}/${taskId}/status`]);
+        expect(requests.at(-1)!.body).toEqual({ version, status });
+        expect(requests.at(-1)!.bodyText).toBe(`{"version":${version},"status":"${status}"}`);
       }
     } finally { await f.close(); }
   }, 60_000);
@@ -425,13 +425,11 @@ describe("compiled task commands", () => {
       const progressSecond = identifiedTask("06", "Progress second", { status: "in_progress", ready: false });
       const blockedSecond = identifiedTask("07", "Blocked second", { ready: false, dependsOn: [thirdId], blockedBy: [thirdId] });
       const doneSecond = identifiedTask("08", "Done second", { status: "done", ready: false });
-      const proposedFirst = identifiedTask("09", "Proposed first", { status: "proposed", ready: false });
-      const proposedSecond = identifiedTask("10", "Proposed second", { status: "proposed", ready: false, dependsOn: [thirdId], blockedBy: [thirdId] });
       const cursor = "next priority page+/=?";
       const { requests } = await f.serve((request, response) => respond(response, request.query.has("cursor")
-        ? { items: [readySecond, progressSecond, blockedSecond, doneSecond, proposedSecond], nextCursor: null }
-        : { items: [blockedFirst, doneFirst, proposedFirst, readyFirst, progressFirst], nextCursor: cursor }));
-      const unfinished = [progressFirst, progressSecond, readyFirst, readySecond, blockedFirst, blockedSecond, proposedFirst, proposedSecond];
+        ? { items: [readySecond, progressSecond, blockedSecond, doneSecond], nextCursor: null }
+        : { items: [blockedFirst, doneFirst, readyFirst, progressFirst], nextCursor: cursor }));
+      const unfinished = [progressFirst, progressSecond, readyFirst, readySecond, blockedFirst, blockedSecond];
       for (const includeAll of [false, true]) {
         const args = ["list", ...(includeAll ? ["--all"] : []), ...explicit];
         const expected = includeAll ? [...unfinished, doneFirst, doneSecond] : unfinished;
@@ -461,7 +459,7 @@ describe("compiled task commands", () => {
       const completed = task({ status: "done", ready: false, startedAt: "2026-10-19T23:00:00Z", completedAt: time });
       const value: TaskGraph = {
         observedAt: time, project,
-        summary: { total: 1, proposed: 0, todo: 0, inProgress: 0, done: 1, ready: 0, blocked: 0 },
+        summary: { total: 1, todo: 0, inProgress: 0, done: 1, ready: 0, blocked: 0 },
         tasks: [{ ...graph().tasks[0]!, status: "done", ready: false, startedAt: completed.startedAt, completedAt: completed.completedAt }],
       };
       await f.serve((request, response) => respond(response, request.pathname.endsWith("/task-graph") ? value
@@ -481,33 +479,19 @@ describe("compiled task commands", () => {
     } finally { await f.close(); }
   }, 60_000);
 
-  it("shows complete proposed tasks and includes their distinct counter in human and JSON graph output", async () => {
+  it("rejects removed proposed resources and filters", async () => {
     const f = await fixture();
     try {
-      const proposed = task({ status: "proposed", ready: false, description: "Complete proposed description\nsecond line", version: 9_223_372_036_854_775_807n, dependsOn: [secondId], blockedBy: [secondId] });
-      const value: TaskGraph = {
-        observedAt: time,
-        project,
-        summary: { total: 2, proposed: 2, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 },
-        tasks: [
-          { ...graph().tasks[0]!, status: "proposed", ready: false, dependsOn: [secondId], blockedBy: [secondId] },
-          { ...graph().tasks[0]!, id: secondId, titlePreview: "Proposed prerequisite", status: "proposed", ready: false },
-        ],
-      };
-      await f.serve((request, response) => respond(response, request.pathname.endsWith("/task-graph") ? value : proposed));
+      const { requests } = await f.serve((_request, response) => respond(response, { ...task(), status: "proposed", ready: false }));
       const shown = await f.invoke(["show", taskId, ...explicit]);
-      expect(shown.code, shown.stderr).toBe(0);
-      for (const field of ["Status: proposed", "Ready: false", "Description: Complete proposed description\\nsecond line", "Version: 9223372036854775807", `Blocked by: ${secondId}`]) expect(shown.stdout).toContain(field);
-      const json = await f.invoke(["show", taskId, "--json", ...explicit]);
-      expect(json.code, json.stderr).toBe(0);
-      expect(parseApiJson(json.stdout)).toEqual(proposed);
-      expect(json.stdout).toContain('"version":9223372036854775807');
-      const graphed = await f.invoke(["graph", ...explicit]);
-      expect(graphed.code, graphed.stderr).toBe(0);
-      for (const field of ["Total: 2", "Proposed: 2", "Todo: 0", "In progress: 0", "Done: 0", "Ready: 0", "Blocked: 0", "Status: proposed", `Blocked by: ${secondId}`]) expect(graphed.stdout).toContain(field);
-      const graphJson = await f.invoke(["graph", "--json", ...explicit]);
-      expect(graphJson.code, graphJson.stderr).toBe(0);
-      expect(parseApiJson(graphJson.stdout)).toEqual(value);
+      expect(shown.code).toBe(1);
+      expect(shown.stdout).toBe("");
+      const before = requests.length;
+      for (const args of [["list", "--status", "proposed"], ["set-status", taskId, "proposed"], ...["approve", "unapprove", "claim", "complete"].map((action) => [action, taskId])]) {
+        const result = await f.invoke([...args, ...explicit]);
+        expect(result.code).toBe(2);
+      }
+      expect(requests).toHaveLength(before);
     } finally { await f.close(); }
   }, 60_000);
 
@@ -517,16 +501,13 @@ describe("compiled task commands", () => {
       const readyTask = task();
       const progressTask = task({ id: secondId, status: "in_progress", ready: false });
       const doneTask = task({ id: thirdId, status: "done", ready: false });
-      const proposedTask = task({ id: "b1b2c3d4-1111-4222-8333-123456789abf", status: "proposed", ready: false });
-      const items = [doneTask, proposedTask, readyTask, progressTask];
+      const items = [doneTask, readyTask, progressTask];
       const { requests } = await f.serve((request, response) => respond(response, {
         items: items.filter((item) => (!request.query.has("status") || item.status === request.query.get("status")) && (!request.query.has("ready") || item.ready)),
         nextCursor: null,
       }));
       const cases: readonly { args: readonly string[]; expected: readonly Task[]; query: Record<string, string> }[] = [
         { args: ["--status", "done"], expected: [doneTask], query: { status: "done", limit: "100" } },
-        { args: ["--status", "proposed"], expected: [proposedTask], query: { status: "proposed", limit: "100" } },
-        { args: ["--status", "proposed", "--ready"], expected: [], query: { status: "proposed", ready: "true", limit: "100" } },
         { args: ["--ready"], expected: [readyTask], query: { ready: "true", limit: "100" } },
         { args: ["--all", "--ready"], expected: [readyTask], query: { ready: "true", limit: "100" } },
         { args: ["--status", "todo", "--ready"], expected: [readyTask], query: { status: "todo", ready: "true", limit: "100" } },
@@ -729,12 +710,12 @@ describe("compiled task commands", () => {
       expect(requests[2]!.bodyText).toContain('"version":9007199254740993');
 
       requests.length = 0; refusal = "version";
-      const conflict = await f.invoke(["complete", taskId, "--if-version", "9223372036854775807", ...explicit]);
+      const conflict = await f.invoke(["set-status", taskId, "done", "--if-version", "9223372036854775807", ...explicit]);
       expect(conflict.code).toBe(1); expect(conflict.stdout).toBe("");
       expect(conflict.stderr).toContain("version_conflict"); expect(conflict.stderr).toContain("task-version-conflict");
-      expect(requests.map(({ method, pathname }) => `${method} ${pathname}`)).toEqual([`GET ${projectPath}`, `POST ${taskPath}/${taskId}/complete`]);
+      expect(requests.map(({ method, pathname }) => `${method} ${pathname}`)).toEqual([`GET ${projectPath}`, `PUT ${taskPath}/${taskId}/status`]);
       expect(requests[1]!.bodyText).toContain('"version":9223372036854775807');
-      expect(requests[1]!.body).toEqual({ version: 9_223_372_036_854_775_807n });
+      expect(requests[1]!.body).toEqual({ version: 9_223_372_036_854_775_807n, status: "done" });
 
       requests.length = 0; refusal = "dependencies";
       const rejected = await f.invoke(["update", taskId, "--if-version", "2", "--depends-on", thirdId, "--depends-on", secondId, ...explicit]);

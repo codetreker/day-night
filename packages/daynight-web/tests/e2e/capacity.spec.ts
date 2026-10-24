@@ -335,7 +335,7 @@ const assertInspection = async (page: Page, fixture: CapacityFixture, selectedId
   while (pending.length > 0) for (const id of tasks.get(pending.pop()!)!.dependsOn) if (!closure.has(id)) { closure.add(id); pending.push(id); }
   const geometry = expectedCapacityGeometry(fixture);
   const external = new Set(geometry.nodes.filter((node) => !geometry.memberIds.includes(node.id)).map((node) => node.id));
-  const states = { proposed: { label: '待审批', color: 'rgb(130, 98, 165)' }, todo: { label: '待处理', color: 'rgb(114, 126, 144)' }, in_progress: { label: '进行中', color: 'rgb(72, 103, 181)' }, done: { label: '已完成', color: 'rgb(40, 116, 84)' } };
+  const states = { todo: { label: '待处理', color: 'rgb(114, 126, 144)' }, in_progress: { label: '进行中', color: 'rgb(72, 103, 181)' }, done: { label: '已完成', color: 'rgb(40, 116, 84)' } };
   const expected = {
     nodes: fixture.tasks.filter((task) => visible.nodes.some((node) => node.id === task.id)).map((task) => ({
       id: task.id, state: selectedId === null ? 'normal' : task.id === selectedId ? 'selected' : closure.has(task.id) ? 'prerequisite' : 'unrelated', pressed: String(task.id === selectedId),
@@ -530,7 +530,7 @@ test.describe('fixed capacity and performance @capacity', () => {
           expect(snapshot.status()).toBe(200);
           const graph = parseTaskGraph(await decodeTaskGraphJson(new Response(await snapshot.text())), fixture.project.id);
           expect(graph.summary.total).toBe(1000);
-          expect(graph.summary.proposed).toBe(0);
+          expect(graph.summary).not.toHaveProperty('proposed');
           expect(graph.summary.todo).toBe(1000);
           expect(graph.tasks).toHaveLength(1000);
           expect(new Set(graph.tasks.map((task) => task.id)).size).toBe(1000);

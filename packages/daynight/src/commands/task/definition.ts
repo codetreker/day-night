@@ -9,7 +9,7 @@ const descriptionOption: CommandOption = { names: ["--description"], description
 const dependencyOption: CommandOption = { names: ["--depends-on"], description: "Ordinary prerequisite UUID; repeat for the complete ordinary set", value: { name: "task-id", kind: "text" }, repeatable: true };
 const externalDependencyOption: CommandOption = { names: ["--external-depends-on"], description: "External prerequisite UUID; repeat for the complete external set", value: { name: "task-id", kind: "text" }, repeatable: true };
 const dependencyDetails = "Supplying either dependency option replaces every dependency and its classification. --depends-on supplies ordinary prerequisites; --external-depends-on supplies external prerequisites. External-only input keeps only those external prerequisites; ordinary-only input makes every supplied prerequisite ordinary. IDs must be valid UUIDs and occur once across both options. Both kinds block execution until completed.";
-const statusOption: CommandOption = { names: ["--status"], description: "Task status", value: { name: "status", kind: "text", choices: ["proposed", "todo", "in_progress", "done"] } };
+const statusOption: CommandOption = { names: ["--status"], description: "Task status", value: { name: "status", kind: "text", choices: ["todo", "in_progress", "done"] } };
 const allowAgentsOption: CommandOption = { names: ["--allow-agents"], description: "Automatic-execution permission", value: { name: "true|false", kind: "text", choices: ["true", "false"] } };
 const versionOption: CommandOption = { names: ["--if-version"], description: "Use this expected task version without reading a newer version", value: { name: "version", kind: "text" } };
 const pullRequestOptions: readonly CommandOption[] = [
@@ -24,15 +24,15 @@ export const taskDefinition: CommandDefinition = {
   commands: [
     {
       name: "create",
-      description: "Create a proposed task with optional dependencies and PR references",
+      description: "Create a todo task with optional dependencies and PR references",
       options: [{ ...titleOption, required: true }, descriptionOption, dependencyOption, externalDependencyOption, ...pullRequestOptions, projectOption, helpOption],
-      details: `New tasks start in proposed with automatic execution disabled and require approval before they can be claimed. Omitting both dependency options creates a task with no prerequisites.\n${dependencyDetails}\nPR URL and title counts must match; the nth URL pairs with the nth title. Empty values are accepted, and all text is stored as supplied.`,
+      details: `New tasks start in todo with automatic execution disabled. Creating a task does not start execution. Omitting both dependency options creates a task with no prerequisites.\n${dependencyDetails}\nPR URL and title counts must match; the nth URL pairs with the nth title. Empty values are accepted, and all text is stored as supplied.`,
     },
     {
       name: "list",
       description: "List unfinished tasks, with in-progress and ready tasks first",
       options: [{ names: ["--all"], description: "Include completed tasks; conflicts with --status" }, statusOption, { names: ["--ready"], description: "Include only tasks ready to start" }, allowAgentsOption, projectOption, listJsonOption, helpOption],
-      details: "By default, exclude done tasks. Use --all for every status or --status for a specific status.\nCombine --ready and --allow-agents with the selected statuses using AND. Read every page before printing.\nOrder in_progress first, then ready todo, blocked todo, proposed, and done tasks; preserve server order within each group.\nText lists omit description, version, and timestamps. --json omits description and preserves every other task field with the same filtering and ordering.",
+      details: "By default, exclude done tasks. Use --all for every status or --status for a specific status.\nCombine --ready and --allow-agents with the selected statuses using AND. Read every page before printing.\nOrder in_progress first, then ready todo, blocked todo, and done tasks; preserve server order within each group.\nText lists omit description, version, and timestamps. --json omits description and preserves every other task field with the same filtering and ordering.",
     },
     {
       name: "ready",
@@ -56,20 +56,15 @@ export const taskDefinition: CommandDefinition = {
         { names: ["--clear-pull-requests"], description: "Clear the complete PR reference list" },
         versionOption,
         projectOption, helpOption],
-      details: `Provide at least one changed field. --allow-agents changes the automatic-execution permission independently of approval; actual changes are locked during in_progress. Use daynight task approve, unapprove, claim, or complete to change status.\n${dependencyDetails}\nOmitting both dependency options preserves all dependencies and classifications. --clear-dependencies clears both sets and conflicts with either dependency option.\nPR URL and title counts must match; the nth URL pairs with the nth title. Pairs replace the complete list; empty values are accepted. --clear-pull-requests conflicts with either PR option. Omitted PR options preserve the current list.\nWithout --if-version, read the current version before submitting the update. Conflicts are not retried.`,
+      details: `Provide at least one changed field. --allow-agents changes the automatic-execution permission independently of status; actual changes are locked during in_progress. Use daynight task set-status to change status.\n${dependencyDetails}\nOmitting both dependency options preserves all dependencies and classifications. --clear-dependencies clears both sets and conflicts with either dependency option.\nPR URL and title counts must match; the nth URL pairs with the nth title. Pairs replace the complete list; empty values are accepted. --clear-pull-requests conflicts with either PR option. Omitted PR options preserve the current list.\nWithout --if-version, read the current version before submitting the update. Conflicts are not retried.`,
     },
-    ...([
-      { name: "approve", description: "Approve a proposed task, moving it to todo", rule: "Unfinished prerequisites are allowed." },
-      { name: "unapprove", description: "Withdraw approval from a todo task, moving it to proposed", rule: "Only todo tasks can return to proposed; unfinished prerequisites are allowed." },
-      { name: "claim", description: "Claim an approved todo task, moving it to in_progress", rule: "Every direct prerequisite must be done." },
-      { name: "complete", description: "Complete an in_progress task, moving it to done", rule: "Every direct prerequisite must be done." },
-    ] as const).map(({ name, description, rule }): CommandDefinition => ({
-      name,
-      description,
-      arguments: [taskArgument],
+    {
+      name: "set-status",
+      description: "Set a task to todo, in_progress, or done",
+      arguments: [taskArgument, { name: "status", description: "Target task status", choices: ["todo", "in_progress", "done"] }],
       options: [versionOption, projectOption, helpOption],
-      details: `${rule}\nWithout --if-version, read the current version immediately before submitting the action.\nWith --if-version, submit exactly that version without reading the task. Conflicts and mutations are not retried.`,
-    })),
+      details: "Every direct prerequisite must be done when entering in_progress or done. Reopening done work is refused while a direct successor is in_progress or done.\nA current-version same-status request preserves all stored fields; a stale version still conflicts. Entering in_progress starts a new execution interval; returning to todo clears it; direct todo to done records an unknown duration.\nWithout --if-version, read the current version immediately before submitting. With --if-version, submit exactly that version without reading the task. Conflicts and mutations are not retried.",
+    },
     {
       name: "graph",
       description: "Show the complete task graph and summary",

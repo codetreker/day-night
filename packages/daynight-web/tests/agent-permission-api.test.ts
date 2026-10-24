@@ -10,7 +10,7 @@ const task = { id: taskId, projectId, title: 'Automatic work', description: '', 
   version: 9007199254740993n, allowAgents: false, ready: true, dependsOn: [], externalDependsOn: [], blockedBy: [], startedAt: null, completedAt: null, createdAt: time, updatedAt: time };
 const graph = (allowAgents: unknown) => ({ observedAt: time,
   project: { id: projectId, name: 'Project', repoUrl: 'https://example.com/project', settings: { version: 1n, executionWarningMinutes: 60 }, createdAt: time, updatedAt: time },
-  summary: { total: 1, proposed: 0, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 },
+  summary: { total: 1, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 },
   tasks: [{ ...task, titlePreview: task.title, titleTruncated: false, allowAgents }],
 });
 const signal = () => new AbortController().signal;

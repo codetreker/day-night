@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
-	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -15,180 +14,149 @@ import (
 	"github.com/codetreker/daynight/packages/daynight-server/api"
 )
 
-func TestTaskHTTPTransitionsRejectWrongPredecessorsAndStaleVersions(t *testing.T) {
+func TestTaskHTTPStatusPairsAndStaleVersions(t *testing.T) {
 	var logs bytes.Buffer
 	handler := projectTestHandler(t, projectTestStore(t), &logs)
 	project := taskProject(t, handler)
-	states := []struct {
-		name    string
-		actions []string
-		next    []string
-	}{
-		{"proposed", nil, []string{"approve"}},
-		{"todo", []string{"approve"}, []string{"unapprove", "claim"}},
-		{"in_progress", []string{"approve", "claim"}, []string{"complete"}},
-		{"done", []string{"approve", "claim", "complete"}, nil},
-	}
-	for _, state := range states {
-		t.Run(state.name, func(t *testing.T) {
-			task := createHTTPTask(t, handler, project.ID, "private-title-secret")
-			for _, action := range state.actions {
-				task = transitionHTTPTask(t, handler, task, action)
-			}
-			if task.Status != state.name {
-				t.Fatalf("fixture state: %+v", task)
-			}
-			for _, action := range []string{"approve", "unapprove", "claim", "complete"} {
-				path := taskPath(task) + "/" + action
-				assertProjectError(t, projectRequest(handler, http.MethodPost, path,
-					jsonBody(t, api.TaskTransitionRequest{Version: task.Version + 1})), http.StatusConflict, "version_conflict")
-				if !slices.Contains(state.next, action) {
-					response := projectRequest(handler, http.MethodPost, path, jsonBody(t, api.TaskTransitionRequest{Version: task.Version}))
-					assertProjectError(t, response, http.StatusConflict, "invalid_transition")
-					if strings.Contains(response.Body.String(), "secret") {
-						t.Fatalf("transition error exposed task content: %s", response.Body)
-					}
+	for _, from := range []string{"todo", "in_progress", "done"} {
+		for _, to := range []string{"todo", "in_progress", "done"} {
+			t.Run(from+"_to_"+to, func(t *testing.T) {
+				task := setHTTPTask(t, handler, createHTTPTask(t, handler, project.ID, "private-title-secret"), from)
+				path := taskPath(task) + "/status"
+				assertProjectError(t, projectRequest(handler, http.MethodPut, path, jsonBody(t, api.TaskStatusUpdateRequest{Version: task.Version + 1, Status: to})), http.StatusConflict, "version_conflict")
+				after := setHTTPTask(t, handler, task, to)
+				delta := int64(1)
+				if from == to {
+					delta = 0
 				}
-				if !reflect.DeepEqual(readHTTPTask(t, handler, task), task) {
-					t.Fatal("rejected transition changed task fields, edges, version or time")
+				if after.Status != to || after.Version != task.Version+delta {
+					t.Fatalf("incorrect status assignment: before %+v after %+v", task, after)
 				}
-			}
-		})
+				if delta == 0 && !reflect.DeepEqual(task, after) {
+					t.Fatal("same state changed persistent materials or timing")
+				}
+				if delta == 1 {
+					assertProjectError(t, projectRequest(handler, http.MethodPut, path, jsonBody(t, api.TaskStatusUpdateRequest{Version: task.Version, Status: to})), http.StatusConflict, "version_conflict")
+				}
+				if !reflect.DeepEqual(readHTTPTask(t, handler, task), after) {
+					t.Fatal("status result differs from stored task")
+				}
+			})
+		}
 	}
-	for _, fragment := range []string{`"cause":"invalid_transition"`, `"error_code":"invalid_transition"`, `"route":"POST /api/v1/projects/{projectId}/tasks/{taskId}/approve"`, `"phase":"unapprove"`, `"phase":"claim"`, `"phase":"complete"`} {
+	for _, fragment := range []string{`"cause":"version_conflict"`, `"route":"PUT /api/v1/projects/{projectId}/tasks/{taskId}/status"`, `"phase":"set_status"`, `"outcome":"changed"`, `"outcome":"unchanged"`} {
 		if !strings.Contains(logs.String(), fragment) {
-			t.Fatalf("missing lifecycle diagnostic %s: %s", fragment, &logs)
+			t.Fatalf("missing status diagnostic %s: %s", fragment, &logs)
 		}
 	}
 	if strings.Contains(logs.String(), "secret") {
-		t.Fatalf("task content leaked into lifecycle logs: %s", &logs)
+		t.Fatalf("task content leaked: %s", &logs)
 	}
 }
 
-func TestTaskHTTPTransitionStrictBodiesQueriesAndMethods(t *testing.T) {
+func TestTaskHTTPStatusStrictBodiesQueriesAndMethods(t *testing.T) {
 	handler := projectTestHandler(t, projectTestStore(t), io.Discard)
-	project := taskProject(t, handler)
-	task := createHTTPTask(t, handler, project.ID, "Original")
-	for _, action := range []string{"approve", "unapprove", "claim", "complete"} {
-		t.Run(action, func(t *testing.T) {
-			path := taskPath(task) + "/" + action
-			for _, body := range []string{
-				"", "null", "[]", "{", `{"version":1,}`, `{"version":1} {}`, `{}`,
-				`{"version":null}`, `{"version":0}`, `{"version":-1}`, `{"version":"1"}`,
-				`{"version":true}`, `{"version":[]}`, `{"version":{}}`, `{"version":1.0}`,
-				`{"version":1e0}`, `{"version":9223372036854775808}`, `{"Version":1}`,
-				`{"version":1,"version":1}`, `{"version":1,"ver\u0073ion":1}`,
-				`{"version":1,"status":"todo"}`, `{"version":1,"title":"changed"}`,
-				`{"version":1,"unknown":"private-body-secret"}`, `{"version":1,"dependsOn":[]}`,
-			} {
-				t.Run(body, func(t *testing.T) {
-					assertProjectError(t, projectRequest(handler, http.MethodPost, path, body), http.StatusBadRequest, "invalid_input")
-				})
-			}
-			for _, query := range []string{"version=1", "unknown=secret", "x=1&x=2", "x=%xx", "x=1;y=2", "&", "="} {
-				assertProjectError(t, projectRequest(handler, http.MethodPost, path+"?"+query, `{"version":1}`), http.StatusBadRequest, "invalid_input")
-			}
-			for _, method := range []string{http.MethodGet, http.MethodHead, http.MethodPatch, http.MethodPut, http.MethodDelete, http.MethodOptions} {
-				response := projectRequest(handler, method, path, `{"version":1}`)
-				assertProjectError(t, response, http.StatusMethodNotAllowed, "method_not_allowed")
-				if response.Header().Get("Allow") != "POST" {
-					t.Fatalf("wrong lifecycle Allow header: %s", response.Header().Get("Allow"))
-				}
-			}
-			request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"version":1}`))
-			authorizeResourceRequest(handler, request)
-			request.Header.Set("Content-Type", "text/plain")
-			request.Header.Set("X-Request-ID", "project-test")
-			response := httptest.NewRecorder()
-			handler.ServeHTTP(response, request)
-			assertProjectError(t, response, http.StatusBadRequest, "invalid_input")
-			if !reflect.DeepEqual(readHTTPTask(t, handler, task), task) {
-				t.Fatal("malformed lifecycle request mutated task")
-			}
+	task := createHTTPTask(t, handler, taskProject(t, handler).ID, "Original")
+	path := taskPath(task) + "/status"
+	for _, body := range []string{
+		"", "null", "[]", "{", `{"version":1,"status":"todo",}`, `{"version":1,"status":"todo"} {}`, `{}`,
+		`{"status":"todo"}`, `{"version":1}`, `{"version":null,"status":"todo"}`, `{"version":0,"status":"todo"}`, `{"version":-1,"status":"todo"}`,
+		`{"version":"1","status":"todo"}`, `{"version":true,"status":"todo"}`, `{"version":[],"status":"todo"}`, `{"version":{},"status":"todo"}`,
+		`{"version":1.0,"status":"todo"}`, `{"version":1e0,"status":"todo"}`, `{"version":9223372036854775808,"status":"todo"}`, `{"Version":1,"status":"todo"}`,
+		`{"version":1,"version":1,"status":"todo"}`, `{"version":1,"ver\u0073ion":1,"status":"todo"}`,
+		`{"version":1,"status":null}`, `{"version":1,"status":1}`, `{"version":1,"status":[]}`, `{"version":1,"status":{}}`,
+		`{"version":1,"status":"proposed"}`, `{"version":1,"status":"Todo"}`, `{"version":1,"status":" todo"}`, `{"version":1,"status":""}`,
+		`{"version":1,"Status":"todo"}`, `{"version":1,"status":"todo","status":"todo"}`, `{"version":1,"status":"todo","sta\u0074us":"todo"}`, `{"version":1,"status":"todo","title":"changed"}`,
+		`{"version":1,"status":"todo","unknown":"private-body-secret"}`, `{"version":1,"status":"todo","dependsOn":[]}`,
+	} {
+		t.Run(body, func(t *testing.T) {
+			assertProjectError(t, projectRequest(handler, http.MethodPut, path, body), http.StatusBadRequest, "invalid_input")
 		})
 	}
-	assertProjectError(t, projectRequest(handler, http.MethodPost, taskPath(task)+"/approve", `{"version":9223372036854775807}`), http.StatusConflict, "version_conflict")
+	for _, query := range []string{"", "version=1", "unknown=secret", "x=1&x=2", "x=%xx", "x=1;y=2", "&", "="} {
+		assertProjectError(t, projectRequest(handler, http.MethodPut, path+"?"+query, `{"version":1,"status":"todo"}`), http.StatusBadRequest, "invalid_input")
+	}
+	for _, method := range []string{http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPatch, http.MethodDelete, http.MethodOptions} {
+		response := projectRequest(handler, method, path, `{"version":1,"status":"todo"}`)
+		assertProjectError(t, response, http.StatusMethodNotAllowed, "method_not_allowed")
+		if response.Header().Get("Allow") != "PUT" {
+			t.Fatalf("wrong Allow: %s", response.Header().Get("Allow"))
+		}
+	}
+	request := httptest.NewRequest(http.MethodPut, path, strings.NewReader(`{"version":1,"status":"todo"}`))
+	authorizeResourceRequest(handler, request)
+	request.Header.Set("Content-Type", "text/plain")
+	request.Header.Set("X-Request-ID", "project-test")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	assertProjectError(t, response, http.StatusBadRequest, "invalid_input")
+	if !reflect.DeepEqual(readHTTPTask(t, handler, task), task) {
+		t.Fatal("invalid status request mutated task")
+	}
+	for _, action := range []string{"approve", "unapprove", "claim", "complete"} {
+		response := projectRequest(handler, http.MethodPost, taskPath(task)+"/"+action, `{"version":1}`)
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("removed route %s remains available: %d", action, response.Code)
+		}
+	}
 }
 
-func TestTaskHTTPTransitionResourceScopeAndCanonicalIDs(t *testing.T) {
+func TestTaskHTTPStatusResourceScopeCanonicalIDsAndExactVersion(t *testing.T) {
+	database := projectTestStore(t)
 	var logs bytes.Buffer
-	handler := projectTestHandler(t, projectTestStore(t), &logs)
+	handler := projectTestHandler(t, database, &logs)
 	project, other := taskProject(t, handler), taskProject(t, handler)
 	task := createHTTPTask(t, handler, project.ID, "private-title-secret")
 	missing := "00000000-0000-4000-8000-000000000099"
-	for _, action := range []string{"approve", "unapprove", "claim", "complete"} {
-		for _, projectID := range []string{other.ID, missing} {
-			assertProjectError(t, projectRequest(handler, http.MethodPost, taskCollection(projectID)+"/"+task.ID+"/"+action, `{"version":1}`), http.StatusNotFound, "not_found")
-		}
-		assertProjectError(t, projectRequest(handler, http.MethodPost, taskCollection(project.ID)+"/"+missing+"/"+action, `{"version":1}`), http.StatusNotFound, "not_found")
-		for _, path := range []string{taskCollection("private-invalid-project-secret") + "/" + task.ID, taskCollection(project.ID) + "/private-invalid-task-secret"} {
-			assertProjectError(t, projectRequest(handler, http.MethodPost, path+"/"+action, `{"version":1}`), http.StatusBadRequest, "invalid_input")
-		}
+	for _, projectID := range []string{other.ID, missing} {
+		assertProjectError(t, projectRequest(handler, http.MethodPut, taskCollection(projectID)+"/"+task.ID+"/status", `{"version":1,"status":"done"}`), http.StatusNotFound, "not_found")
 	}
-	approved := decodeResponse[api.Task](t, projectRequest(handler, http.MethodPost,
-		taskCollection(strings.ToUpper(project.ID))+"/"+strings.ToUpper(task.ID)+"/approve", `{"version":1}`), http.StatusOK)
-	if approved.ID != task.ID || approved.ProjectID != project.ID || approved.Status != "todo" || approved.Version != 2 {
-		t.Fatalf("canonical lifecycle IDs: %+v", approved)
+	assertProjectError(t, projectRequest(handler, http.MethodPut, taskCollection(project.ID)+"/"+missing+"/status", `{"version":1,"status":"done"}`), http.StatusNotFound, "not_found")
+	for _, path := range []string{taskCollection("private-invalid-project-secret") + "/" + task.ID, taskCollection(project.ID) + "/private-invalid-task-secret"} {
+		assertProjectError(t, projectRequest(handler, http.MethodPut, path+"/status", `{"version":1,"status":"done"}`), http.StatusBadRequest, "invalid_input")
 	}
-	if strings.Contains(logs.String(), "secret") {
-		t.Fatalf("lifecycle resource diagnostics leaked raw IDs or content: %s", &logs)
-	}
-}
-
-func TestTaskHTTPTransitionRacesHaveOneWinner(t *testing.T) {
-	handler := projectTestHandler(t, projectTestStore(t), io.Discard)
-	project := taskProject(t, handler)
-	task := createHTTPTask(t, handler, project.ID, "Concurrent lifecycle")
-	for _, step := range []struct{ action, status string }{{"approve", "todo"}, {"unapprove", "proposed"}, {"approve", "todo"}, {"claim", "in_progress"}, {"complete", "done"}} {
-		t.Run(step.action, func(t *testing.T) {
-			body := jsonBody(t, api.TaskTransitionRequest{Version: task.Version})
-			start := make(chan struct{})
-			responses := make(chan *httptest.ResponseRecorder, 2)
-			for range 2 {
-				go func() {
-					<-start
-					responses <- projectRequest(handler, http.MethodPost, taskPath(task)+"/"+step.action, body)
-				}()
-			}
-			close(start)
-			var winner api.Task
-			won, lost := 0, 0
-			for range 2 {
-				response := <-responses
-				switch response.Code {
-				case http.StatusOK:
-					winner = decodeResponse[api.Task](t, response, http.StatusOK)
-					won++
-				case http.StatusConflict:
-					assertProjectError(t, response, http.StatusConflict, "version_conflict")
-					lost++
-				default:
-					t.Fatalf("unexpected concurrent action response: %d %s", response.Code, response.Body)
-				}
-			}
-			if won != 1 || lost != 1 || winner.Status != step.status || winner.Version != task.Version+1 || !reflect.DeepEqual(readHTTPTask(t, handler, task), winner) {
-				t.Fatalf("concurrent lifecycle outcome: winners=%d conflicts=%d task=%+v", won, lost, winner)
-			}
-			task = winner
-		})
-	}
-}
-
-func TestTaskHTTPUnapprovePreservesExactInt64Version(t *testing.T) {
-	database := projectTestStore(t)
-	handler := projectTestHandler(t, database, io.Discard)
-	project := taskProject(t, handler)
-	task := transitionHTTPTask(t, handler, createHTTPTask(t, handler, project.ID, "Exact withdrawal version"), "approve")
 	const version int64 = 9007199254740993
-	if _, err := database.Pool.Exec(context.Background(), "UPDATE tasks SET version = $1 WHERE project_id = $2 AND id = $3", version, project.ID, task.ID); err != nil {
+	if _, err := database.Pool.Exec(context.Background(), "UPDATE tasks SET version=$1 WHERE project_id=$2 AND id=$3", version, project.ID, task.ID); err != nil {
 		t.Fatal(err)
 	}
-	task = readHTTPTask(t, handler, task)
-	response := projectRequest(handler, http.MethodPost, taskPath(task)+"/unapprove", `{"version":`+strconv.FormatInt(version, 10)+`}`)
-	after := decodeResponse[api.Task](t, response, http.StatusOK)
-	expected := task
-	expected.Status, expected.Ready, expected.Version, expected.UpdatedAt = "proposed", false, version+1, after.UpdatedAt
-	if !reflect.DeepEqual(after, expected) || !strings.Contains(response.Body.String(), `"version":9007199254740994`) || !reflect.DeepEqual(readHTTPTask(t, handler, task), after) {
-		t.Fatal("withdrawal lost exact numeric version or changed unrelated task data")
+	after := decodeResponse[api.Task](t, projectRequest(handler, http.MethodPut, taskCollection(strings.ToUpper(project.ID))+"/"+strings.ToUpper(task.ID)+"/status", `{"version":`+strconv.FormatInt(version, 10)+`,"status":"done"}`), http.StatusOK)
+	if after.ID != task.ID || after.ProjectID != project.ID || after.Status != "done" || after.Version != version+1 {
+		t.Fatalf("canonical exact status update: %+v", after)
+	}
+	if strings.Contains(logs.String(), "secret") {
+		t.Fatalf("resource diagnostics exposed data: %s", &logs)
+	}
+}
+
+func TestTaskHTTPStatusConcurrentChangeHasOneWinner(t *testing.T) {
+	handler := projectTestHandler(t, projectTestStore(t), io.Discard)
+	task := createHTTPTask(t, handler, taskProject(t, handler).ID, "Concurrent status")
+	for _, status := range []string{"in_progress", "todo", "done", "in_progress"} {
+		body := jsonBody(t, api.TaskStatusUpdateRequest{Version: task.Version, Status: status})
+		start := make(chan struct{})
+		responses := make(chan *httptest.ResponseRecorder, 2)
+		for range 2 {
+			go func() { <-start; responses <- projectRequest(handler, http.MethodPut, taskPath(task)+"/status", body) }()
+		}
+		close(start)
+		var winner api.Task
+		won, lost := 0, 0
+		for range 2 {
+			response := <-responses
+			switch response.Code {
+			case http.StatusOK:
+				winner = decodeResponse[api.Task](t, response, http.StatusOK)
+				won++
+			case http.StatusConflict:
+				assertProjectError(t, response, http.StatusConflict, "version_conflict")
+				lost++
+			default:
+				t.Fatalf("unexpected response %d %s", response.Code, response.Body)
+			}
+		}
+		if won != 1 || lost != 1 || winner.Status != status || winner.Version != task.Version+1 {
+			t.Fatalf("concurrent assignment: %d %d %+v", won, lost, winner)
+		}
+		task = winner
 	}
 }

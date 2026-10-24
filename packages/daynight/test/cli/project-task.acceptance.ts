@@ -89,8 +89,7 @@ it("runs the actual installed launcher through native project/task discovery, pe
           if (broken === "conflict") { fault(response, "version_conflict", "native-version-conflict", 409); return; }
           if (broken === "dependency") { fault(response, "dependency_unsatisfied", "native-dependency-refusal", 409, { taskIds: [taskId] }); return; }
           if (parts.length === 8) {
-            const action = parts[7]!;
-            const status = action === "approve" ? "todo" : action === "unapprove" ? "proposed" : action === "claim" ? "in_progress" : "done";
+            const status = (body as { status: Task["status"] }).status;
             send(response, { ...task(projectId), ...dependencies, description, properties, allowAgents, status, ready: status === "todo", version: (body as { version: bigint }).version + 1n }); return;
           }
           if (request.method === "PATCH" && typeof body === "object" && body !== null && "allowAgents" in body && typeof body.allowAgents === "boolean") allowAgents = body.allowAgents;
@@ -98,9 +97,9 @@ it("runs the actual installed launcher through native project/task discovery, pe
           if (request.method === "POST") dependencies = { dependsOn: [], externalDependsOn: [] };
           const dependencyFields = body as Partial<Pick<Task, "dependsOn" | "externalDependsOn">>;
           dependencies = { ...dependencies, ...(dependencyFields.dependsOn === undefined ? {} : { dependsOn: dependencyFields.dependsOn }), ...(dependencyFields.externalDependsOn === undefined ? {} : { externalDependsOn: dependencyFields.externalDependsOn }) };
-          send(response, { ...task(projectId), ...dependencies, description, ...(request.method === "PATCH" ? { allowAgents } : {}), ...(body as object), ...(request.method === "POST" ? { status: "proposed", ready: false } : {}), version: request.method === "PATCH" ? 9_007_199_254_740_994n : 1n }, request.method === "POST" ? 201 : 200); return;
+          send(response, { ...task(projectId), ...dependencies, description, ...(request.method === "PATCH" ? { allowAgents } : {}), ...(body as object), ...(request.method === "POST" ? { status: "todo", ready: true } : {}), version: request.method === "PATCH" ? 9_007_199_254_740_994n : 1n }, request.method === "POST" ? 201 : 200); return;
         }
-        if (parts[5] === "task-graph") { send(response, { observedAt: time, project: project(projectId), summary: { total: 0, proposed: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 }, tasks: [] }); return; }
+        if (parts[5] === "task-graph") { send(response, { observedAt: time, project: project(projectId), summary: { total: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 }, tasks: [] }); return; }
         if (parts.length === 7) { send(response, { ...task(projectId), ...dependencies, description, properties, allowAgents, version: 9_007_199_254_740_993n }); return; }
         if (readyPage !== undefined && url.searchParams.get("ready") === "true") { send(response, readyPage); return; }
         if (broken === "page" && url.searchParams.has("cursor")) { fault(response, "internal_error", "native-later-page", 500); return; }
@@ -155,7 +154,7 @@ it("runs the actual installed launcher through native project/task discovery, pe
     await mkdir(outside); await mkdir(home);
     await writeFile(path.join(receipt.root, "isolation.mjs"), `import {registerHooks} from 'node:module';registerHooks({resolve(specifier,context,nextResolve){const result=nextResolve(specifier,context);if(['/repository/git.js','/repository/binding.js','/repository/context.js','/commands/review/runtime.js','better-sqlite3','node:child_process'].some(value=>specifier.includes(value)||result.url.includes(value)))throw new Error('Unexpected business import: '+specifier);return result;}});`);
     expect((await invoke(["task", "--help"], outside, 0, true)).stdout).toContain("Usage: daynight task");
-    await invoke(["task", "complete", taskId, "--if-version", "9223372036854775808"], outside, 2, true);
+    await invoke(["task", "set-status", taskId, "done", "--if-version", "9223372036854775808"], outside, 2, true);
     for (const args of [
       ["create", "--title", "Title", "--pull-request-url="],
       ["update", taskId, "--pull-request-title="],
@@ -182,19 +181,19 @@ it("runs the actual installed launcher through native project/task discovery, pe
     expect(parseApiJson((await invoke(["project", "show", id, "--json"], outside, 0, true)).stdout)).toEqual(project());
     expect(parseApiJson((await invoke(["task", "show", taskId, "--json", ...explicit], outside, 0, true)).stdout)).toEqual({ ...task(), version: 9_007_199_254_740_993n });
     const createdTask = await invoke(["task", "create", "--title", "Native task", ...explicit], outside, 0, true);
-    expect(createdTask.stdout).toContain("Status: proposed");
+    expect(createdTask.stdout).toContain("Status: todo");
     expect(createdTask.stdout).toContain("Automatic execution: false");
-    for (const [action, status] of [["approve", "todo"], ["unapprove", "proposed"], ["approve", "todo"], ["claim", "in_progress"], ["complete", "done"]] as const) {
+    for (const status of ["todo", "in_progress", "done"] as const) {
       for (const explicitVersion of [false, true]) {
         const before = requests.length;
-        const result = await invoke(["task", action, taskId.toUpperCase(), ...(explicitVersion ? ["--if-version", "9007199254740993"] : []), ...explicit], outside, 0, true);
+        const result = await invoke(["task", "set-status", taskId.toUpperCase(), status, ...(explicitVersion ? ["--if-version", "9007199254740993"] : []), ...explicit], outside, 0, true);
         expect(result.stdout).toContain(`Status: ${status}`);
         expect(result.stdout).toContain("Version: 9007199254740994");
-        expect(requests.slice(before).map(({ method, path: pathname }) => `${method} ${pathname}`)).toEqual([`GET /api/v1/projects/${id}`, ...(explicitVersion ? [] : [`GET /api/v1/projects/${id}/tasks/${taskId}`]), `POST /api/v1/projects/${id}/tasks/${taskId}/${action}`]);
-        expect(requests.at(-1)!.body).toEqual({ version: 9_007_199_254_740_993n });
+        expect(requests.slice(before).map(({ method, path: pathname }) => `${method} ${pathname}`)).toEqual([`GET /api/v1/projects/${id}`, ...(explicitVersion ? [] : [`GET /api/v1/projects/${id}/tasks/${taskId}`]), `PUT /api/v1/projects/${id}/tasks/${taskId}/status`]);
+        expect(requests.at(-1)!.body).toEqual({ version: 9_007_199_254_740_993n, status });
       }
     }
-    scenarios.push("installed-lifecycle-actions-observed-and-explicit-lossless-versions");
+    scenarios.push("installed-set-status-observed-and-explicit-lossless-versions");
     for (const permission of [true, false]) {
       const before = requests.length;
       const changed = await invoke(["task", "update", taskId, "--allow-agents", String(permission), "--if-version", "9223372036854775807", ...explicit], outside, 0, true);
@@ -211,11 +210,12 @@ it("runs the actual installed launcher through native project/task discovery, pe
       readyPage = undefined;
     }
     scenarios.push("installed-automatic-permission-true-false-exact-version-filtered-list-and-bounded-ready");
-    listResponseTask = { ...task(), status: "proposed", ready: false, description: "Proposed description omitted from inventory" };
-    expect(parseApiJson((await invoke(["task", "list", "--status", "proposed", "--json", ...explicit], outside, 0, true)).stdout)).toEqual([taskListItem(listResponseTask)]);
-    expect(requests.at(-1)!.path).toContain("status=proposed");
-    listResponseTask = undefined;
-    scenarios.push("installed-proposed-inventory-filter");
+    const beforeRemoved = requests.length;
+    await invoke(["task", "list", "--status", "proposed", "--json", ...explicit], outside, 2, true);
+    await invoke(["task", "set-status", taskId, "proposed", ...explicit], outside, 2, true);
+    for (const action of ["approve", "unapprove", "claim", "complete"]) await invoke(["task", action, taskId, ...explicit], outside, 2, true);
+    expect(requests).toHaveLength(beforeRemoved);
+    scenarios.push("installed-removed-status-and-actions-rejected-before-io");
     const emptyDescriptionList = parseApiJson((await invoke(["task", "list", "--status", "todo", "--ready", "--json", ...explicit], outside, 0, true)).stdout) as Record<string, unknown>[];
     expect(emptyDescriptionList).toEqual([taskListItem(task())]);
     expect(emptyDescriptionList[0]).not.toHaveProperty("description");
@@ -330,19 +330,19 @@ it("runs the actual installed launcher through native project/task discovery, pe
     const brief = packagedBrief!;
     for (const content of ["## 问题与行动", "## 范围与交付", "## 完成条件", "[方案与验收](plan.md)", "[交互原型](mockui/index.html)"]) expect(brief).toContain(content);
     const briefCreateAt = requests.length;
-    expect((await invoke(["task", "create", "--title", "Packaged Markdown brief", "--description", brief, ...explicit], outside, 0, true, "node-entry")).stdout).toContain("Status: proposed");
+    expect((await invoke(["task", "create", "--title", "Packaged Markdown brief", "--description", brief, ...explicit], outside, 0, true, "node-entry")).stdout).toContain("Status: todo");
     expect(requests.slice(briefCreateAt).map(({ method }) => method)).toEqual(["GET", "POST"]);
     expect(requests.at(-1)!.body).toEqual({ title: "Packaged Markdown brief", description: brief });
-    for (const action of ["approve", "unapprove", "claim", "complete"] as const) {
+    for (const status of ["todo", "in_progress", "done"] as const) {
       const actionAt = requests.length;
-      await invoke(["task", action, taskId, "--if-version", "9007199254740993", ...explicit], outside, 0, true, "node-entry");
-      expect(requests.slice(actionAt).map(({ method }) => method)).toEqual(["GET", "POST"]);
-      expect(requests.at(-1)!.body).toEqual({ version: 9_007_199_254_740_993n });
+      await invoke(["task", "set-status", taskId, status, "--if-version", "9007199254740993", ...explicit], outside, 0, true, "node-entry");
+      expect(requests.slice(actionAt).map(({ method }) => method)).toEqual(["GET", "PUT"]);
+      expect(requests.at(-1)!.body).toEqual({ version: 9_007_199_254_740_993n, status });
       const retained = parseApiJson((await invoke(["task", "show", taskId, "--json", ...explicit], outside, 0, true, "node-entry")).stdout) as Task;
       expect(Buffer.from(retained.description)).toEqual(Buffer.from(brief));
     }
     description = "";
-    scenarios.push("installed-packaged-markdown-brief-original-bytes-across-lifecycle-actions");
+    scenarios.push("installed-packaged-markdown-brief-original-bytes-across-status-changes");
 
     const readyTask = { ...task(), description: "Ready details", properties: { pullRequests: [{ url: "\0 arbitrary URL", title: "Ready\nPR" }] }, version: 9_223_372_036_854_775_807n };
     readyPage = { items: [readyTask], nextCursor: "native unrequested next page" };
@@ -462,8 +462,8 @@ it("runs the actual installed launcher through native project/task discovery, pe
     const defaultUpdate = requests.slice(updateAt); expect(defaultUpdate.map(({ method }) => method)).toEqual(["GET", "GET", "PATCH"]);
     expect(defaultUpdate[2]!.body).toEqual({ description: "", dependsOn: [], externalDependsOn: [], version: 9_007_199_254_740_993n });
     broken = "conflict"; const conflictAt = requests.length;
-    expect((await invoke(["task", "complete", taskId, "--if-version", "9223372036854775807", ...explicit], outside, 1)).stderr).toContain("native-version-conflict");
-    expect(requests.slice(conflictAt).map(({ method }) => method)).toEqual(["GET", "POST"]);
+    expect((await invoke(["task", "set-status", taskId, "done", "--if-version", "9223372036854775807", ...explicit], outside, 1)).stderr).toContain("native-version-conflict");
+    expect(requests.slice(conflictAt).map(({ method }) => method)).toEqual(["GET", "PUT"]);
     expect((requests.at(-1)!.body as { version: bigint }).version).toBe(9_223_372_036_854_775_807n);
     broken = "dependency";
     const rejected = await invoke(["task", "create", "--title", "Dependency refusal", "--depends-on", taskId, ...explicit], outside, 1);

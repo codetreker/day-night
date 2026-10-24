@@ -42,7 +42,6 @@ const graph = (): TaskGraph => {
     tasks,
     summary: {
       total: tasks.length,
-      proposed: tasks.filter((task) => task.status === 'proposed').length,
       todo: tasks.filter((task) => task.status === 'todo').length,
       inProgress: tasks.filter((task) => task.status === 'in_progress').length,
       done: tasks.filter((task) => task.status === 'done').length,

@@ -15,7 +15,7 @@ export const en: Messages = {
   execution,
   common: {
     retrySave: "Retry saving language",
-    status: { proposed: "Proposed", todo: "To do", in_progress: "In progress", done: "Done" },
+    status: { todo: "To do", in_progress: "In progress", done: "Done" },
     requestId: "Request ID:",
   },
   language: {

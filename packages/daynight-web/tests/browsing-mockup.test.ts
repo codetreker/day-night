@@ -1,31 +1,32 @@
 import { describe, expect, it } from 'vitest';
-import { approveTask, getTask, getTaskGraph } from '../src/api/client';
+import { setTaskStatus, getTask, getTaskGraph } from '../src/api/client';
 import { parseApiJson } from '../src/api/json';
 import { parseTaskGraph } from '../src/api/parse';
 import { decodeTaskGraphJson } from '../src/api/project-json';
 import { buildGraphIndex, projectChain } from '../src/features/task-graph/model';
-import { browsingProjects, installBrowsingFixture, isApprovalScenario, type BrowsingScenario } from './mockups/browsing-fixture';
+import { browsingProjects, installBrowsingFixture, isStatusScenario, type BrowsingScenario } from './mockups/browsing-fixture';
 
 const signal = () => new AbortController().signal;
 const version = 9_007_199_254_740_993n;
 const taskId = (number: number) => `00000000-0000-4000-8000-${String(number).padStart(12, '0')}`;
-const approvalProject = (scenario: BrowsingScenario) => browsingProjects[scenario].project.id;
+const statusProject = (scenario: BrowsingScenario) => browsingProjects[scenario].project.id;
 
 describe('production task browsing fixture', () => {
-  it.each(Object.entries(browsingProjects))('provides a valid four-state snapshot for %s', (_scenario, graph) => {
+  it.each(Object.entries(browsingProjects))('provides a valid three-state snapshot for %s', (_scenario, graph) => {
     const parsed = parseTaskGraph(graph, graph.project.id);
     const index = buildGraphIndex(parsed);
     expect(index.nodes.size).toBe(graph.summary.total);
-    expect(graph.tasks.filter((task) => task.status === 'proposed').every((task) => !task.ready)).toBe(true);
+    expect(graph.summary.total).toBe(graph.summary.todo + graph.summary.inProgress + graph.summary.done);
+    expect(graph.summary.todo).toBe(graph.summary.ready + graph.summary.blocked);
   });
 
   it('matches mixed prototype counts with unique ordinary components and explicit external context', () => {
     const graph = browsingProjects.mixed;
-    expect(graph.summary).toEqual({ total: 16, proposed: 6, todo: 4, inProgress: 2, done: 4, ready: 3, blocked: 1 });
+    expect(graph.summary).toEqual({ total: 16, todo: 10, inProgress: 2, done: 4, ready: 6, blocked: 4 });
     const index = buildGraphIndex(graph);
     const chains = index.representativeIds.filter((id) => index.components.get(id)!.memberIds.size > 1);
     expect(chains).toEqual([1, 3, 5, 7, 10].map(taskId));
-    expect(chains.map((id) => index.components.get(id)!.progress.status)).toEqual(['proposed', 'todo', 'todo', 'in_progress', 'done']);
+    expect(chains.map((id) => index.components.get(id)!.progress.status)).toEqual(['todo', 'todo', 'todo', 'in_progress', 'done']);
     const members = chains.flatMap((id) => [...index.components.get(id)!.memberIds]);
     expect(members).toHaveLength(11);
     expect(new Set(members).size).toBe(members.length);
@@ -45,7 +46,7 @@ describe('production task browsing fixture', () => {
   it('combines two ordinary roots into one component without duplicate member progress', () => {
     const graph = browsingProjects['ordinary-merge'];
     const index = buildGraphIndex(graph);
-    expect(graph.summary).toEqual({ total: 3, proposed: 0, todo: 2, inProgress: 0, done: 1, ready: 1, blocked: 1 });
+    expect(graph.summary).toEqual({ total: 3, todo: 2, inProgress: 0, done: 1, ready: 1, blocked: 1 });
     expect(index.representativeIds).toEqual([taskId(50)]);
     expect(index.componentByTask.get(taskId(51))).toBe(taskId(50));
     expect(index.components.get(taskId(50))).toEqual({
@@ -64,7 +65,7 @@ describe('production task browsing fixture', () => {
   it('keeps external-only tasks as singleton components without removing their execution blockers', () => {
     const graph = browsingProjects['external-only'];
     const index = buildGraphIndex(graph);
-    expect(graph.summary).toEqual({ total: 2, proposed: 0, todo: 2, inProgress: 0, done: 0, ready: 1, blocked: 1 });
+    expect(graph.summary).toEqual({ total: 2, todo: 2, inProgress: 0, done: 0, ready: 1, blocked: 1 });
     expect(index.representativeIds).toEqual([taskId(70), taskId(71)]);
     expect([...index.components.values()].map((component) => component.memberIds.size)).toEqual([1, 1]);
     expect(graph.tasks.find((task) => task.id === taskId(71))).toMatchObject({
@@ -95,7 +96,7 @@ describe('production task browsing fixture', () => {
     const index = buildGraphIndex(graph);
     const root = graph.tasks.find((task) => task.titlePreview === '渐进展开 · 主链交付起点')!;
     const projection = projectChain(index, root.id);
-    expect(graph.summary).toEqual({ total: 101, proposed: 0, todo: 61, inProgress: 0, done: 40, ready: 1, blocked: 60 });
+    expect(graph.summary).toEqual({ total: 101, todo: 61, inProgress: 0, done: 40, ready: 1, blocked: 60 });
     expect(projection.mainIds.size).toBe(61);
     expect(projection.externalIds.size).toBe(40);
     expect(projection.edges).toHaveLength(100);
@@ -178,152 +179,197 @@ describe('production task browsing fixture', () => {
   });
 });
 
-describe('production approval fixture', () => {
-  it.each((Object.keys(browsingProjects) as BrowsingScenario[]).filter(isApprovalScenario))('seeds exact int64 versions and versionless graphs for %s', async (scenario) => {
+describe('production status fixture', () => {
+  it.each((Object.keys(browsingProjects) as BrowsingScenario[]).filter(isStatusScenario))('seeds exact int64 versions and versionless graphs for %s', async (scenario) => {
     const dispose = installBrowsingFixture();
     try {
-      const project = approvalProject(scenario);
+      const project = statusProject(scenario);
       const graph = await getTaskGraph(project, signal());
-      const expected = scenario === 'unapproval-ready' ? { proposed: 0, todo: 3, ready: 2, blocked: 1 }
-        : scenario === 'unapproval-blocked' ? { proposed: 1, todo: 2, ready: 1, blocked: 1 }
-          : { proposed: 3, todo: 0, ready: 0, blocked: 0 };
-      expect(graph.summary).toEqual({ total: 3, inProgress: 0, done: 0, ...expected });
+      const expected = scenario === 'reopen-ready' ? { todo: 2, inProgress: 0, done: 1, ready: 2, blocked: 0 }
+        : scenario === 'reopen-blocked' ? { todo: 1, inProgress: 1, done: 1, ready: 1, blocked: 0 }
+          : { todo: 3, inProgress: 0, done: 0, ready: 2, blocked: 1 };
+      expect(graph.summary).toEqual({ total: 3, ...expected });
       expect(graph.tasks.every((task) => !('version' in task))).toBe(true);
       expect((await getTask(project, taskId(1), signal())).version).toBe(version);
     } finally { dispose(); }
   });
 
-  it.each([
-    ['approval-ready', 1, true, 1, 0],
-    ['approval-blocked', 2, false, 0, 1],
-  ] as const)('approves %s with accurate todo/ready/blocked projection', async (scenario, number, ready, readyCount, blocked) => {
+  it('sets a ready task in progress and preserves blocked descendants in the projection', async () => {
     const dispose = installBrowsingFixture();
     try {
-      const project = approvalProject(scenario);
-      const approved = await approveTask(project, taskId(number), version, signal());
-      expect(approved).toMatchObject({ status: 'todo', version: version + 1n, ready });
-      expect(approved.blockedBy).toEqual(ready ? [] : [taskId(1)]);
-      const graph = await getTaskGraph(project, signal());
-      expect(graph.summary).toMatchObject({ proposed: 2, todo: 1, ready: readyCount, blocked });
-      expect(graph.tasks.find((task) => task.id === approved.id)?.status).toBe('todo');
-      const other = await getTask(approvalProject('pending'), approved.id, signal());
-      expect(other).toMatchObject({ status: 'proposed', version });
+      const project = statusProject('status-ready');
+      const started = await setTaskStatus(project, taskId(1), 'in_progress', version, signal());
+      expect(started).toMatchObject({ status: 'in_progress', version: version + 1n, ready: false, completedAt: null });
+      expect(started.startedAt).not.toBeNull();
+      expect((await getTaskGraph(project, signal())).summary).toEqual({ total: 3, todo: 2, inProgress: 1, done: 0, ready: 1, blocked: 1 });
+      expect(await getTask(statusProject('pending'), taskId(1), signal())).toMatchObject({ status: 'todo', version });
     } finally { dispose(); }
   });
 
-  it('rejects malformed, stale and repeated approval writes without changing state', async () => {
+  it('refuses starting a blocked task and reopening a completed prerequisite of active work', async () => {
     const dispose = installBrowsingFixture();
     try {
-      const project = approvalProject('approval-ready');
-      const url = `/api/v1/projects/${project}/tasks/${taskId(1)}/approve`;
-      for (const body of ['{}', '{"version":null}', '{"version":0}', '{"version":1.5}', '{"version":9223372036854775808}', '{"version":"9007199254740993"}', '{"version":9007199254740993,"extra":true}']) {
-        expect((await fetch(url, { method: 'POST', body })).status).toBe(400);
+      const blocked = statusProject('status-blocked');
+      await expect(setTaskStatus(blocked, taskId(2), 'in_progress', version, signal())).rejects.toMatchObject({ code: 'dependency_unsatisfied' });
+      expect(await getTask(blocked, taskId(2), signal())).toMatchObject({ status: 'todo', version, startedAt: null, completedAt: null });
+      const reopening = statusProject('reopen-blocked');
+      await expect(setTaskStatus(reopening, taskId(1), 'todo', version, signal())).rejects.toMatchObject({ code: 'dependency_unsatisfied' });
+      expect(await getTask(reopening, taskId(1), signal())).toMatchObject({ status: 'done', version });
+    } finally { dispose(); }
+  });
+
+  it.each(['todo', 'in_progress', 'done'] as const)('models every source and target pair for %s with exact no-op and timing semantics', async (source) => {
+    const dispose = installBrowsingFixture();
+    try {
+      const project = statusProject('status-ready');
+      let current = await getTask(project, taskId(12), signal());
+      if (source !== current.status) current = await setTaskStatus(project, current.id, source, current.version, signal());
+      for (const target of ['todo', 'in_progress', 'done'] as const) {
+        const before = current;
+        current = await setTaskStatus(project, current.id, target, current.version, signal());
+        expect(current.version).toBe(before.version + (before.status === target ? 0n : 1n));
+        expect(current.status).toBe(target);
+        expect(current.description).toBe(before.description);
+        expect(current.properties).toEqual(before.properties);
+        expect(current.dependsOn).toEqual(before.dependsOn);
+        if (target === before.status) expect(current).toEqual(before);
+        else if (target === 'todo') expect(current).toMatchObject({ startedAt: null, completedAt: null });
+        else if (target === 'in_progress') { expect(current.startedAt).not.toBeNull(); expect(current.completedAt).toBeNull(); }
+        else { expect(current.completedAt).not.toBeNull(); expect(current.startedAt).toBe(before.status === 'in_progress' ? before.startedAt : null); }
+        if (source !== current.status) current = await setTaskStatus(project, current.id, source, current.version, signal());
+      }
+    } finally { dispose(); }
+  });
+
+  it('returns current derived readiness on a same-state request without changing the dependent version', async () => {
+    const dispose = installBrowsingFixture();
+    try {
+      const project = statusProject('status-ready');
+      const before = await getTask(project, taskId(2), signal());
+      expect(before).toMatchObject({ status: 'todo', ready: false, blockedBy: [taskId(1)] });
+      await setTaskStatus(project, taskId(1), 'done', version, signal());
+      const refreshed = await setTaskStatus(project, before.id, 'todo', before.version, signal());
+      expect(refreshed).toEqual({ ...before, ready: true, blockedBy: [] });
+      const graph = await getTaskGraph(project, signal());
+      expect(graph.tasks.find((task) => task.id === before.id)).toMatchObject({ ready: true, blockedBy: [] });
+      expect(graph.summary).toEqual({ total: 3, todo: 2, inProgress: 0, done: 1, ready: 2, blocked: 0 });
+    } finally { dispose(); }
+  });
+
+  it('rejects malformed and stale writes before accepting a same-state no-op', async () => {
+    const dispose = installBrowsingFixture();
+    try {
+      const project = statusProject('status-ready');
+      const url = `/api/v1/projects/${project}/tasks/${taskId(1)}/status`;
+      for (const body of ['{}', '{"version":null,"status":"todo"}', '{"version":0,"status":"todo"}', '{"version":1.5,"status":"todo"}', '{"version":9223372036854775808,"status":"todo"}', '{"version":"9007199254740993","status":"todo"}', '{"version":9007199254740993,"status":"todo","extra":true}', '{"version":9007199254740993,"status":"proposed"}']) {
+        expect((await fetch(url, { method: 'PUT', body })).status).toBe(400);
       }
       expect((await fetch(url)).status).toBe(405);
-      await expect(approveTask(project, taskId(1), version - 1n, signal())).rejects.toMatchObject({ code: 'version_conflict' });
-      expect((await getTask(project, taskId(1), signal())).version).toBe(version);
-      await approveTask(project, taskId(1), version, signal());
-      await expect(approveTask(project, taskId(1), version + 1n, signal())).rejects.toMatchObject({ code: 'invalid_transition' });
-      expect((await getTask(project, taskId(1), signal())).version).toBe(version + 1n);
+      const before = await getTask(project, taskId(1), signal());
+      await expect(setTaskStatus(project, before.id, 'todo', version - 1n, signal())).rejects.toMatchObject({ code: 'version_conflict' });
+      expect(await setTaskStatus(project, before.id, 'todo', version, signal())).toEqual(before);
+      const changed = await setTaskStatus(project, before.id, 'done', version, signal());
+      await expect(setTaskStatus(project, before.id, 'done', version, signal())).rejects.toMatchObject({ code: 'version_conflict' });
+      expect(await setTaskStatus(project, changed.id, 'done', changed.version, signal())).toEqual(changed);
     } finally { dispose(); }
   });
 
   it('refuses the first failure-scene write and accepts an explicit retry', async () => {
     const dispose = installBrowsingFixture();
     try {
-      const project = approvalProject('failure');
-      await expect(approveTask(project, taskId(1), version, signal())).rejects.toMatchObject({ kind: 'server', status: 503 });
-      expect(await getTask(project, taskId(1), signal())).toMatchObject({ status: 'proposed', version });
-      expect(await approveTask(project, taskId(1), version, signal())).toMatchObject({ status: 'todo', version: version + 1n });
+      const project = statusProject('failure');
+      await expect(setTaskStatus(project, taskId(1), 'in_progress', version, signal())).rejects.toMatchObject({ kind: 'server', status: 503 });
+      expect(await getTask(project, taskId(1), signal())).toMatchObject({ status: 'todo', version });
+      expect(await setTaskStatus(project, taskId(1), 'in_progress', version, signal())).toMatchObject({ status: 'in_progress', version: version + 1n });
     } finally { dispose(); }
   });
 
   it('exposes changed content after conflict and requires the newly reviewed version', async () => {
     const dispose = installBrowsingFixture();
     try {
-      const project = approvalProject('conflict');
-      await expect(approveTask(project, taskId(1), version, signal())).rejects.toMatchObject({ code: 'version_conflict' });
+      const project = statusProject('conflict');
+      await expect(setTaskStatus(project, taskId(1), 'in_progress', version, signal())).rejects.toMatchObject({ code: 'version_conflict' });
       const current = await getTask(project, taskId(1), signal());
-      expect(current).toMatchObject({ status: 'proposed', version: version + 1n });
+      expect(current).toMatchObject({ status: 'todo', version: version + 1n });
       expect(current.title).toContain('范围已更新');
-      await expect(approveTask(project, taskId(1), version, signal())).rejects.toMatchObject({ code: 'version_conflict' });
-      expect(await approveTask(project, taskId(1), current.version, signal())).toMatchObject({ status: 'todo', version: version + 2n });
+      await expect(setTaskStatus(project, taskId(1), 'in_progress', version, signal())).rejects.toMatchObject({ code: 'version_conflict' });
+      expect(await setTaskStatus(project, taskId(1), 'in_progress', current.version, signal())).toMatchObject({ status: 'in_progress', version: version + 2n });
     } finally { dispose(); }
   });
 
-  it('models approval by another caller as a conflict followed by current todo content', async () => {
+  it('models another caller changing status as a conflict followed by the current content', async () => {
     const dispose = installBrowsingFixture();
     try {
-      const project = approvalProject('approved-by-other');
-      await expect(approveTask(project, taskId(1), version, signal())).rejects.toMatchObject({ code: 'version_conflict' });
-      expect(await getTask(project, taskId(1), signal())).toMatchObject({ status: 'todo', version: version + 1n });
+      const project = statusProject('changed-by-other');
+      await expect(setTaskStatus(project, taskId(1), 'in_progress', version, signal())).rejects.toMatchObject({ code: 'version_conflict' });
+      expect(await getTask(project, taskId(1), signal())).toMatchObject({ status: 'in_progress', version: version + 1n });
     } finally { dispose(); }
   });
 
   it.each(['unknown-applied', 'unknown-unapplied'] as const)('makes %s outcomes observable through a fresh state read', async (scenario) => {
     const dispose = installBrowsingFixture();
     try {
-      const project = approvalProject(scenario);
-      await expect(approveTask(project, taskId(1), version, signal())).rejects.toMatchObject({ kind: 'network' });
+      const project = statusProject(scenario);
+      await expect(setTaskStatus(project, taskId(1), 'in_progress', version, signal())).rejects.toMatchObject({ kind: 'network' });
       const current = await getTask(project, taskId(1), signal());
-      expect(current).toMatchObject(scenario === 'unknown-applied' ? { status: 'todo', version: version + 1n } : { status: 'proposed', version });
-      if (scenario === 'unknown-unapplied') expect(await approveTask(project, taskId(1), current.version, signal())).toMatchObject({ status: 'todo', version: version + 1n });
+      expect(current).toMatchObject(scenario === 'unknown-applied' ? { status: 'in_progress', version: version + 1n } : { status: 'todo', version });
+      if (scenario === 'unknown-unapplied') expect(await setTaskStatus(project, taskId(1), 'in_progress', current.version, signal())).toMatchObject({ status: 'in_progress', version: version + 1n });
     } finally { dispose(); }
   });
 
   it('keeps reconciliation reads failed until the preview control restores them', async () => {
     const dispose = installBrowsingFixture();
     try {
-      const project = approvalProject('unknown-reconcile-error');
-      await expect(approveTask(project, taskId(1), version, signal())).rejects.toMatchObject({ kind: 'network' });
+      const project = statusProject('unknown-reconcile-error');
+      await expect(setTaskStatus(project, taskId(1), 'in_progress', version, signal())).rejects.toMatchObject({ kind: 'network' });
       await expect(getTask(project, taskId(1), signal())).rejects.toMatchObject({ kind: 'server' });
       expect(dispose.controls('unknown-reconcile-error').taskReadFailure).toBe(true);
       dispose.recoverReads('unknown-reconcile-error');
-      expect(await getTask(project, taskId(1), signal())).toMatchObject({ status: 'todo', version: version + 1n });
+      expect(await getTask(project, taskId(1), signal())).toMatchObject({ status: 'in_progress', version: version + 1n });
       expect(dispose.controls('unknown-reconcile-error').taskReadFailure).toBe(false);
     } finally { dispose(); }
   });
 
-  it('retains the confirmed todo detail when graph reads fail until explicit recovery', async () => {
+  it('retains the confirmed detail when graph reads fail until explicit recovery', async () => {
     const dispose = installBrowsingFixture();
     try {
-      const project = approvalProject('graph-refresh-error');
+      const project = statusProject('graph-refresh-error');
       await getTaskGraph(project, signal());
-      await approveTask(project, taskId(1), version, signal());
+      await setTaskStatus(project, taskId(1), 'in_progress', version, signal());
       await expect(getTaskGraph(project, signal())).rejects.toMatchObject({ kind: 'server' });
-      expect(await getTask(project, taskId(1), signal())).toMatchObject({ status: 'todo', version: version + 1n });
+      expect(await getTask(project, taskId(1), signal())).toMatchObject({ status: 'in_progress', version: version + 1n });
       expect(dispose.controls('graph-refresh-error').graphReadFailure).toBe(true);
       dispose.recoverReads('graph-refresh-error');
-      expect((await getTaskGraph(project, signal())).summary).toMatchObject({ proposed: 2, todo: 1, ready: 1 });
+      expect((await getTaskGraph(project, signal())).summary).toMatchObject({ todo: 2, inProgress: 1, ready: 1, blocked: 1 });
     } finally { dispose(); }
   });
 
   it.each(['pending', 'task-switch'] as const)('holds independent task writes in %s until the preview control settles them', async (scenario) => {
     const dispose = installBrowsingFixture();
     try {
-      const project = approvalProject(scenario);
-      const first = approveTask(project, taskId(1), version, signal());
-      const second = approveTask(project, taskId(12), version, signal());
+      const project = statusProject(scenario);
+      const first = setTaskStatus(project, taskId(1), 'in_progress', version, signal());
+      const second = setTaskStatus(project, taskId(12), 'done', version, signal());
       expect(dispose.controls(scenario).pending).toBe(2);
-      expect(await getTask(project, taskId(1), signal())).toMatchObject({ status: 'proposed', version });
-      expect(await getTask(project, taskId(12), signal())).toMatchObject({ status: 'proposed', version });
+      expect(await getTask(project, taskId(1), signal())).toMatchObject({ status: 'todo', version });
+      expect(await getTask(project, taskId(12), signal())).toMatchObject({ status: 'todo', version });
       const revision = dispose.getRevision();
       dispose.settlePending(scenario);
       expect(dispose.getRevision()).toBeGreaterThan(revision);
       expect((await Promise.all([first, second])).map((task) => [task.id, task.status, task.version])).toEqual([
-        [taskId(1), 'todo', version + 1n], [taskId(12), 'todo', version + 1n],
+        [taskId(1), 'in_progress', version + 1n], [taskId(12), 'done', version + 1n],
       ]);
       expect(dispose.controls(scenario).pending).toBe(0);
     } finally { dispose(); }
   });
 
   it('isolates mutable fixture state between installations', async () => {
-    const project = approvalProject('approval-ready');
+    const project = statusProject('status-ready');
     const first = installBrowsingFixture();
-    await approveTask(project, taskId(1), version, signal());
+    await setTaskStatus(project, taskId(1), 'in_progress', version, signal());
     first();
     const second = installBrowsingFixture();
-    try { expect(await getTask(project, taskId(1), signal())).toMatchObject({ status: 'proposed', version }); }
+    try { expect(await getTask(project, taskId(1), signal())).toMatchObject({ status: 'todo', version }); }
     finally { second(); }
   });
 });

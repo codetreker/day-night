@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/codetreker/daynight/packages/daynight-server/internal/core"
@@ -38,6 +39,9 @@ func (s *Snapshot) TaskGraphTasks(ctx context.Context, projectID string, preview
 		if err := rows.Scan(&task.ID, &task.TitlePreview, &task.TitleTruncated, &task.Status,
 			&task.CreatedAt, &task.UpdatedAt, &task.StartedAt, &task.CompletedAt, &task.AllowAgents, &task.DependsOn, &task.ExternalDependsOn, &task.BlockedBy, &task.Ready); err != nil {
 			return nil, queryError("read task graph", err)
+		}
+		if !task.Status.Valid() {
+			return nil, queryError("read task graph", fmt.Errorf("stored task status is invalid"))
 		}
 		task.CreatedAt = task.CreatedAt.UTC()
 		task.UpdatedAt = task.UpdatedAt.UTC()

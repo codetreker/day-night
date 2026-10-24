@@ -179,7 +179,7 @@ describe('inspection language changes', () => {
     document.body.append(root);
     const graph: TaskGraph = { observedAt: "2026-10-20T12:00:00Z",
       project: { settings: { version: 1n, executionWarningMinutes: 60 }, id: projectId, name: '项目 raw', repoUrl: '', createdAt: timestamp, updatedAt: timestamp },
-      tasks: [], summary: { total: 0, proposed: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 },
+      tasks: [], summary: { total: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 },
     };
     const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: {
       code: 'not_found', message: 'private raw server error', requestId: 'detail-request-raw',

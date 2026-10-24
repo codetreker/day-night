@@ -31,11 +31,11 @@ describe("Bash completion rendering", () => {
     expect(script).toContain("dn_options=('--tree' '--project' '--json' '-h' '--help')");
   });
 
-  it("offers explicit lifecycle commands and proposed filtering without metadata status updates", () => {
+  it("offers unified status command and three-state filtering without metadata status updates", () => {
     const script = renderBashCompletion(commandTree);
     expect(script).toContain("complete -F _daynight_completion 'daynight' 'dn'\n");
-    expect(script).toContain("dn_children=('create' 'list' 'ready' 'show' 'update' 'approve' 'unapprove' 'claim' 'complete' 'graph' 'attachment')");
-    expect(script).toContain("dn_value_choices=('proposed' 'todo' 'in_progress' 'done')");
+    expect(script).toContain("dn_children=('create' 'list' 'ready' 'show' 'update' 'set-status' 'graph' 'attachment')");
+    expect(script).toContain("dn_value_choices=('todo' 'in_progress' 'done')");
     const update = renderBashCompletion(taskDefinition.commands!.find(({ name }) => name === "update")!);
     expect(update).not.toContain("'--status'");
     expect(update).toContain("'--if-version'");
@@ -43,13 +43,14 @@ describe("Bash completion rendering", () => {
     expect(update).toContain("'--external-depends-on'");
   });
 
-  it.each(["approve", "unapprove", "claim", "complete"])("completes %s with one task ID and version/project text options", (action) => {
-    const script = renderBashCompletion(taskDefinition.commands!.find(({ name }) => name === action)!);
+  it("completes set-status with a task ID, status choices, and version/project text options", () => {
+    const script = renderBashCompletion(taskDefinition.commands!.find(({ name }) => name === "set-status")!);
     expect(script).toContain("dn_options=('--if-version' '--project' '-h' '--help')");
     expect(script).toContain("dn_option_values=('text' 'text' '' '')");
     expect(script).toContain("dn_option_actions=('' '' 'help' 'help')");
     expect(script).toContain("dn_option_repeats=('0' '0' '0' '0')");
-    expect(script).toContain("dn_argument_count=1");
+    expect(script).toContain("dn_argument_count=2");
+    expect(script).toContain("dn_choices=('todo' 'in_progress' 'done')");
     expect(script).not.toContain("'--status'");
     expect(script).not.toContain("'--json'");
   });

@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getAuthConfig, listMembers, logout, me } from '../src/api/auth';
 import type { CurrentUser } from '../src/api/auth-types';
-import { ApiError, approveTask, getTask, getTaskGraph } from '../src/api/client';
+import { ApiError, setTaskStatus, getTask, getTaskGraph } from '../src/api/client';
 import type { TaskDetail, TaskGraph } from '../src/api/types';
 import { AuthenticatedApp } from '../src/app/AuthenticatedApp';
 import { renderWithLocale } from './helpers/renderWithLocale';
@@ -11,12 +11,13 @@ vi.mock('../src/api/auth', async (original) => ({ ...await original<typeof impor
   getAuthConfig: vi.fn(), listMembers: vi.fn(), logout: vi.fn(), me: vi.fn(),
 }));
 vi.mock('../src/api/client', async (original) => ({ ...await original<typeof import('../src/api/client')>(),
-  getTask: vi.fn(), getTaskGraph: vi.fn(), approveTask: vi.fn(), listAttachments: vi.fn(async () => ({ items: [], nextCursor: null })),
+  getTask: vi.fn(), getTaskGraph: vi.fn(), setTaskStatus: vi.fn(), listAttachments: vi.fn(async () => ({ items: [], nextCursor: null })),
 }));
-const confirmApproval = (button: HTMLElement) => {
+const confirmStatus = (button: HTMLElement) => {
   fireEvent.click(button);
-  const confirmation = screen.getByRole('alertdialog', { name: 'Approve task' });
-  fireEvent.click(within(confirmation).getByRole('button', { name: 'Confirm approval' }));
+  fireEvent.click(screen.getByRole('menuitemradio', { name: 'In progress' }));
+  const confirmation = screen.getByRole('alertdialog', { name: 'Set task status' });
+  fireEvent.click(within(confirmation).getByRole('button', { name: 'Confirm status' }));
 };
 const id = (value: number) => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
 const project = id(100); const otherProject = id(200); const task = id(1); const otherTask = id(2);
@@ -29,14 +30,14 @@ const returnFromAnotherWindow = () => {
   topLevelFocused = false; fireEvent(window, new Event('blur'));
   topLevelFocused = true; fireEvent(window, new Event('focus'));
 };
-const proposed = (projectId = project): TaskDetail => ({ allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null, id: projectId === project ? task : otherTask, projectId,
+const initial = (projectId = project): TaskDetail => ({ allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null, id: projectId === project ? task : otherTask, projectId,
   version: 9007199254740993n, title: `${currentUser.name} task ${projectId === project ? 'P' : 'Q'}`, description: `${currentUser.name} reviewed content`,
-  properties: { pullRequests: [] }, status: 'proposed', dependsOn: [], blockedBy: [], ready: false, createdAt: stamp, updatedAt: stamp });
+  properties: { pullRequests: [] }, status: 'todo', dependsOn: [], blockedBy: [], ready: true, createdAt: stamp, updatedAt: stamp });
 const graph = (projectId: string): TaskGraph => {
-  const detail = proposed(projectId);
+  const detail = initial(projectId);
   return { observedAt: "2026-10-20T12:00:00Z", project: { settings: { version: 1n, executionWarningMinutes: 60 }, id: projectId, name: `${currentUser.name} project ${projectId === project ? 'P' : 'Q'}`, repoUrl: 'https://example.com/repo', createdAt: stamp, updatedAt: stamp },
-    tasks: [{ allowAgents: detail.allowAgents, externalDependsOn: detail.externalDependsOn, startedAt: null, completedAt: null, id: detail.id, titlePreview: detail.title, titleTruncated: false, status: detail.status, dependsOn: [], blockedBy: [], ready: false, createdAt: stamp, updatedAt: stamp }],
-    summary: { total: 1, proposed: 1, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 } };
+    tasks: [{ allowAgents: detail.allowAgents, externalDependsOn: detail.externalDependsOn, startedAt: null, completedAt: null, id: detail.id, titlePreview: detail.title, titleTruncated: false, status: detail.status, dependsOn: [], blockedBy: [], ready: true, createdAt: stamp, updatedAt: stamp }],
+    summary: { total: 1, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 } };
 };
 const deferred = <T,>() => {
   let resolve!: (value: T) => void; let reject!: (error: unknown) => void;
@@ -56,8 +57,8 @@ beforeEach(() => {
   vi.mocked(listMembers).mockReset().mockImplementation(async (projectId) => [{ projectId, userId: currentUser.id, role: 'member', version: 1n,
     name: currentUser.name, email: currentUser.email, avatarUrl: null, createdAt: stamp, updatedAt: stamp }]);
   vi.mocked(getTaskGraph).mockReset().mockImplementation(async (projectId) => graph(projectId));
-  vi.mocked(getTask).mockReset().mockImplementation(async (projectId) => proposed(projectId));
-  vi.mocked(approveTask).mockReset();
+  vi.mocked(getTask).mockReset().mockImplementation(async (projectId) => initial(projectId));
+  vi.mocked(setTaskStatus).mockReset();
 });
 afterEach(() => { cleanup(); root.remove(); });
 const mount = () => renderWithLocale(<AuthenticatedApp />, { locale: 'en', container: root });
@@ -73,15 +74,15 @@ const navigate = async (projectId: string, heading: string) => {
   await screen.findByRole('heading', { name: heading });
 };
 
-describe('authenticated approval ownership', () => {
-  it('retains a pending approval through same-user revalidation, split-panel selection and P/Q/P navigation', async () => {
+describe('authenticated status ownership', () => {
+  it('retains a pending status through same-user revalidation, split-panel selection and P/Q/P navigation', async () => {
     const revalidation = deferred<CurrentUser>(); const mutation = deferred<TaskDetail>();
-    const original = proposed();
+    const original = initial();
     vi.mocked(me).mockResolvedValueOnce(alice).mockReturnValueOnce(revalidation.promise);
-    vi.mocked(approveTask).mockReturnValueOnce(mutation.promise);
+    vi.mocked(setTaskStatus).mockReturnValueOnce(mutation.promise);
     mount(); await screen.findByRole('heading', { name: 'Alice project P' });
     let dialog = await open('Alice task P');
-    confirmApproval(within(dialog).getByRole('button', { name: 'Approve task' }));
+    confirmStatus(within(dialog).getByRole('button', { name: 'To do' }));
     const attachmentTab = within(dialog).getByRole('tab', { name: 'Attachments' });
     fireEvent.click(attachmentTab);
     returnFromAnotherWindow();
@@ -96,39 +97,39 @@ describe('authenticated approval ownership', () => {
     dialog = await open('Alice task Q'); close(dialog);
     await navigate(project, 'Alice project P');
     dialog = await open('Alice task P');
-    expect(within(dialog).getByRole('button', { name: 'Submitting…' })).toBeDisabled();
-    expect(approveTask).toHaveBeenCalledTimes(1);
+    expect(within(dialog).getByRole('button', { name: 'To do' })).toBeDisabled();
+    expect(setTaskStatus).toHaveBeenCalledTimes(1);
     expect(vi.mocked(getTask).mock.calls.filter(([projectId]) => projectId === project)).toHaveLength(1);
-    await act(async () => { mutation.resolve({ ...original, status: 'todo', ready: true, version: original.version + 1n, updatedAt: '2026-10-22T00:01:00Z' }); });
-    await within(dialog).findByText('To do', { selector: '.task-detail-status' });
-    expect(within(dialog).queryByRole('button', { name: 'Approve task' })).toBeNull();
+    await act(async () => { mutation.resolve({ ...original, status: 'in_progress', ready: false, startedAt: '2026-10-22T00:01:00Z', version: original.version + 1n, updatedAt: '2026-10-22T00:01:00Z' }); });
+    await within(dialog).findByRole('button', { name: 'In progress' });
+    expect(within(dialog).getByRole('button', { name: 'In progress' })).toBeVisible();
   });
 
-  it('replaces pending and cached approval state on identity change and ignores the previous identity late result', async () => {
-    const mutation = deferred<TaskDetail>(); const original = proposed();
-    vi.mocked(approveTask).mockReturnValueOnce(mutation.promise);
+  it('replaces pending and cached status state on identity change and ignores the previous identity late result', async () => {
+    const mutation = deferred<TaskDetail>(); const original = initial();
+    vi.mocked(setTaskStatus).mockReturnValueOnce(mutation.promise);
     mount(); await screen.findByRole('heading', { name: 'Alice project P' });
     let dialog = await open('Alice task P');
-    confirmApproval(within(dialog).getByRole('button', { name: 'Approve task' })); close(dialog);
+    confirmStatus(within(dialog).getByRole('button', { name: 'To do' })); close(dialog);
     currentUser = bob; returnFromAnotherWindow();
     await screen.findByRole('heading', { name: 'Bob project P' });
     dialog = await open('Bob task P');
-    expect(within(dialog).getByRole('button', { name: 'Approve task' })).toBeEnabled();
+    expect(within(dialog).getByRole('button', { name: 'To do' })).toBeEnabled();
     expect(within(dialog).queryByText('Alice reviewed content')).toBeNull();
     const graphCalls = vi.mocked(getTaskGraph).mock.calls.length;
-    await act(async () => { mutation.resolve({ ...original, status: 'todo', ready: true, version: original.version + 1n }); });
+    await act(async () => { mutation.resolve({ ...original, status: 'in_progress', ready: false, startedAt: '2026-10-22T00:01:00Z', version: original.version + 1n }); });
     expect(within(dialog).getByRole('heading', { name: 'Bob task P' })).toBeVisible();
-    expect(within(dialog).getByText('Proposed', { selector: '.task-detail-status' })).toBeVisible();
-    expect(within(dialog).getByRole('button', { name: 'Approve task' })).toBeEnabled();
+    expect(within(dialog).getByRole('button', { name: 'To do' })).toBeVisible();
+    expect(within(dialog).getByRole('button', { name: 'To do' })).toBeEnabled();
     expect(getTaskGraph).toHaveBeenCalledTimes(graphCalls);
-    expect(approveTask).toHaveBeenCalledTimes(1);
+    expect(setTaskStatus).toHaveBeenCalledTimes(1);
   });
 
   it('disposes pending task ownership on logout without allowing late failure to read or repopulate private content', async () => {
-    const mutation = deferred<TaskDetail>(); vi.mocked(approveTask).mockReturnValueOnce(mutation.promise);
+    const mutation = deferred<TaskDetail>(); vi.mocked(setTaskStatus).mockReturnValueOnce(mutation.promise);
     mount(); await screen.findByRole('heading', { name: 'Alice project P' });
     const dialog = await open('Alice task P');
-    confirmApproval(within(dialog).getByRole('button', { name: 'Approve task' })); close(dialog);
+    confirmStatus(within(dialog).getByRole('button', { name: 'To do' })); close(dialog);
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
     await screen.findByRole('heading', { name: 'Sign in to your workspace' });
     const reads = vi.mocked(getTask).mock.calls.length;

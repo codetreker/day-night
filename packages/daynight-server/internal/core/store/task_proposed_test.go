@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/codetreker/daynight/packages/daynight-server/internal/core"
+	"github.com/codetreker/daynight/packages/daynight-server/internal/taskproperties"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
@@ -45,7 +47,7 @@ func TestTaskProposedMigrationPreservesExistingResourcesAndDefault(t *testing.T)
 	mustQueryExec(t, database, `INSERT INTO tasks (id, project_id, title, status) VALUES ($1, $2, 'Proposed', 'proposed')`, queryID(20), project.ID)
 	mustQueryExec(t, database, `INSERT INTO task_dependencies (project_id, task_id, depends_on_task_id) VALUES ($1, $2, $3)`, project.ID, queryID(20), before[0].ID)
 	proposed := snapshotTaskBeforeTiming(t, database, project.ID, queryID(20))
-	if proposed.Status != core.TaskProposed || proposed.Ready || !slices.Equal(proposed.BlockedBy, []string{before[0].ID}) {
+	if proposed.Status != core.TaskStatus("proposed") || proposed.Ready || !slices.Equal(proposed.BlockedBy, []string{before[0].ID}) {
 		t.Fatalf("migrated proposed resource: %#v", proposed)
 	}
 	mustQueryExec(t, database, `INSERT INTO tasks (id, project_id, title) VALUES ($1, $2, 'Default')`, queryID(21), project.ID)
@@ -65,24 +67,24 @@ func TestTaskProposedMigrationPreservesExistingResourcesAndDefault(t *testing.T)
 	}
 }
 
-func TestTaskProposedGetPaginationAndReadiness(t *testing.T) {
+func TestTaskTodoGetPaginationAndReadiness(t *testing.T) {
 	database := isolatedStore(t)
 	ctx := context.Background()
 	project := queryProject(t, database, 1)
 	pending := queryTask(t, database, project.ID, 10, core.TaskTodo)
 	done := queryTask(t, database, project.ID, 11, core.TaskDone)
-	unblocked := queryTask(t, database, project.ID, 12, core.TaskProposed, done.ID)
-	blocked := queryTask(t, database, project.ID, 13, core.TaskProposed, pending.ID)
+	unblocked := queryTask(t, database, project.ID, 12, core.TaskTodo, done.ID)
+	blocked := queryTask(t, database, project.ID, 13, core.TaskTodo, pending.ID)
 	dependent := queryTask(t, database, project.ID, 14, core.TaskTodo, unblocked.ID)
 	if err := database.ReadSnapshot(ctx, func(snapshot *Snapshot) error {
 		for _, task := range []core.Task{unblocked, blocked} {
 			read, err := snapshot.Task(ctx, project.ID, task.ID)
-			if err != nil || !reflect.DeepEqual(read, task) || read.Ready {
-				t.Fatalf("proposed GET projection: %#v, %v", read, err)
+			if err != nil || !reflect.DeepEqual(read, task) || read.Ready != (task.ID == unblocked.ID) {
+				t.Fatalf("todo GET projection: %#v, %v", read, err)
 			}
 		}
 		if len(unblocked.BlockedBy) != 0 || !slices.Equal(blocked.BlockedBy, []string{pending.ID}) || !slices.Equal(dependent.BlockedBy, []string{unblocked.ID}) || dependent.Ready {
-			t.Fatalf("proposed dependency projection: %#v, %#v, %#v", unblocked, blocked, dependent)
+			t.Fatalf("todo dependency projection: %#v, %#v, %#v", unblocked, blocked, dependent)
 		}
 		page := Page{Limit: 2}
 		var listed []string
@@ -101,12 +103,12 @@ func TestTaskProposedGetPaginationAndReadiness(t *testing.T) {
 			page.After = &Position{CreatedAt: last.CreatedAt, ID: last.ID}
 		}
 		if !slices.Equal(listed, []string{pending.ID, done.ID, unblocked.ID, blocked.ID, dependent.ID}) {
-			t.Fatalf("paginated inventory omitted proposed: %#v", listed)
+			t.Fatalf("paginated inventory omitted todo: %#v", listed)
 		}
 		ready := true
 		result, err := snapshot.Tasks(ctx, project.ID, TaskQuery{Page: Page{Limit: 10}, Ready: &ready})
-		if err != nil || len(result.Items) != 1 || result.Items[0].ID != pending.ID {
-			t.Fatalf("proposed task appeared as ready: %#v, %v", result, err)
+		if err != nil || len(result.Items) != 2 || result.Items[0].ID != pending.ID || result.Items[1].ID != unblocked.ID {
+			t.Fatalf("todo readiness did not match prerequisites: %#v, %v", result, err)
 		}
 		return nil
 	}); err != nil {
@@ -124,34 +126,34 @@ func TestTaskProposedDefaultMigrationPreservesExistingResources(t *testing.T) {
 	project := projectBeforeSettings(t, database, 1)
 	stamp := time.Date(2026, 1, 2, 3, 4, 5, 123456000, time.UTC)
 	var before []core.Task
-	for index, status := range []core.TaskStatus{core.TaskProposed, core.TaskTodo, core.TaskInProgress, core.TaskDone} {
+	for index, status := range []core.TaskStatus{core.TaskStatus("proposed"), core.TaskTodo, core.TaskInProgress, core.TaskDone} {
 		id := queryID(index + 10)
 		mustQueryExec(t, database, `INSERT INTO tasks (id, project_id, title, description, status, version, created_at, updated_at)
 			VALUES ($1, $2, 'Existing task', 'Existing description', $3, $4, $5, $6)`, id, project.ID, status, index+17, stamp, stamp.Add(time.Hour))
 		before = append(before, snapshotTaskBeforeTiming(t, database, project.ID, id))
 	}
-	if err := migrate(ctx, pool, schemaMigrations); err != nil {
+	if err := migrate(ctx, pool, schemaMigrations[:12]); err != nil {
 		t.Fatal(err)
 	}
 	for _, original := range before {
-		if after := snapshotTask(t, database, project.ID, original.ID); !reflect.DeepEqual(after, original) {
+		if after := snapshotHistoricalTask(t, database, project.ID, original.ID); !reflect.DeepEqual(after, original) {
 			t.Fatalf("default migration changed existing resource: %#v versus %#v", after, original)
 		}
 	}
 	mustQueryExec(t, database, `INSERT INTO tasks (id, project_id, title) VALUES ($1, $2, 'Default')`, queryID(21), project.ID)
-	created := snapshotTask(t, database, project.ID, queryID(21))
-	if created.Status != core.TaskProposed || created.Ready || created.Version != 1 || !created.CreatedAt.Equal(created.UpdatedAt) {
+	created := snapshotHistoricalTask(t, database, project.ID, queryID(21))
+	if created.Status != core.TaskStatus("proposed") || created.Ready || created.Version != 1 || !created.CreatedAt.Equal(created.UpdatedAt) {
 		t.Fatalf("database default did not create proposed task: %#v", created)
 	}
 	var applied time.Time
 	if err := pool.QueryRow(ctx, "SELECT applied_at FROM schema_migrations WHERE version=8").Scan(&applied); err != nil {
 		t.Fatal(err)
 	}
-	if err := migrate(ctx, pool, schemaMigrations); err != nil {
+	if err := migrate(ctx, pool, schemaMigrations[:12]); err != nil {
 		t.Fatal(err)
 	}
 	var after time.Time
-	if err := pool.QueryRow(ctx, "SELECT applied_at FROM schema_migrations WHERE version=8").Scan(&after); err != nil || !after.Equal(applied) || !reflect.DeepEqual(snapshotTask(t, database, project.ID, created.ID), created) {
+	if err := pool.QueryRow(ctx, "SELECT applied_at FROM schema_migrations WHERE version=8").Scan(&after); err != nil || !after.Equal(applied) || !reflect.DeepEqual(snapshotHistoricalTask(t, database, project.ID, created.ID), created) {
 		t.Fatalf("repeated default migration changed ledger/resource: %v, %v", after, err)
 	}
 }
@@ -159,11 +161,35 @@ func TestTaskProposedDefaultMigrationPreservesExistingResources(t *testing.T) {
 // Pre-timing rows have unknown execution intervals and gain the explicit legacy permission during migration.
 func snapshotTaskBeforeTiming(t *testing.T, database *Store, projectID, id string) core.Task {
 	t.Helper()
-	task, err := scanTask(database.Pool.QueryRow(context.Background(), `SELECT
+	task, err := scanHistoricalTask(database.Pool.QueryRow(context.Background(), `SELECT
 		t.id::text, t.project_id::text, t.title, t.description, t.status, t.version,
 		t.created_at, t.updated_at, NULL::timestamptz, NULL::timestamptz, true, t.properties, `+
 		taskDependsOn+`, ARRAY[]::text[], `+taskBlockedBy+`, `+taskReady+`
 		FROM tasks t WHERE t.project_id = $1 AND t.id = $2`, projectID, id))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return task
+}
+
+// Historical migration assertions decode the schema they own without accepting legacy states at runtime.
+func scanHistoricalTask(row pgx.Row) (core.Task, error) {
+	var task core.Task
+	var properties string
+	err := row.Scan(&task.ID, &task.ProjectID, &task.Title, &task.Description, &task.Status,
+		&task.Version, &task.CreatedAt, &task.UpdatedAt, &task.StartedAt, &task.CompletedAt, &task.AllowAgents, &properties, &task.DependsOn, &task.ExternalDependsOn, &task.BlockedBy, &task.Ready)
+	if err != nil {
+		return core.Task{}, err
+	}
+	task.Properties, err = taskproperties.Decode([]byte(properties))
+	task.CreatedAt, task.UpdatedAt = task.CreatedAt.UTC(), task.UpdatedAt.UTC()
+	task.StartedAt, task.CompletedAt = utcTime(task.StartedAt), utcTime(task.CompletedAt)
+	return task, err
+}
+
+func snapshotHistoricalTask(t *testing.T, database *Store, projectID, id string) core.Task {
+	t.Helper()
+	task, err := scanHistoricalTask(database.Pool.QueryRow(context.Background(), `SELECT `+taskProjection+` FROM tasks t WHERE t.project_id=$1 AND t.id=$2`, projectID, id))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -58,12 +58,12 @@ successors. Scoped Goal-creation permission covered the pair and its agreed
 breakdown, while the [approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md)
 created each task proposed and required explicit approval before claim. Planning
 stages originally shared the PR-delivery completion rule. The successor decision
-now treats an explicit discussion-start or transition request as authorization
-for that discussion's approval and claim, and uses user-confirmed material for
-discussion completion. Actual delivery retains its approval, execution and merge
-gates. The later [withdrawal decision](../feature/2026-10-23-task-unapprove.md)
-continues to own explicitly requested todo-to-proposed withdrawal. Completing
-requirements discussion does not complete the whole Goal.
+now uses explicit discussion-start or transition requests to start the specified
+stage and user-confirmed material for discussion completion. The adopted
+[status assignment decision](../architecture/2026-10-24-task-status-assignment.md)
+removes task approval, registers todo without execution and uses versioned status
+setting within the existing execution scope. Actual delivery retains its
+execution/merge authorization. Requirements completion does not complete a Goal.
 
 ## Alternatives
 

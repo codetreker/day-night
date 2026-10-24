@@ -33,9 +33,8 @@ task list 的 JSON 仅省略 `description`，其他元数据查询保留各自�
 [鉴权架构](daynight-auth.md)和[需求](../spec/daynight-auth.md)拥有完整项目授权机制与行为；生产服务对全部
 项目、任务、图和附件业务请求强制鉴权。安装 CLI 的真实服务及预算验收通过 UniAuth
 夹具取得用户 PAT，并复用正常配置与 Bearer 请求通道。仓库关联不保存凭据、
-不授予项目访问权；旧项目由部署者手工补齐成员关系。专用 approve、claim、
-complete 与现有资源读写共用当前成员权限；管理员额外管理成员、邀请和项目提醒设置，不另设
-审批角色。
+不授予项目访问权；旧项目由部署者手工补齐成员关系。专用 set-status 与现有资源读写共用当前成员权限；管理员额外管理成员、邀请和项目提醒设置，不另设
+状态专属角色。
 
 ## 现有基础与交付边界
 
@@ -341,7 +340,7 @@ flowchart TD
 | `task ready [--limit <N>] [--allow-agents true\|false]` | 单次 `GET /api/v1/projects/{projectId}/tasks?ready=true&limit=N`，可带 allowAgents，不提交 cursor |
 | `task show <id>` | `GET /api/v1/projects/{projectId}/tasks/{id}` |
 | `task update <id>` | 可选先 GET task，再 PATCH 同一路径，只写元数据 |
-| `task approve/unapprove/claim/complete <id>` | 可选先 GET task，再 POST 同一 task 的 `/approve`、`/unapprove`、`/claim` 或 `/complete`，body 只含 version |
+| `task set-status <id> <status>` | 可选先 GET task，再 PUT 同一 task 的 `/status`，body 严格包含 version/status |
 | `task graph` | `GET /api/v1/projects/{projectId}/task-graph`，不附加 query |
 | `task attachment put <id> <file>` | `PUT /api/v1/projects/{projectId}/tasks/{id}/attachments/files/{path...}`，流式请求体，接受 200/201 元数据 |
 | `task attachment list <id>` | `GET /api/v1/projects/{projectId}/tasks/{id}/attachments`，按路径身份读完分页 |
@@ -357,18 +356,15 @@ flowchart TD
 `task list` 的状态选择和展示顺序属于命令层。默认从完整结果中排除 `done`；
 `--all` 保留所有状态，`--status` 使用既有单状态查询，两者互斥并在任何 I/O 前
 拒绝。`--ready` 沿用服务筛选，与所选状态取交集，包含 `--all --ready`。`list`、`ready` 的 `--allow-agents true|false` 直接投影到服务查询；未提供、true、false 各自保留。完整分页保持该筛选，返回项不匹配时拒绝，不在客户端过滤掉一页中的任务。
-命令在全部分页成功后按 `in_progress`、ready、其余 `todo`、`proposed`、`done` 稳定分组，
+命令在全部分页成功后按 `in_progress`、ready、其余 `todo`、`done` 稳定分组，
 同一组保留服务按 `createdAt ASC, id ASC` 返回的跨页顺序。文本和 JSON 消费
 同一选择结果，因此分页边界不会改变组间优先顺序。此机制复用既有 API 筛选和分页，
 不增加服务排序或多状态查询契约。
 
-API 的响应状态解码与命令输入 choices 分别拥有不同契约：task 和 graph 的响应
-接受 `proposed`、`todo`、`in_progress`、`done`，图 summary 的 `proposed` 是必填
-整数；列表状态输入接受四种状态，通用 update 不声明 status 选项。默认清单保留 proposed，稳定分组置于 todo
-之后、done 之前；详情继续保留完整描述，列表 JSON 仍只省略 description。
-图文本输出单独显示 Proposed 计数。[读取决策](../../.agents/notes/implemented/feature/2026-10-22-proposed-task-readers.md)
-拥有先准备读取再启用写入的历史取舍；[生命周期决策](../../.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)
-拥有当前专用操作与 proposed 创建默认。
+API 响应与命令 choices 均只接受 todo、in_progress、done，拒绝旧状态。
+graph summary 只返回 total、todo、inProgress、done、ready、blocked；图文本不显示旧统计。
+列表默认保留未完成任务，按 in_progress、ready todo、其他 todo、done 稳定分组。
+元数据 update 不声明 status，状态由专用 set-status 提交；详见[状态架构](daynight-task-status.md)。
 
 `task ready` 将常见的下一项工作选择限制为前 N 项，避免项目积累任务后每次
 选择都读取完整 ready 集合。命令校验 `--limit` 为十进制整数 `1..100`，省略时
@@ -415,8 +411,8 @@ compileDependencies 只在关系选项出现时加载 UUID 校验；普通 N 与
 服务返回 `version_conflict`。有 `--if-version` 时直接提交指定版本，不用 GET 的
 最新值替代。CLI 不重放 PATCH，不将旧版本冲突改成成功；语义无变化的响应也直接
 按服务返回渲染。生命周期操作复用相同 project 解析、Operation、int64 序列化和
-完整 mutation 渲染器；显式版本直接 POST，省略时仅 GET 一次，无冲突重试。
-显式 project UUID、show/update/approve/unapprove/claim/complete 的 task UUID、标题、描述、
+完整 mutation 渲染器；显式版本直接 PUT status，省略时仅 GET 一次，无冲突重试。当前版本同状态 +0，实际改变 +1。
+显式 project UUID、show/update/set-status 的 task UUID、标题、描述、
 版本及修改字段组合在配置、Git 和网络前验证；依赖选项存在时才懒加载 canonicalId，并在本地正规化、排序及拒绝非法/重复 UUID。显式 `--project` 直接 GET project，不读取工作目录或
 加载仓库模块；自动分支将 `serverUrl`、同一 `Operation`、API 和工作目录交给
 `resolveProject`。解析返回后才发送 task 请求，因此本地准备失败没有 task mutation。

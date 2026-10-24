@@ -12,6 +12,12 @@ a mismatched image or cleanup failures unless its receipts are validated.
 
 ## Decision
 
+The [status assignment decision](../architecture/2026-10-24-task-status-assignment.md) owns the current three-state
+protocol. Status journeys use exact registered PUT status writes; current
+inventory is 32 native and 27 container results. The rollout counts below retain
+their original delivery context; repeatable current commands and mappings belong
+to the Web README.
+
 `pnpm web:acceptance` uses the shared acceptance runner to build real embedded
 assets and a fresh native Go executable, own an isolated PostgreSQL 18.6
 container/volume and wait for structured service readiness. The normal dev-ci
@@ -49,22 +55,22 @@ normal UniAuth session/PAT bootstrap. The
 adds `task-description-markdown` to each functional target, producing the earlier
 forty-five-result inventory. Its browser reads remain GET/HEAD-only after
 authenticated fixture setup. The three original approval journeys brought the
-aggregate to fifty-one. The later
-[withdrawal decision](../feature/2026-10-23-task-unapprove.md) adds `task-unapproval`
-to both functional targets, making the current strict aggregate fifty-three. Fixture data is created through real authenticated APIs;
+aggregate to fifty-one. The historical
+[withdrawal decision](../feature/2026-10-23-task-unapprove.md) added `task-unapproval`
+to both functional targets, making that delivery aggregate fifty-three. Fixture data is created through real authenticated APIs;
 the graph scenarios and task-view scenario retain read-only browser request
 checks except for one exact registered fixture-file PUT in `refresh-staleness`.
 The [quiet-detail decision](../bug-fix/2026-10-23-quiet-task-detail-refresh.md)
 holds that upload response across automatic reads to verify pending-work
 retention without admitting other mutations. The attachment and `language-state-preservation` scenarios
 permit only their exact fixture-scoped file PUT/DELETE requests. The
-[approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md) adds task-approval,
-task-approval-conflicts and task-approval-recovery, admitting only registered
-project/task POST approve operations and exact expected counts. The withdrawal
-scenario additionally admits its registered unapprove operations under the same
+[approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md) originally added
+task-approval, task-approval-conflicts and task-approval-recovery, admitting only
+registered project/task POST approve operations and exact counts. Historical
+task-unapproval additionally admitted registered unapprove operations under the same
 exact route, method and count checks. The
 [lifecycle cross-layer extension](2026-10-22-task-lifecycle-cross-layer-acceptance.md)
-strengthens those same annotations with a packed-CLI/ordinary-graph journey,
+owns the successor status annotations and strengthens the same underlying checks with a packed-CLI/ordinary-graph journey,
 reviewed-version CLI/Web competition and SPA project isolation. It adds no
 browser annotation or runner topology. Uncaught exceptions remain failures in
 every scenario. Database

@@ -70,7 +70,6 @@ export const renderTaskGraph = (graph: TaskGraph): string => [
   "",
   "Summary:",
   `Total: ${graph.summary.total}`,
-  `Proposed: ${graph.summary.proposed}`,
   `Todo: ${graph.summary.todo}`,
   `In progress: ${graph.summary.inProgress}`,
   `Done: ${graph.summary.done}`,

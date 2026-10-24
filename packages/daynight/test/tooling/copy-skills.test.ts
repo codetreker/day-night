@@ -112,28 +112,26 @@ describe("packaged skill resource copy", () => {
     const documents = files(destination).filter((name) => name.endsWith(".md"))
       .map((name) => readFileSync(path.join(destination, name), "utf8"));
     const guidance = documents.join("\n");
-    for (const command of ["task approve", "task unapprove", "task claim", "task complete"]) expect(guidance).toContain(command);
+    expect(guidance).toContain("task set-status");
+    for (const command of ["task approve", "task unapprove", "task claim", "task complete"]) expect(guidance).not.toContain("`" + command + "`");
     expect(guidance).toContain("--if-version");
     expect(guidance).not.toMatch(/task update[^\n]*--status/);
-    expect(guidance).not.toMatch(/(?:create|register)[^\n]*in `todo`/i);
-    expect(guidance).not.toContain("then set `in_progress`");
-    expect(guidance).not.toContain("set `done`");
+    expect(guidance).not.toContain("`proposed`");
     const create = readFileSync(path.join(destination, "references/create-task.md"), "utf8");
     const run = readFileSync(path.join(destination, "references/run-task.md"), "utf8");
     const autopilot = readFileSync(path.join(destination, "references/autopilot.md"), "utf8");
-    expect(create).toContain("Create new tasks in `proposed`");
-    expect(create).toMatch(/approval\s+is pending/);
-    expect(run).toContain("keep execution pending approval");
+    expect(create).toContain("Create new tasks in `todo`");
+    expect(create).toContain("Registration leaves work todo and does not execute it");
     expect(run).toContain("every necessary delivery PR");
     expect(run).toContain("is merged");
-    expect(autopilot).toContain("never auto-approves proposed");
+    expect(autopilot).toContain("fixed Goal queue");
+    expect(autopilot).toContain("Automatic selection never enables `allowAgents`");
     const goal = readFileSync(path.join(destination, "references/goal.md"), "utf8");
     expect(goal).toContain("only the requirements discussion task");
-    expect(goal).toMatch(/Each task starts\s+in `proposed`/);
+    expect(goal).toMatch(/Each task starts\s+in `todo`/);
     expect(goal).toContain("stage brief");
-    expect(goal).toContain("Completion satisfies dependencies but never approves delivery tasks");
+    expect(goal).toContain("Completion satisfies dependencies and grants no delivery execution permission");
     expect(goal).toContain("actual registered delivery tasks");
-    expect(goal).not.toMatch(/starts\s+in `todo`/);
   });
 
   it("ships valid skill metadata and resolves every local resource link inside each copied bundle", () => {

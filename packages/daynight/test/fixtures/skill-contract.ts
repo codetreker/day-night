@@ -81,45 +81,36 @@ export const instructionScenarios: readonly InstructionScenario[] = [
     input: "Automatic selection is active; a user may also explicitly select a task without automatic permission.",
     obligation: "Filter automatic candidates before pagination, never self-enable permission, and preserve explicit manual execution.",
     propositions: [
-      { resource: "references/autopilot.md", section: "## Select one related task", requires: [/daynight task ready --allow-agents true --json/, /task with `allowAgents=true`/, /daynight task list --allow-agents true --json/, /Automatic selection never enables `allowAgents`/, /manual claim path remains available regardless of the flag/] },
-      { resource: "references/run-task.md", section: "## Establish the task and stage", requires: [/explicitly user-selected task may use the manual claim path regardless of `allowAgents`/, /Automated task selection requires true and must not enable the flag itself/] },
+      { resource: "references/autopilot.md", section: "## Select one related task", requires: [/daynight task ready --allow-agents true --json/, /task with `allowAgents=true`/, /daynight task list --allow-agents true --json/, /Automatic selection never enables `allowAgents`/, /manual execution path remains available regardless of the flag/] },
+      { resource: "references/run-task.md", section: "## Establish the task and stage", requires: [/explicitly user-selected task may use the manual execution path regardless of `allowAgents`/, /Automated task selection requires true and must not enable the flag itself/] },
       { resource: "references/handbook.md", section: "**Automatic execution permission.**", requires: [/New tasks start false/, /Actual changes are locked during in_progress/, /server combines that condition with other filters before pagination and the ready limit/, /Automated workflows must not enable it themselves/i] },
     ],
   },
   {
-    id: "registration-without-approval",
-    input: "Creation is authorized and all task artifacts are readable; approval was not authorized.",
-    obligation: "Register proposed work, verify owned resources, and return with approval pending.",
+    id: "registration-without-execution",
+    input: "Creation is authorized and all task artifacts are readable; execution was not requested.",
+    obligation: "Register todo work, verify owned resources, and return without execution.",
     propositions: [
-      { resource: "references/create-task.md", section: "## Register and verify", requires: [/Create new tasks in `proposed`/, /Read back each complete task, its attachment inventory and required contents/, /Without separate explicit approval authorization, leave registered work proposed/, /Return after verified registration without selecting or executing a task/] },
-      { resource: "SKILL.md", section: "## Shared constraints", requires: [/Create tasks only with explicit permission for their scope/, /Creation produces `proposed` for every normal task and Goal stage/] },
+      { resource: "references/create-task.md", section: "## Register and verify", requires: [/Create new tasks in `todo`/, /Read back each complete task, its attachment inventory and required contents/, /Registration leaves work todo and does not execute it/, /Return after verified registration without selecting or executing a task/] },
+      { resource: "SKILL.md", section: "## Shared constraints", requires: [/Create tasks only with explicit permission for their scope/, /Creation produces `todo` for every normal task and Goal stage/] },
     ],
   },
   {
-    id: "proposed-run-request",
-    input: "run-task or autopilot is requested for a proposed task without approval authority.",
-    obligation: "Keep execution pending; execution and automation requests do not grant approval.",
+    id: "fixed-authorized-queue",
+    input: "The user explicitly authorized a fixed Goal queue with allowAgents=false.",
+    obligation: "Use its manual path and existing authorization for ready successors without enabling discovery permission.",
     propositions: [
-      { resource: "references/run-task.md", section: "## Establish the task and stage", requires: [/For `proposed`, keep execution pending approval/, /A run request or autopilot activation does not authorize approval/] },
-      { resource: "references/autopilot.md", section: "## Select one related task", requires: [/Autopilot never auto-approves proposed work/, /permission to execute do not authorize task approval/] },
+      { resource: "references/autopilot.md", section: "## Select one related task", requires: [/fixed Goal queue/, /manual execution path regardless of `allowAgents`/, /Existing scoped authorization covers its ready successors without per-task reauthorization/, /Automatic selection never enables `allowAgents`/] },
+      { resource: "SKILL.md", section: "## Shared constraints", requires: [/Existing explicit authorization may cover a stated task or fixed Goal queue and its ready successors without another per-task authorization/] },
     ],
   },
   {
-    id: "explicit-scoped-approval",
-    input: "The user authorizes approval for one task or a stated Goal-task scope.",
-    obligation: "Review that scope and use the exact observed version; approval adds no delivery authority.",
+    id: "authorized-ready-start",
+    input: "An authorized ready todo has complete prerequisites and stage inputs, with execution authorized.",
+    obligation: "Start using its decision version and confirm in_progress before work begins.",
     propositions: [
-      { resource: "references/run-task.md", section: "## Establish the task and stage", requires: [/Only if the user explicitly authorized approval of this task or stated scope, review its current content/, /`task approve` with that exact observed version/, /Approval does not expand implementation or delivery authorization/] },
-      { resource: "SKILL.md", section: "## Shared constraints", requires: [/Approve only with explicit user authorization for that task or stated scope/, /Explicit approval may cover the stated Goal tasks; use each reviewed task's exact version/, /Approval grants no execution or delivery permission/] },
-    ],
-  },
-  {
-    id: "approved-ready-claim",
-    input: "An approved ready todo has complete prerequisites and stage inputs, with execution authorized.",
-    obligation: "Claim its decision version and confirm in_progress before work begins.",
-    propositions: [
-      { resource: "references/run-task.md", section: "## Establish the task and stage", requires: [/For ready `todo`, begin only when dependencies are done, required stage inputs are complete and the work is authorized/, /Both kinds must be done for claim and completion/, /Use `task claim` with the exact version observed for that decision and confirm in_progress before starting/] },
-      { resource: "references/autopilot.md", section: "## Select one related task", requires: [/Readiness checks all prerequisites, not stage artifact completeness or execution authorization/, /External prerequisites still block readiness/, /cross-chain classification does not authorize executing them or expand the confirmed scope/, /claims the version observed for that decision before starting/] },
+      { resource: "references/run-task.md", section: "## Establish the task and stage", requires: [/For ready `todo`, begin only when dependencies are done, required stage inputs are complete and the work is authorized/, /Both kinds must be done before entering in_progress or done/, /Use `task set-status <task-id> in_progress` with the exact version observed for that decision and confirm in_progress before starting/] },
+      { resource: "references/autopilot.md", section: "## Select one related task", requires: [/Readiness checks all prerequisites, not stage artifact completeness or execution authorization/, /External prerequisites still block readiness/, /cross-chain classification does not authorize executing them or expand the confirmed scope/, /enters in_progress using the version observed for that decision before starting/] },
     ],
   },
   {
@@ -137,7 +128,7 @@ export const instructionScenarios: readonly InstructionScenario[] = [
     obligation: "Reread and reconsider rather than changing the version and replaying automatically.",
     propositions: [
       { resource: "references/handbook.md", section: "**Task concurrency.**", requires: [/the exact version read for that decision using `--if-version`/, /Preserve full int64 decimal digits without numeric rounding/, /On a conflict, reread and reconsider/, /not merely a newer version/, /Never retry a mutation automatically/] },
-      { resource: "references/run-task.md", section: "## Establish the task and stage", requires: [/A stale version or changed prerequisite requires rereading and reconsidering, with no automatic claim retry/] },
+      { resource: "references/run-task.md", section: "## Establish the task and stage", requires: [/A stale version or changed prerequisite requires rereading and reconsidering, with no automatic mutation retry/] },
     ],
   },
   {
@@ -164,28 +155,28 @@ export const instructionScenarios: readonly InstructionScenario[] = [
     input: "All stage acceptance and required authorized PR merges are confirmed, or there is no PR delivery path.",
     obligation: "Record readable evidence, reread in_progress and complete its observed version; stage completion is bounded.",
     propositions: [
-      { resource: "references/run-task.md", section: "## Confirm completion or return waiting", requires: [/every necessary delivery PR is merged/, /Completion rules grant no merge, deployment, external communication, or mainline push permission/, /For tasks without a development or PR delivery path, use their stated stage acceptance/, /confirm required evidence is recorded and readable/, /reread the complete in-progress task and use `task complete` with its exact observed version/, /Only service confirmation establishes the status update/, /Neither establishes whole-Goal completion/] },
-      { resource: "references/goal.md", section: "## Execute the appropriate stage", requires: [/Completion satisfies dependencies but never approves delivery tasks/] },
+      { resource: "references/run-task.md", section: "## Confirm completion or return waiting", requires: [/every necessary delivery PR is merged/, /Completion rules grant no merge, deployment, external communication, or mainline push permission/, /For tasks without a development or PR delivery path, use their stated stage acceptance/, /confirm required evidence is recorded and readable/, /reread the complete in-progress task and use `task set-status <task-id> done` with its exact observed version/, /Only service confirmation establishes the status update/, /Neither establishes whole-Goal completion/] },
+      { resource: "references/goal.md", section: "## Execute the appropriate stage", requires: [/Completion satisfies dependencies and grants no delivery execution permission/] },
     ],
   },
   {
     id: "goal-registration-only",
     input: "The user asks only to register a Goal, without starting a discussion.",
-    obligation: "Create only the current requirements task as proposed and return; do not precreate architecture or delivery work.",
+    obligation: "Create only the current requirements task as todo and return; do not precreate architecture or delivery work.",
     propositions: [
-      { resource: "references/goal.md", section: "## Identify the current discussion", requires: [/A registration-only request creates only the current discussion task in `proposed` and returns without approval or execution/] },
+      { resource: "references/goal.md", section: "## Identify the current discussion", requires: [/A registration-only request creates only the current discussion task in `todo` and returns without execution/] },
       { resource: "references/goal.md", section: "## Start requirements discussion", requires: [/Create or reuse only the requirements discussion task/, /Do not create an architecture placeholder or delivery tasks at this point/] },
-      { resource: "references/create-task.md", section: "## Choose the tracked outcome", requires: [/A registration-only request leaves the current stage proposed and returns/] },
+      { resource: "references/create-task.md", section: "## Choose the tracked outcome", requires: [/A registration-only request leaves the current stage todo and returns/] },
     ],
   },
   {
     id: "goal-discussion-start",
     input: "The user explicitly asks to begin discussing a Goal's requirements.",
-    obligation: "Register only requirements and use the existing approve/claim lifecycle to enter in_progress for discussion.",
+    obligation: "Register only requirements and use the versioned status setter to enter in_progress for discussion.",
     propositions: [
-      { resource: "references/goal.md", section: "## Identify the current discussion", requires: [/A request to start a Goal discussion authorizes creating, approving, and claiming that discussion task so it becomes `in_progress`/] },
-      { resource: "references/goal.md", section: "## Start requirements discussion", requires: [/Each task starts in `proposed`/, /use `task approve`, confirm todo, then use `task claim` with the version observed for that decision and confirm `in_progress`/, /All direct prerequisites must be done/] },
-      { resource: "references/run-task.md", section: "## Establish the task and stage", requires: [/authorizes approval and claim of that discussion under the Goal protocol; registration alone does not/] },
+      { resource: "references/goal.md", section: "## Identify the current discussion", requires: [/A request to start a Goal discussion authorizes creating and starting that discussion task so it becomes `in_progress`/] },
+      { resource: "references/goal.md", section: "## Start requirements discussion", requires: [/Each task starts in `todo`/, /use `task set-status <task-id> in_progress` with the version observed for that decision and confirm `in_progress`/, /All direct prerequisites must be done/] },
+      { resource: "references/run-task.md", section: "## Establish the task and stage", requires: [/authorizes entering in_progress for that discussion under the Goal protocol; registration alone does not/] },
     ],
   },
   {
@@ -207,10 +198,10 @@ export const instructionScenarios: readonly InstructionScenario[] = [
   {
     id: "goal-confirmed-breakdown",
     input: "The user confirms the current solution and its actual delivery breakdown.",
-    obligation: "Register real outcome tasks with verified dependencies and materials, then complete the discussion; delivery remains proposed without separate approval or execution authority.",
+    obligation: "Register real outcome tasks with verified dependencies and materials, then complete the discussion; delivery remains todo unless execution is already authorized.",
     propositions: [
-      { resource: "references/goal.md", section: "## Register the confirmed delivery breakdown", requires: [/Only after user solution confirmation, create or reuse the concrete delivery tasks/, /Create new delivery tasks in `proposed`/, /Solution confirmation authorizes the confirmed breakdown's registration, not approval, implementation, autopilot/, /Every delivery root without another ordinary implementation prerequisite depends directly on the solution discussion/, /Read back every task, required attachment, shared input, and dependency/, /Keep the solution discussion `in_progress` when registration is incomplete/] },
-      { resource: "references/goal.md", section: "## Execute the appropriate stage", requires: [/Complete the solution discussion only after the accepted solution and actual registered delivery tasks, their required materials, and their dependencies are read back and verified/, /Completion satisfies dependencies but never approves delivery tasks/] },
+      { resource: "references/goal.md", section: "## Register the confirmed delivery breakdown", requires: [/Only after user solution confirmation, create or reuse the concrete delivery tasks/, /Create new delivery tasks in `todo`/, /Solution confirmation authorizes the confirmed breakdown's registration, not implementation, autopilot/, /Every delivery root without another ordinary implementation prerequisite depends directly on the solution discussion/, /Read back every task, required attachment, shared input, and dependency/, /Keep the solution discussion `in_progress` when registration is incomplete/] },
+      { resource: "references/goal.md", section: "## Execute the appropriate stage", requires: [/Complete the solution discussion only after the accepted solution and actual registered delivery tasks, their required materials, and their dependencies are read back and verified/, /Completion satisfies dependencies and grants no delivery execution permission/] },
     ],
   },
   {

@@ -1,6 +1,4 @@
-export type ApprovalAction = "approve" | "unapprove";
-
-export type TaskStatus = "proposed" | "todo" | "in_progress" | "done";
+export type TaskStatus = "todo" | "in_progress" | "done";
 
 export type Project = {
   readonly id: string;
@@ -39,7 +37,6 @@ export type GraphTask = {
 
 export type TaskGraphSummary = {
   readonly total: number;
-  readonly proposed: number;
   readonly todo: number;
   readonly inProgress: number;
   readonly done: number;
