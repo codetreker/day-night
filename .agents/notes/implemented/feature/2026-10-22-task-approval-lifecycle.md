@@ -122,6 +122,11 @@ transaction, projection and workflow rationale. Current behavior belongs in the
 The [production-component browsing fixture](../../../../packages/daynight-web/tests/mockups/browsing.html)
 owns the current approval visual and frontend-only interaction scenarios.
 
+The [unified status assignment proposal](../../proposed/architecture/2026-10-24-task-status-assignment.md)
+designs three-state assignment, removal of task approval and migration of the
+legacy proposed state while preserving dependency and version invariants. It is a proposed replacement; the action-based runtime described
+here remains implemented until that coordinated cutover.
+
 ## Alternatives
 
 **Keep generic status updates alongside lifecycle aliases.** Other clients could

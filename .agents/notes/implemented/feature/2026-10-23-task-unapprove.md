@@ -68,6 +68,10 @@ does not replace the confirmed detail with an older snapshot.
 This limited transition partially supersedes the original
 [approval lifecycle](2026-10-22-task-approval-lifecycle.md), whose removal of
 generic status writes and separation of approval from execution remain intact.
+The [unified status assignment proposal](../../proposed/architecture/2026-10-24-task-status-assignment.md)
+specifies three-state assignment and migration of the legacy proposed state. It
+retains this policy as historical rationale; the runtime remains action-based
+until the proposed coordinated implementation is delivered.
 The current [server requirements](../../../../docs/spec/daynight-server.md),
 [CLI requirements](../../../../docs/spec/daynight-project-task.md),
 [Web requirements](../../../../docs/spec/daynight-web.md) and
