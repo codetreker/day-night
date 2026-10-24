@@ -49,11 +49,17 @@ afterEach(() => {
 });
 
 describe("packaged skill resource copy", () => {
-  it("retains platform-filtered automatic selection and the full-task claim recheck in the copied bundle", async () => {
+  it.each([{ name: "LF", lineEnding: "\n" }, { name: "CRLF", lineEnding: "\r\n" }])("retains platform-filtered automatic selection and the full-task claim recheck with $name line endings", async ({ lineEnding }) => {
     const f = fixture();
+    const source = f.source(bundles[1]);
+    for (const name of files(source).filter((name) => name.endsWith(".md"))) {
+      const file = path.join(source, name);
+      writeFileSync(file, readFileSync(file, "utf8").replaceAll("\r\n", "\n").replaceAll("\n", lineEnding));
+    }
     const copied = f.run();
     expect(copied.status, copied.stderr).toBe(0);
     const bundle = await inspectInstalledSkill(f.destination(bundles[1]));
+    expect(bundle.documents.get("references/run-task.md")!.includes("\r\n")).toBe(lineEnding === "\r\n");
     for (const instruction of instructionScenarios) verifyInstructionScenario(bundle, instruction);
     const scenario = instructionScenarios.find(({ id }) => id === "automatic-selection-platform")!;
     expect(verifyInstructionScenario(bundle, scenario)).toHaveLength(4);
@@ -65,9 +71,9 @@ describe("packaged skill resource copy", () => {
     ];
     for (const mutation of mutations) {
       const documents = new Map(bundle.documents);
-      const original = documents.get(mutation.resource)!;
+      const original = documents.get(mutation.resource)!.replaceAll("\r\n", "\n");
       expect(original).toContain(mutation.before);
-      documents.set(mutation.resource, original.replace(mutation.before, mutation.after));
+      documents.set(mutation.resource, original.replace(mutation.before, mutation.after).replaceAll("\n", lineEnding));
       expect(() => verifyInstructionScenario({ ...bundle, documents }, scenario)).toThrow();
     }
   });
