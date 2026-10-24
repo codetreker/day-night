@@ -11,7 +11,6 @@ import tallText from './files/data/tall.txt?raw';
 import { longConfirmationPath } from './attachment-paths';
 
 export type MockupScenario = 'files' | 'empty' | 'upload-error' | 'loading' | 'list-error' | 'preview-error' | 'busy' | 'delete-error' | 'delete-pending';
-const base = '/tests/mockups/files/';
 export const mockupLongPath = `docs/${'long-file-name-'.repeat(12)}.txt`;
 const timestamp = '2026-10-21T10:00:00Z';
 const sources = [
@@ -41,7 +40,11 @@ const readFile = (file: File): Promise<string> => new Promise((resolve, reject) 
   reader.readAsText(file);
 });
 
-export const createAttachmentFixture = (scenario: MockupScenario) => {
+export const createAttachmentFixture = (scenario: MockupScenario, location: {
+  readonly files: string;
+  readonly page: string;
+} = { files: '/tests/mockups/files/', page: '/tests/mockups/attachments.html' }) => {
+  const base = location.files;
   const files = new Map<string, FixtureFile>(scenario === 'empty' ? [] : sources.map(([path, contentType, text]) => [path, {
     attachment: { path, contentType, sizeBytes: text === '' ? 640 : new TextEncoder().encode(text).length, createdAt: timestamp, updatedAt: timestamp },
     text,
@@ -95,6 +98,6 @@ export const createAttachmentFixture = (scenario: MockupScenario) => {
     if (url === undefined) throw new Error('Fixture attachment URL was never allocated.');
     return url;
   };
-  const urls: AttachmentUrls = { page: (path) => `/tests/mockups/attachments.html?file=${encodeURIComponent(path)}&scenario=${scenario}`, previewRoot: base, preview: fileUrl, download: (path) => pathUrls.get(path) ?? `${base}${path.split('/').map(encodeURIComponent).join('/')}` };
+  const urls: AttachmentUrls = { page: (path) => `${location.page}?file=${encodeURIComponent(path)}&scenario=${scenario}`, previewRoot: base, preview: fileUrl, download: (path) => pathUrls.get(path) ?? `${base}${path.split('/').map(encodeURIComponent).join('/')}` };
   return { api, urls, dispose: () => { ownedUrls.forEach((url) => URL.revokeObjectURL(url)); } };
 };

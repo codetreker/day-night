@@ -620,7 +620,8 @@ HTML/PDF, the body and fitted frame wrapper hide overflow and the embedded
 document or native reader owns scrolling. The preview header never scrolls
 independently, exposes the complete path and keeps Download and Open in new tab reachable. File-row menus and confirmation controls remain accessible at narrow widths.
 Left-pane scrolling does not move right-side content or its reading position.
-The standalone reader uses this same rendering and sizing. Independent
+The standalone page reuses this complete panel, rendering and sizing; only its
+outer composition integrates selection with URL and history. Independent
 real-service runtime acceptance of the attachment-reading group is complete.
 Its source, build, browser and cleanup receipts retain the scope of that result;
 a local browser override does not establish hosted-CI browser behavior.
@@ -660,21 +661,35 @@ The URL survives copying, closing the source dialog and reloading.
 
 Production `AuthenticatedApp` renders `AttachmentPage` within its authenticated
 identity boundary, outside the workspace shell and modal, at
-`/projects/{projectId}/tasks/{taskId}/attachments/{path...}`. Session revalidation
-and identity replacement preserve their authenticated resource/isolation rules.
-The page has a return
-to project link, path, metadata, download and the shared language selector. Its
-initial focus enters the main reading region. The root locale Provider supplies
-first-party messages, HTML language and the route title without changing file
-bytes, resource identity or normal browser keyboard behavior.
+`/projects/{projectId}/tasks/{taskId}/attachments/{path...}`. The standalone shell
+provides a return-to-project link and the shared language selector. Its body is
+the same `TaskAttachmentsPanel` used in task details: directory tree, refresh,
+upload disclosure, file menus and deletion confirmation beside the selected
+preview. Path, metadata, Download and Open in new tab belong to the shared
+preview header. Initial focus enters the main region. Locale updates preserve
+the panel, resource identity and ordinary browser keyboard behavior.
 
-The reader reuses `useAttachments` and waits for its complete paginated inventory
-before matching the exact path. Initial and partial-list failures remain errors
-with retry; only a complete inventory can establish a missing file. The existing
-`AttachmentPreview` handles all formats and content failures. The route owns
-project/task/path identity, cancellation and stale-result rejection independently
-of any originating tab. No metadata API, object-URL navigation contract or
-second renderer is introduced.
+Standalone tree selection and successful upload selection synchronize the URL
+through the existing router and add a history entry only for a different path.
+Back and Forward apply the route's path to the same controller without adding
+another entry. The page and panel are keyed by project/task rather than file
+path, retaining directory expansion, sidebar scroll, inventory and unsent upload
+drafts while switching files. Project/task or authenticated-identity changes
+retain their existing teardown and isolation rules. Embedded selection remains
+local to its panel; tree and upload selection there do not write the address or
+browser history. Deleting the standalone selection keeps its URL and displays a
+missing file once the complete inventory confirms absence. Deleting another file
+preserves the active preview and reading position.
+
+One `useAttachments` controller owns standalone inventory, writes, selection and
+preview. It requires a complete paginated inventory before establishing selected
+metadata or absence for a new selected path; initial and partial-list failures
+remain errors with retry. Previously confirmed same-task/path metadata remains
+available through an incomplete refresh. The shared `AttachmentPreview` handles
+every format and content failure, with
+existing request cancellation and stale-result rejection. No metadata API,
+object-URL navigation contract, second renderer or separate file-management
+implementation is introduced.
 
 The parser splits the raw path before decoding segments once and applies the
 existing canonical-ID and attachment-path validators. Encoded separators and
@@ -687,13 +702,18 @@ normalization can redirect or repair them; file endpoints retain their existing
 scope checks.
 
 The page is a `100dvh` flex column with an actual-height header and remaining-height
-renderer. Its outer wrapper does not scroll. Documents, text and images use the
-shared preview body; HTML/PDF use a fitted native frame whose document owns
-vertical scrolling. There is no fixed header-height subtraction or modal height
-cap. The iframe Escape/Tab bridge is installed only when a real dialog ancestor
-and close callback exist; standalone frames keep ordinary browser keys. The
+attachment panel. Its outer wrapper does not scroll. The shared split stays
+adjacent at narrow widths with independently scrolling inventory and preview.
+Documents, text and images use the preview body; HTML/PDF use a fitted native
+frame whose document owns vertical scrolling. There is no fixed header-height
+subtraction or modal height cap. The iframe Escape/Tab bridge is installed only
+with a real task-detail dialog ancestor and close callback; standalone frames
+keep ordinary browser keys. File deletion retains its own native modal focus
+and keyboard behavior in either container. The
 [full-reader decision](../../.agents/notes/implemented/architecture/2026-10-22-task-attachment-full-reader.md)
-owns the routing and nonmodal composition.
+owns the route and nonmodal rendering foundation; the
+[shared-page decision](../../.agents/notes/implemented/architecture/2026-10-24-shared-attachment-page.md)
+owns full-panel reuse and standalone history.
 
 ### Frontend-only attachment mockup
 
@@ -957,7 +977,8 @@ One packed/installed CLI is shared by the whole web run. On each target,
 the production page, then checks Web mutations through raw CLI reads. It covers
 Markdown relative images, image/text/PDF and interactive HTML resources, detail
 tabs and retained attachment state, adjacent panes, scroll-owner geometry, and
-reloadable standalone navigation. PDF acceptance polls compositor screenshots for a substantial fixture-only colored
+standalone opening and reload. Standalone address/history and shared file-operation
+checks remain tied to the corresponding source-qualified browser result. PDF acceptance polls compositor screenshots for a substantial fixture-only colored
 marker. It measures matching connected components independently and checks the
 largest main-page candidate extending into the frame's right half. This
 fixture/viewer location rule excludes thumbnail-only paint; independent bounds
@@ -1054,7 +1075,7 @@ scenario annotations validated in each target's report.
 | Requirement | Production checks |
 |---|---|
 | W1 | `project-list`: more than 50 projects, cursor requests, unique cards and navigation to a later-page project |
-| W2 | `project-graph`, `deep-links`, `task-attachments`: project entry, direct HTML reload, browser history and standalone attachment opening/reload without source-tab state |
+| W2 | `project-graph`, `deep-links`, `task-attachments`: project entry, direct HTML reload, browser history and standalone attachment opening/reload without source-tab state; standalone file selection owns its address/history while embedded selection remains local |
 | W3–W4 | `project-graph`, `project-view-tabs`, `refresh-staleness`, `failure-recovery`: exact statistics, ordinary-component tabs and member progress, direct standalone details, independent completion filters, per-project tab/scroll/expansion restoration, dependency reclassification and consistent full refresh |
 | W5–W7 | `project-graph`, `keyboard-focus`, `capacity-chain`, `capacity-merge`, `capacity-shared`, `capacity-external`: complete projection data, bounded overview/induced edges, explicit expansion/reset, state markers and existing detail/viewport actions |
 | W8 | `detail-navigation`, `refresh-staleness`: complete centered-dialog content, ordered PR associations, relation navigation, automatic detail refresh with retained dialog/attachment state, property refresh and readiness differences without revising a dependent task |
@@ -1065,7 +1086,7 @@ scenario annotations validated in each target's report.
 | W13 | `task-approval`, `task-approval-conflicts`, `task-approval-recovery`, `task-unapproval`: same-data packed-CLI/ordinary-graph lifecycle, ready/blocked withdrawal, metadata/attachment preservation, both title-row confirmations and tabs, cancel/Escape/focus, invalidation, stale CLI metadata, CLI/Web same-version competition, pending protection, exact int64 digits, real-commit response loss, real graph failure and task/SPA-project identity/focus/browsing preservation |
 | TT3 | `project-settings`: real-service direct entry/reload, administrator save and independent member read, project isolation, exact settings versions above 2^53, stale conflict and demotion, read-only member recovery, actual commit with lost response and failed-read retry without PATCH replay, bilingual 320px/390px form/control/navigation containment and unclipped text |
 | TT1–TT2, TT4–TT6 | `task-execution-time`: real PostgreSQL crossing with graph deliveries held and an incorrect client wall clock, one-second local progress, stable focus/DOM/geometry/edges/viewport, real saved-threshold changes, installed-CLI completion and frozen polling, unknown legacy starts, sub-minute/multi-day/shared/external cards and standalone rows, bilingual 320px/390px layout; browser GET/HEAD only, with fixture mutations through authenticated API or installed CLI |
-| FA1–FA12 | `task-attachments`: installed CLI and production UI share real task/files on native and container targets; exact bytes, file mutations, detail tabs, adjacent panes, unique preview scroll owners, rendered formats and reloadable standalone reading. Independent real-service probes add end-of-document wheel/keyboard, native PDF final-page paint, fault/retry and unchanged task/graph proof |
+| FA1–FA12 | `task-attachments`: installed CLI and production UI share real task/files on native and container targets; exact bytes, file mutations, detail tabs, shared full attachment panel, unique preview scroll owners, rendered formats, standalone address/history and embedded-local selection. Independent real-service probes add end-of-document wheel/keyboard, native PDF final-page paint, fault/retry and unchanged task/graph proof |
 | TI8–TI9 | `task-description-markdown`: installed CLI and real API preserve Unicode/CRLF Markdown bytes and versioned full replacement; bilingual 1440px/320px rich rendering, escaped HTML, URL policy, task-root images/encoded references, paginated loading/list failure/retry, invalid/missing/preview failure states, one-controller navigation/focus, overwrite refresh, modified native href and HTML frame interaction; inspection→Details→relative attachment→close preserves graph selection/geometry/view |
 | TP-V1, TP-V7, TP-V8 | `detail-navigation`, `refresh-staleness`, `keyboard-focus`, `narrow-layout`: real API round trips for empty/NUL/control/long/HTML-looking values and duplicates, complete locally paged lists with bounded row counts, page/collection reset and focus, plain-text unsafe addresses, isolated HTTP(S) navigation, rereading properties and compact graph responses |
 | L1–L4 | `language-startup-preferences`: browser default, saved override, reload, route metadata, shared selectors and unchanged user data |

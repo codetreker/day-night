@@ -20,8 +20,8 @@ anchor with an external-link icon, `target="_blank"` and
 metadata, independently of pending content. It shares the existing canonical-ID
 and encoded-path validators. The source dialog and its selection remain open.
 
-`App` renders `AttachmentPage` outside the workspace shell and modal. The route
-owns project, task and exact case-sensitive path, and the reader fetches through
+`AuthenticatedApp` renders `AttachmentPage` outside the workspace shell and
+modal. The route owns project, task and exact case-sensitive path, and the reader fetches through
 its own `useAttachments` instance. Only a complete inventory establishes either
 selected metadata or a missing file; failed or partial inventories remain errors
 with retry. The same `AttachmentPreview` renders every supported format and
@@ -43,8 +43,8 @@ valid through one encoding/decoding pass.
 The root `LocaleProvider` supplies the reader's messages, route title, metadata
 formatting and language selector. Entering the route focuses its main reading
 region; locale updates preserve resource and frame identity. A `100dvh` flex
-column gives the actual-height header its space and the renderer all remaining
-height. The outer page hides overflow. Markdown, text and images use the shared
+column gives the actual-height header its space and the attachment panel all
+remaining height. The outer page hides overflow. Markdown, text and images use the shared
 preview body as their vertical scroll owner; HTML/PDF use a fitted iframe whose
 document or native reader owns scrolling. Header height is never subtracted as
 a fixed constant.
@@ -56,8 +56,10 @@ preview retains its dialog keyboard and cleanup behavior.
 
 The [attachment requirements](../../../../docs/spec/daynight-task-attachments.md#独立页面完整阅读)
 own visible behavior and the [design](../../../../docs/design/daynight-task-attachments.md#独立附件阅读页)
-owns the route and rendering mechanism. This decision extends the
-[split-view decision](2026-10-22-task-attachment-split-view.md), which retains
+owns the route and rendering mechanism. The
+[shared-page decision](2026-10-24-shared-attachment-page.md) extends this foundation
+with the complete attachment panel and standalone navigation history. This
+decision extends the [split-view decision](2026-10-22-task-attachment-split-view.md), which retains
 inline tabs, state and scroll ownership. The
 [original Web attachment decision](../feature/2026-10-21-task-attachment-web.md)
 retains rendering, file operations and trusted-origin rationale; the
@@ -89,10 +91,14 @@ and keyboard ownership are explicit. Complete inventory reads retain the cost
 of listing every page before missing-file decisions; they avoid another metadata
 endpoint and prevent partial failure from becoming false absence.
 
-The page remains a read-only view with a download action. File management stays
-in the task's attachment tab. Authentication rollout, task lifecycle, description
-Markdown, single-file mutation semantics, storage formats and the accepted K1
-filesystem/PostgreSQL boundary remain unchanged.
+The initial full-reader delivery kept a read-only view with Download and left
+management in the task attachment tab. That limited composition reused the
+renderer while the route and nonmodal keyboard behavior were established. The
+[shared-page decision](2026-10-24-shared-attachment-page.md) partially supersedes
+that placement: both containers now use the complete attachment panel, and only
+the standalone container integrates selection with URL/history. Task lifecycle,
+description Markdown, single-file mutation semantics, storage formats and the
+accepted K1 filesystem/PostgreSQL boundary remain unchanged.
 
 The production-component fixture supplies reloadable bundled-file reader URLs
 for visual and interaction checks. Implementation checks own this feature's

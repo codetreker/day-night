@@ -47,6 +47,23 @@ const showDeleteConfirmation = (path: string) => {
 
 
 describe('task attachments', () => {
+  it('keeps embedded file selection local without writing address or browser history', async () => {
+    window.history.replaceState(null, '', '/projects/embedded');
+    const initialLength = window.history.length;
+    const push = vi.spyOn(window.history, 'pushState');
+    const replace = vi.spyOn(window.history, 'replaceState');
+    const api = fixture([file('one.txt'), file('two.txt')]);
+    open(api);
+    fireEvent.click(await findFileButton(/^one\.txt/));
+    await screen.findByText('Contents of one.txt');
+    fireEvent.click(fileButton(/^two\.txt/));
+    await screen.findByText('Contents of two.txt');
+    expect(window.location.pathname).toBe('/projects/embedded');
+    expect(window.history.length).toBe(initialLength);
+    expect(push).not.toHaveBeenCalled();
+    expect(replace).not.toHaveBeenCalled();
+  });
+
   it('starts with upload controls collapsed and retains the mounted draft when toggled', async () => {
     const api = fixture();
     open(api);

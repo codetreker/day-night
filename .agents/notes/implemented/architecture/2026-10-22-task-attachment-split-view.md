@@ -62,6 +62,9 @@ project/task/full-path identity kept that deferral affordable without another
 storage address or altered service preview URL. The
 [full-reader decision](2026-10-22-task-attachment-full-reader.md) now implements
 the download-adjacent action and standalone route using that shared structure.
+The [shared-page decision](2026-10-24-shared-attachment-page.md) composes this same
+complete panel in the standalone container and scopes URL/history integration
+to that container; embedded selection remains local.
 Independent runtime acceptance is complete for the integrated production page
 and actual native rendering. The [cross-layer acceptance decision](../testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
 owns its source/environment limits, real-input scrolling, final-page paint,

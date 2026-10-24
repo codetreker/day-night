@@ -67,10 +67,12 @@ management, persistent deployment volumes and paired backup/restore are
 implemented. Task details open on Overview and provide a separate Attachments
 tab with adjacent file and preview panes at every supported width. Each pane
 owns its scroll region; the preview has exactly one vertical scroll owner,
-including native HTML/PDF documents. A link beside Download opens the selected
-file in a reloadable full-page reader outside the workspace and dialog, with
-the same rendering and relative resources. Independent runtime acceptance of
-this reading group is complete against real embedded assets and service files,
+including native HTML/PDF documents. A link beside Download opens the same complete
+attachment page outside the workspace and dialog, retaining the directory tree,
+upload, deletion and preview. Standalone file selection synchronizes the address
+and browser history; embedded selection stays within its panel. Direct links and
+reloads select the addressed file. Independent runtime acceptance of the original
+reading group is complete against real embedded assets and service files,
 including native PDF reading to the final painted page. Installed CLI/service
 and production-browser attachment journeys share real service data on native
 and container targets; their
@@ -85,6 +87,8 @@ owns browser state, rendering and focus integration; the
 owns detail tabs, retained attachment state and preview scroll ownership; the
 [full-reader decision](.agents/notes/implemented/architecture/2026-10-22-task-attachment-full-reader.md)
 owns standalone routing and nonmodal reading; the
+[shared-page decision](.agents/notes/implemented/architecture/2026-10-24-shared-attachment-page.md)
+owns complete-panel reuse and standalone navigation history; the
 [deployment guide](deployment/localhost/README.md#persistence-and-backup) owns data
 retention and backup commands. Filesystem/PostgreSQL non-atomicity remains a known
 issue; consistency remediation is outside that scope.

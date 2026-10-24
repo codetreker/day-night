@@ -21,7 +21,8 @@ file paths.
 
 The menu uses the browser top layer and viewport-aware positioning to escape the
 scrolling sidebar's clipping. Native modal confirmation remains a descendant of
-the task detail DOM and imports the established auth dialog stylesheet. Shared
+the attachment panel in either the task detail or standalone page and imports
+the established auth dialog stylesheet. Shared
 `dialog-header`, `dialog-body` and `dialog-footer` classes own its bounded flex
 layout: the header/footer do not shrink, and the body is the single shrinkable
 vertical scroll owner. Complete paths remain inspectable even when their text
@@ -61,7 +62,9 @@ This partially supersedes deletion placement in the
 [original Web attachment decision](2026-10-21-task-attachment-web.md) and
 [split-view decision](../architecture/2026-10-22-task-attachment-split-view.md).
 Their single-controller, trusted-origin, upload and scroll decisions remain
-applicable.
+applicable. The [shared-page decision](../architecture/2026-10-24-shared-attachment-page.md)
+uses this confirmation in both attachment containers and owns standalone route
+selection after deleting the current file.
 
 ## Alternatives
 

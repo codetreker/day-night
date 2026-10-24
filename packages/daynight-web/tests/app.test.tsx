@@ -83,6 +83,40 @@ describe('application navigation', () => {
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
+  it('keeps the standalone panel and draft mounted through selection and browser history', async () => {
+    const taskId = '00000000-0000-4000-8000-000000000002';
+    const address = (path: string) => `/projects/${projectId}/tasks/${taskId}/attachments/${path}`;
+    window.history.replaceState(null, '', address('docs/guide.md'));
+    const items = ['docs/guide.md', 'other/next.txt'].map((path) => ({ path, contentType: 'text/plain', sizeBytes: 12, createdAt: '2026-10-20T09:00:00Z', updatedAt: '2026-10-20T09:00:00Z' }));
+    const list = { items, nextCursor: null };
+    const requests = vi.fn(async (url: string) => url.includes('/attachments?') ? new Response(JSON.stringify(list), { headers: { 'Content-Type': 'application/json' } }) : new Response(url.endsWith('guide.md') ? 'Initial document' : 'Next document'));
+    vi.stubGlobal('fetch', requests);
+    render(<App />);
+    await screen.findByText('Initial document');
+    const panel = document.querySelector('.task-attachments');
+    const directory = screen.getByText('docs', { selector: 'summary' }).parentElement!;
+    fireEvent.click(screen.getByText('docs', { selector: 'summary' }));
+    const upload = screen.getByText('上传文件', { selector: 'summary' });
+    fireEvent.click(upload);
+    const target = screen.getByLabelText('目标相对路径');
+    fireEvent.change(target, { target: { value: 'unsent/draft.txt' } });
+    fireEvent.click(screen.getByRole('button', { name: /^next\.txt/ }));
+    await screen.findByText('Next document');
+    expect(window.location.pathname).toBe(address('other/next.txt'));
+    expect(document.querySelector('.task-attachments')).toBe(panel);
+    expect(directory).not.toHaveAttribute('open');
+    expect(screen.getByLabelText('目标相对路径')).toBe(target);
+    expect(target).toHaveValue('unsent/draft.txt');
+    await act(async () => { window.history.back(); });
+    await screen.findByText('Initial document');
+    expect(window.location.pathname).toBe(address('docs/guide.md'));
+    expect(document.querySelector('.task-attachments')).toBe(panel);
+    expect(target).toHaveValue('unsent/draft.txt');
+    await act(async () => { window.history.forward(); });
+    await screen.findByText('Next document');
+    expect(requests.mock.calls.filter(([url]) => url.includes('/attachments?'))).toHaveLength(1);
+  });
+
   it('uses the sidebar and breadcrumb as keyboard-accessible navigation controls', async () => {
     window.history.replaceState(null, '', '/unknown');
     render(<App />);

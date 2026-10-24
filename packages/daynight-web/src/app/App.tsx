@@ -34,7 +34,7 @@ const AppView = () => {
     document.title = m.documentTitle[route.kind];
   }, [locale, m, route.kind]);
 
-  if (route.kind === 'attachment') return <AttachmentPage key={`${route.projectId}/${route.taskId}/${route.path}`} projectId={route.projectId} taskId={route.taskId} path={route.path} />;
+  if (route.kind === 'attachment') return <AttachmentPage key={`${route.projectId}/${route.taskId}`} projectId={route.projectId} taskId={route.taskId} path={route.path} />;
 
   return (
     <div className="shell">

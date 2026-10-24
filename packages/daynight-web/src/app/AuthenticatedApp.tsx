@@ -249,7 +249,7 @@ export const AuthenticatedApp = ({ navigateToLogin = assignLogin }: { readonly n
   const identity = `${session.user.id}:${session.generation}`;
   const revalidationOverlay = blocked ? <RevalidationOverlay failed={revalidation === "error"} onRetry={recheckIdentity} /> : null;
   if (route.kind === "attachment") return <TaskDetailSessionProvider key={identity}>{revalidationOverlay}{cleanupWarning}<div className="auth-shell" key={identity} aria-hidden={blocked} inert={blocked}>
-    <AttachmentPage key={`${route.projectId}/${route.taskId}/${route.path}`} projectId={route.projectId} taskId={route.taskId} path={route.path} />
+    <AttachmentPage key={`${route.projectId}/${route.taskId}`} projectId={route.projectId} taskId={route.taskId} path={route.path} />
   </div></TaskDetailSessionProvider>;
   if (route.kind === "invitations") return <TaskDetailSessionProvider key={identity}>{revalidationOverlay}{cleanupWarning}<div aria-hidden={blocked} inert={blocked}><InvitationPage key={`${identity}:${invitationRevision}`} lifetime={invitationLifetime.current.signal} invitation={invitation} user={session.user} onComplete={completeInvitation} onCancel={cancelInvitation} onSwitchAccount={signOut} onUnavailable={unavailableInvitation} /></div></TaskDetailSessionProvider>;
   return <TaskDetailSessionProvider key={identity}>{revalidationOverlay}<Workspace key={identity} user={session.user} route={route} onSignOut={signOut} blocked={blocked}>
