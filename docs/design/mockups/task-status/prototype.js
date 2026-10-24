@@ -20,12 +20,12 @@ let priorFocus = null;
 let detailOpen = true;
 let readReady = true;
 let readFailureCount = 0;
+let serverTask;
 let task;
 let phase = 'idle';
 let feedbackKind = null;
 let reconciliations = 0;
 let operation = null;
-let remoteTask = null;
 let menuOpen = false;
 let generation = 0;
 let copyState = 'idle';
@@ -43,7 +43,18 @@ const makeTask = (status) => {
 };
 const isBlocked = () => scenario === 'blocked' || scenario === 'blocked-ordinary';
 const hasActiveSuccessor = () => scenario === 'successor';
-const title = () => (scenario === 'long' ? m().longTask : m().task) + (task.changedElsewhere ? language === 'zh' ? ' · 已更新' : ' · Updated' : '');
+const taskTitle = (snapshot) => (scenario === 'long' ? m().longTask : m().task) + (snapshot.changedElsewhere ? language === 'zh' ? ' · 已更新' : ' · Updated' : '');
+const title = () => taskTitle(task);
+const readServerTask = () => ({ ...serverTask });
+const observeTask = (snapshot) => {
+  if (snapshot.version < task.version) return;
+  task = { ...snapshot };
+};
+const advanceServerTask = () => {
+  serverTask = { ...serverTask, version: serverTask.version + 1n, changedElsewhere: true, updatedAt: now() };
+  events.push({ type: 'server-update', version: String(serverTask.version) });
+  return readServerTask();
+};
 const busy = () => phase === 'pending' || phase === 'unknown' || phase === 'checking' || phase === 'readback-failed';
 const canWrite = () => readReady && !busy();
 const statusBadge = (status) => `<span class="task-detail-status task-detail-status-${status}">${m().status[status]}</span>`;
@@ -188,12 +199,13 @@ const loadScenario = (next, source = sourceState()) => {
   attachmentNotice = false;
   if (scenario === 'successor') source = 'done';
   if (isBlocked() && ['in_progress', 'done'].includes(source)) source = 'todo';
-  task = makeTask(source);
   closeMenu();
   generation += 1;
+  serverTask = makeTask(source);
+  task = readServerTask();
   copyGeneration += 1; copyState = 'idle';
   clearPermissionToast();
-  phase = 'idle'; feedbackKind = null; operation = null; remoteTask = null; reconciliations = 0; readFailureCount = 0;
+  phase = 'idle'; feedbackKind = null; operation = null; reconciliations = 0; readFailureCount = 0;
   readReady = !['retained', 'loading', 'read-error', 'empty'].includes(scenario);
   detailOpen = true;
   $('source-status').value = source;
@@ -233,14 +245,22 @@ const renderConfirmation = () => {
   $('confirmation-root').firstElementChild.addEventListener('click', (event) => { if (event.target === event.currentTarget) cancelConfirmation(); });
   $('confirmation-cancel').focus();
 };
-const apply = (c) => {
-  if (c.kind === 'allowAgents') { task.allowAgents = c.allowAgents; task.version += 1n; task.updatedAt = now(); return 'permissionChanged'; }
-  if (c.source === c.target) return 'unchanged';
-  if (c.target === 'in_progress') { task.startedAt = now(); task.completedAt = null; }
-  else if (c.target === 'todo') { task.startedAt = null; task.completedAt = null; }
-  else { if (c.source !== 'in_progress') task.startedAt = null; task.completedAt = now(); }
-  task.status = c.target; task.version += 1n; task.updatedAt = now();
-  return 'changed';
+const apply = (current, c) => {
+  if (c.kind === 'allowAgents') return { task: { ...current, allowAgents: c.allowAgents, version: current.version + 1n, updatedAt: now() }, result: 'permissionChanged' };
+  if (current.status === c.target) return { task: current, result: 'unchanged' };
+  const timing = c.target === 'in_progress' ? { startedAt: now(), completedAt: null }
+    : c.target === 'todo' ? { startedAt: null, completedAt: null }
+      : { startedAt: current.status === 'in_progress' ? current.startedAt : null, completedAt: now() };
+  return { task: { ...current, ...timing, status: c.target, version: current.version + 1n, updatedAt: now() }, result: 'changed' };
+};
+const executeServerMutation = (c) => {
+  if (c.version !== serverTask.version) return { kind: 'conflict' };
+  if (c.kind === 'status' && serverTask.status !== c.target && ['in_progress', 'done'].includes(c.target) && isBlocked()) return { kind: 'refused', message: 'dependencyError' };
+  if (c.kind === 'status' && serverTask.status === 'done' && c.target !== 'done' && hasActiveSuccessor()) return { kind: 'refused', message: 'successorError' };
+  if (c.kind === 'allowAgents' && serverTask.status === 'in_progress') return { kind: 'refused', message: 'permissionLocked' };
+  const mutation = apply(serverTask, c);
+  serverTask = mutation.task;
+  return { kind: 'accepted', result: mutation.result, snapshot: readServerTask() };
 };
 const submit = async (c) => {
   if (confirmation !== c || c.version !== task.version || c.source !== task.status) { cancelConfirmation(); feedbackKind = 'invalidated'; render(); return; }
@@ -251,24 +271,24 @@ const submit = async (c) => {
   phase = 'pending'; feedbackKind = c.kind === 'allowAgents' ? 'pendingPermission' : 'pending';
   events.push({ type: 'write', action: c.kind, status: c.target, version: String(c.version) });
   render(); $('task-title').focus();
-  await new Promise((resolve) => setTimeout(resolve, 900));
+  await new Promise((resolve) => setTimeout(resolve, 450));
   if (submittedGeneration !== generation) return;
-  if (scenario === 'conflict') {
-    task.version += 1n; task.changedElsewhere = true; events.push({ type: 'read', reason: 'conflict' });
+  if (scenario === 'conflict') advanceServerTask();
+  const response = executeServerMutation(c);
+  await new Promise((resolve) => setTimeout(resolve, 450));
+  if (submittedGeneration !== generation) return;
+  if (response.kind === 'conflict') {
+    events.push({ type: 'read', reason: 'conflict' });
+    observeTask(readServerTask());
     phase = 'conflict'; feedbackKind = 'conflict';
-  } else if (c.version !== task.version) {
-    events.push({ type: 'read', reason: 'conflict' }); phase = 'conflict'; feedbackKind = 'conflict';
-  } else if (c.kind === 'status' && c.source !== c.target && ['in_progress', 'done'].includes(c.target) && isBlocked()) {
-    phase = 'refused'; feedbackKind = 'dependencyError';
-  } else if (c.kind === 'status' && c.source === 'done' && c.target !== 'done' && hasActiveSuccessor()) {
-    phase = 'refused'; feedbackKind = 'successorError';
+  } else if (response.kind === 'refused') {
+    phase = 'refused'; feedbackKind = response.message;
+  } else if (scenario === 'unknown' || scenario === 'readback-failure') {
+    phase = 'unknown'; feedbackKind = 'uncertainty';
   } else {
-    const reviewedTask = { ...task };
-    const result = apply(c);
-    if (scenario === 'unknown' || scenario === 'readback-failure') {
-      remoteTask = { ...task }; task = reviewedTask;
-      phase = 'unknown'; feedbackKind = 'uncertainty';
-    } else { phase = 'confirmed'; feedbackKind = result; if (result === 'permissionChanged') showPermissionToast(); }
+    observeTask(response.snapshot);
+    phase = 'confirmed'; feedbackKind = response.result;
+    if (response.result === 'permissionChanged') showPermissionToast();
   }
   render();
 };
@@ -277,10 +297,11 @@ const reconcile = async () => {
   const readGeneration = generation;
   phase = 'checking'; feedbackKind = 'checking'; render();
   events.push({ type: 'read', reason: 'unknown', attempt: ++reconciliations });
+  const response = readServerTask();
   await new Promise((resolve) => setTimeout(resolve, 600));
   if (readGeneration !== generation) return;
   if (scenario === 'readback-failure' && readFailureCount++ === 0) { phase = 'readback-failed'; feedbackKind = 'readbackFailure'; }
-  else { if (remoteTask !== null) { task = remoteTask; remoteTask = null; } phase = 'reconciled'; feedbackKind = 'reconciled'; }
+  else { observeTask(response); phase = 'reconciled'; feedbackKind = 'reconciled'; }
   render();
 };
 
@@ -338,7 +359,13 @@ $('source-status').addEventListener('change', () => loadScenario(scenario, sourc
 $('set-status').addEventListener('click', () => menuOpen ? closeMenu() : openMenu());
 $('automation-switch').addEventListener('click', () => { if (task.status !== 'in_progress') showConfirmation('allowAgents', null); });
 $('reset').addEventListener('click', () => loadScenario(scenario, sourceState()));
-$('poll-change').addEventListener('click', () => { task.version += 1n; task.changedElsewhere = true; if (confirmation !== null) { cancelConfirmation(); feedbackKind = 'invalidated'; } render(); });
+$('poll-change').addEventListener('click', () => {
+  const snapshot = advanceServerTask();
+  events.push({ type: 'read', reason: 'poll', version: String(snapshot.version) });
+  observeTask(snapshot);
+  if (confirmation !== null) { cancelConfirmation(); feedbackKind = 'invalidated'; }
+  render();
+});
 const closeDetail = () => {
   detailOpen = false; clearPermissionToast();
   copyGeneration += 1; copyState = 'idle';
@@ -384,7 +411,8 @@ document.addEventListener('keydown', (event) => {
 });
 window.prototype = {
   events,
-  get state() { return { status: task.status, version: String(task.version), startedAt: task.startedAt, completedAt: task.completedAt, updatedAt: task.updatedAt, allowAgents: task.allowAgents, phase, activeTab, activeFile, copyState, toastVisible, confirmation: confirmation === null ? null : { ...confirmation, version: String(confirmation.version) } }; },
+  get server() { return { ...serverTask, version: String(serverTask.version), title: taskTitle(serverTask) }; },
+  get state() { return { title: title(), status: task.status, version: String(task.version), startedAt: task.startedAt, completedAt: task.completedAt, updatedAt: task.updatedAt, allowAgents: task.allowAgents, phase, activeTab, activeFile, copyState, toastVisible, confirmation: confirmation === null ? null : { ...confirmation, version: String(confirmation.version) } }; },
   load: loadScenario,
   setLanguage: (next) => { language = next; render(); renderAttachment(); },
 };
