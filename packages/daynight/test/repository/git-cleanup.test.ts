@@ -55,7 +55,7 @@ const waitUntilGone = async (pid: number): Promise<void> => {
 afterEach(async () => {
   vi.unstubAllGlobals(); vi.unstubAllEnvs();
   boundary.wrapper = undefined; boundary.root = undefined; boundary.rootClosed = undefined; boundary.closed = false; boundary.terminate = undefined; boundary.calls.splice(0);
-  for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true });
+  for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
 });
 
 describe("Windows Git process-tree confirmation", () => {
