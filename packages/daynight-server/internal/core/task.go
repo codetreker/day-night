@@ -26,6 +26,7 @@ type Task struct {
 	DependsOn         []string
 	ExternalDependsOn []string
 	BlockedBy         []string
+	RequiredPlatform  *TaskPlatform
 	AllowAgents       bool
 	Ready             bool
 }

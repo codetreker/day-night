@@ -86,6 +86,7 @@ Task 包含以下持久化字段：
 | `properties` | server 预定义属性；当前 `pullRequests` 为有序的 `{url, title}` 字符串记录数组，默认空数组 |
 | `status` | `proposed / todo / in_progress / done`，创建时为 `proposed`，只能通过专用生命周期操作转换 |
 | `allowAgents` | 必填布尔自动执行许可，新任务为 `false`；与状态、依赖、实际执行者独立 |
+| `requiredPlatform` | 字段必填，值为 `null`、`windows`、`linux` 或 `macos`；`null` 表示不限制，新旧任务默认均不限制 |
 | `version` | 从 `1` 开始的正整数，每次实际变更增加一次 |
 | `createdAt`、`updatedAt` | UTC 创建和最后实际变更时间 |
 | `startedAt`、`completedAt` | 只读 UTC 执行起止时间，字段必填但允许 `null`，未知事实不补造 |
@@ -110,14 +111,15 @@ Task 响应还包含 `dependsOn`、`externalDependsOn`、`blockedBy` 和 `ready`
 ## 状态与更新规则
 
 创建 task 总是产生 `proposed`，数据库默认值相同。创建输入只接受 `title`、可选
-`description`、`dependsOn`、`externalDependsOn` 与 `properties`；不能指定初始 status。省略描述为空字符串，
+`description`、`dependsOn`、`externalDependsOn`、`requiredPlatform` 与 `properties`；不能指定初始 status。省略描述为空字符串，
 依赖和 PR 数组省略时为空。既有 todo、in-progress、done 数据视为其实际状态，不重置
 审批，不修改版本或时间戳。`allowAgents` 由服务在创建时设为 false，创建输入即使传 false 也拒绝该字段。自动执行许可迁移将既有任务设为 true，保留其余业务字段、version 和时间。
+创建可省略 `requiredPlatform` 或显式设为 `null`，也可指定三个平台枚举之一。平台迁移为既有任务保存 `null`，保留原状态、版本、时间、依赖与属性。
 依赖行的 `external` 已持久化，旧边通过迁移取得 `false`。
 创建和 PATCH 接受 externalDependsOn。创建省略依赖字段时为空集合，外部子集须属于最终完整依赖集。
 PATCH 省略两字段保持原关系；仅给 dependsOn 时替换端点并保留存续边的性质，新边普通；
 仅给 externalDependsOn 时保留端点并替换全部外部子集；两字段都给时精确替换。删除边同时删除性质。
-普通编辑（包括 allowAgents）及 approve、unapprove、claim、complete 保留其余性质。
+普通编辑（包括 allowAgents 和 requiredPlatform）及 approve、unapprove、claim、complete 保留其余性质。
 完整组合和错误规则由[外部依赖需求](daynight-external-dependencies.md)定义。
 
 | 操作 | 唯一允许前态 | 结果 | 前置要求 |
@@ -147,9 +149,9 @@ HTTP 对操作及方法拒绝路由统一验证凭据，Cookie 会话写请求
 claim 只有一个成功，其余看到版本冲突。对同一个 ready todo 和同版本，unapprove 与 claim 只有一方成功，另一方返回版本冲突；同版本重复 unapprove 同样只有一个提交。被依赖阻塞的 todo 仍可撤回，claim 的前置拒绝不阻止该动作。撤回保留正文、属性、依赖、附件与起止时间，ready 派生为 false；后继状态及依赖边保持，未完成前置仍未满足。审批不领取任务，也不使未完成前置变为完成。
 任务审批是就绪决策，不授予实现、发布、部署、合并或主线 push 的权限。
 
-PATCH 可修改 `title`、`description`、`dependsOn`、`externalDependsOn`、`allowAgents` 和预定义属性，必须带读取到的
+PATCH 可修改 `title`、`description`、`dependsOn`、`externalDependsOn`、`allowAgents`、`requiredPlatform` 和预定义属性，必须带读取到的
 version，至少提供一个可修改字段。status 不属于 PATCH 输入；即使同时提交其他
-合法字段也必须整体拒绝。省略字段保持原值，null 拒绝，`dependsOn: []` 清空依赖，
+合法字段也必须整体拒绝。省略字段保持原值；仅 `requiredPlatform` 接受 `null` 表示清除，其他可修改字段的 null 拒绝。`dependsOn: []` 清空依赖，
 `properties.pullRequests: []` 清空 PR 引用；空 properties 本身不算修改字段。
 proposed 和 todo 可以带未完成前置并修改元数据；in-progress 和 done 的完整候选
 任务始终要求全部直接前置已完成。依赖仍须存在于同 project，不能重复、自身引用或成环。
@@ -157,6 +159,8 @@ proposed 和 todo 可以带未完成前置并修改元数据；in-progress 和 d
 过期版本即使期望字段恰与当前值相同也冲突。版本匹配的语义空操作保持 version 和
 updatedAt；依赖数组顺序不构成变化，PR 数组顺序、重复项和字符串均参与等值比较。
 `allowAgents` 未提供时保留原值，显式 false 关闭，null 和非布尔输入拒绝。版本检查先于等值判断；精确版本同值许可更新不写入，`in_progress` 的实际许可切换返回 `409 invalid_transition`，即使同时修改其他字段也整体拒绝。许可切换与 claim 受同一事务锁和版本检查约束；许可编辑、approve/unapprove、claim/complete 及普通元数据编辑相互保留无关字段。普通 claim 接受两种许可值，`ready` 和统计仍只取决于状态与依赖。自动 worker 的资格与唯一 claim 是[worker 要求](daynight-worker.md)中的独立运行时契约。
+
+`requiredPlatform` 未提供时保持原值，三个枚举表示设置，显式 `null` 清除；其他字符串、大小写变体和非字符串非 null 输入拒绝。精确版本的同值平台更新保留版本与时间，旧版本仍冲突；`in_progress` 的实际设置、切换或清除返回 `409 invalid_transition`，与同时提交的其他字段整体拒绝。平台编辑与普通 claim 共享项目锁及版本检查，同版本竞争只有一方成功。平台要求、自动执行许可和生命周期相互保留；普通人工 claim 不受平台要求限制，平台不改变 ready 或统计。服务提供平台兼容领域规则，自动 worker claim 的事务重验和实际执行平台记录由 worker 集成实现，不能用服务端操作系统代替远端执行平台。
 
 真实字段、属性或依赖变更只增加一次版本。普通编辑及同状态低层写入保持执行起止；
 再次真正进入执行时替换起点而不累加早先尝试，但这不增加公开重开转换。附件和 PR 更新不改变生命周期。
@@ -217,7 +221,7 @@ Task 更新示例：
 
 列表使用 `limit`、`cursor`。`limit` 默认 `50`，允许 `1..100`；按
 `createdAt ASC, id ASC` 稳定排序，返回 `items` 和 `nextCursor`，末页后者为 `null`。
-Task 列表额外支持单个四状态 `status` 及布尔 `ready`、`allowAgents` 筛选，布尔值只接受字面量 true/false，筛选按 AND 组合并先于排序和分页执行。未提供许可筛选时保留两种许可值。
+Task 列表额外支持单个四状态 `status`、布尔 `ready`、`allowAgents`，以及 `compatiblePlatform=windows|linux|macos` 筛选。布尔值只接受字面量 true/false，平台只接受三个枚举。兼容筛选包含 requiredPlatform 为 null 或与查询平台相同的任务；省略时不按平台筛选。全部条件按 AND 组合，先于排序、分页和 lookahead 执行。未提供许可筛选时保留两种许可值。
 Cursor 必须绑定列表类型、所属 project 和筛选条件，格式错误或条件不匹配返回输入错误。重复 query 参数、显式空值和未知参数也作为
 输入错误拒绝；`limit` 的默认值仅用于未提供该参数。
 单次响应中的 task、依赖和派生字段保持一致；多次翻页不承诺跨请求快照。
@@ -236,7 +240,7 @@ proposed 只计入自身状态和总数；blocked 只计入前置未全部完成
 版本和时间不随此次读取变化。
 
 图节点包含 `id`、`titlePreview`、`titleTruncated`、`status`、`dependsOn`、
-`externalDependsOn`、`blockedBy`、`ready`、必填布尔 `allowAgents`、`createdAt`、`updatedAt` 以及明确可空的 `startedAt`、`completedAt`。
+`externalDependsOn`、`blockedBy`、`ready`、必填布尔 `allowAgents`、必填可空枚举 `requiredPlatform`、`createdAt`、`updatedAt` 以及明确可空的 `startedAt`、`completedAt`。
 顶层 `observedAt` 是图数据与统计读取后的数据库时间样本，使用 UTC RFC 3339；
 它不是事务开始时间或任务更新时间，不修改任务状态或版本。标题预览最多 160 Unicode code
 points，截短时标记 titleTruncated；不返回完整标题、description 或 version。完整
@@ -309,9 +313,10 @@ points，截短时标记 titleTruncated；不返回完整标题、description �
 | V9 | 覆盖率不足或 PostgreSQL 不可用使 Go 检查失败；[CI 路由](../../README.md#ci-selection)选择的检查必须成功，未选中的检查必须为 `skipped`，main push 保留全量门禁 |
 | V10 | 请求日志可按 request ID 关联业务和存储失败，记录错误类别、组件和阶段，敏感值不进入日志 |
 | V11 | 自动执行许可覆盖旧行迁移/新行默认、所有 task/graph 资源的布尔字段、创建拒绝与 PATCH 省略/false/null/类型语义、双值筛选与 cursor、精确版本同值与旧值、in_progress 拒绝、同版本 claim 竞争及审批/时间/PR/依赖保全 |
+| V12 | 平台要求覆盖迁移保全、新行默认 null、创建和 PATCH 的省略/设置/null/非法值、必填可空资源、四种要求与三种查询平台再组合许可/ready 的矩阵、分页前匹配与游标范围、精确版本空操作/运行锁/同版本普通 claim 竞争及许可/执行时间/PR/依赖保全；自动 worker claim 与实际执行记录另按 worker 要求验收 |
 
 实际进程与安装 CLI 验收通过固定的真实 UniAuth gateway 夹具取得浏览器会话与 PAT，
-再执行 V1–V11 业务场景。受控外部 provider 响应与真实上游登录具有不同证据
+再执行 V1–V12 业务场景。受控外部 provider 响应与真实上游登录具有不同证据
 范围；认证配置、私有夹具元数据和凭据不得写入公开产物。
 
 覆盖率是验证门禁，不能替代 V2–V7 的行为证据。测试归属及工具版本固定规则由

@@ -13,8 +13,8 @@ const dependencyId = "abcdefab-3333-4222-8333-123456789abc";
 const otherDependencyId = "abcdefab-4444-4222-8333-123456789abc";
 const time = "2026-10-20T00:00:00.123456789Z";
 const project: Project = { id: projectId, name: "Project", repoUrl: "git@git.example:Org/Repo.git", settings: { version: 1n, executionWarningMinutes: 60 }, createdAt: time, updatedAt: time };
-const task: Task = { id: taskId, projectId, title: "Task title", description: "Description", properties: { pullRequests: [] }, status: "todo", allowAgents: false, version: 9_007_199_254_740_993n, ready: true, dependsOn: [], externalDependsOn: [], blockedBy: [], startedAt: null, completedAt: null, createdAt: time, updatedAt: time };
-const graph: TaskGraph = { observedAt: time, project, summary: { total: 1, proposed: 0, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 }, tasks: [{ id: taskId, titlePreview: `Task title${"T".repeat(150)}`, titleTruncated: true, allowAgents: false, status: "todo", ready: true, dependsOn: [], externalDependsOn: [], blockedBy: [], startedAt: null, completedAt: null, createdAt: time, updatedAt: time }] };
+const task: Task = { id: taskId, projectId, title: "Task title", description: "Description", properties: { pullRequests: [] }, status: "todo", allowAgents: false, requiredPlatform: null, version: 9_007_199_254_740_993n, ready: true, dependsOn: [], externalDependsOn: [], blockedBy: [], startedAt: null, completedAt: null, createdAt: time, updatedAt: time };
+const graph: TaskGraph = { observedAt: time, project, summary: { total: 1, proposed: 0, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 }, tasks: [{ id: taskId, titlePreview: `Task title${"T".repeat(150)}`, titleTruncated: true, allowAgents: false, requiredPlatform: null, status: "todo", ready: true, dependsOn: [], externalDependsOn: [], blockedBy: [], startedAt: null, completedAt: null, createdAt: time, updatedAt: time }] };
 const operations: Operation[] = [];
 afterEach(() => { operations.splice(0).forEach((operation) => operation.dispose()); });
 const fixture = (operation = createOperation()) => {
@@ -166,12 +166,65 @@ describe("task request contracts", () => {
     expect(f.api.updateTask).toHaveBeenCalledExactlyOnceWith(projectId, taskId, { allowAgents, version: 9_223_372_036_854_775_807n });
   });
 
+  it.each(["windows", "linux", "macos"] as const)("creates and updates an explicit %s platform requirement", async (requiredPlatform) => {
+    const f = fixture();
+    await runTaskCommand(["create", "--title", "Platform task", "--required-platform", requiredPlatform, "--project", projectId], f.context, f.dependencies);
+    expect(f.api.createTask).toHaveBeenCalledExactlyOnceWith(projectId, { title: "Platform task", requiredPlatform });
+    await runTaskCommand(["update", taskId, `--required-platform=${requiredPlatform}`, "--if-version", "9223372036854775807", "--project", projectId], f.context, f.dependencies);
+    expect(f.api.getTask).not.toHaveBeenCalled();
+    expect(f.api.updateTask).toHaveBeenCalledExactlyOnceWith(projectId, taskId, { requiredPlatform, version: 9_223_372_036_854_775_807n });
+  });
+
+  it("clears the platform explicitly without touching permission or other task fields", async () => {
+    const f = fixture();
+    await runTaskCommand(["update", taskId, "--clear-required-platform", "--project", projectId], f.context, f.dependencies);
+    expect(f.api.updateTask).toHaveBeenCalledExactlyOnceWith(projectId, taskId, { requiredPlatform: null, version: task.version });
+    expect(f.api.getTask).toHaveBeenCalledExactlyOnceWith(projectId, taskId);
+  });
+
+  it.each(["windows", "linux", "macos"] as const)("forwards %s compatibility with permission and readiness before pagination", async (compatiblePlatform) => {
+    const f = fixture();
+    await runTaskCommand(["list", "--compatible-platform", compatiblePlatform, "--allow-agents", "true", "--ready", "--project", projectId], f.context, f.dependencies);
+    await runTaskCommand(["ready", `--compatible-platform=${compatiblePlatform}`, "--allow-agents", "false", "--limit", "1", "--project", projectId], f.context, f.dependencies);
+    expect(f.api.listTasks).toHaveBeenCalledExactlyOnceWith(projectId, { ready: true, allowAgents: true, compatiblePlatform });
+    expect(f.api.listReadyTasks).toHaveBeenCalledExactlyOnceWith(projectId, 1, { allowAgents: false, compatiblePlatform });
+  });
+
+  it("passes a standalone compatibility filter without implying automatic permission", async () => {
+    const f = fixture();
+    await runTaskCommand(["ready", "--compatible-platform", "linux", "--project", projectId], f.context, f.dependencies);
+    expect(f.api.listReadyTasks).toHaveBeenCalledExactlyOnceWith(projectId, 10, { compatiblePlatform: "linux" });
+  });
+
+  it.each([
+    ["create", "--title", "Task", "--required-platform", "darwin"],
+    ["create", "--title", "Task", "--clear-required-platform"],
+    ["update", taskId, "--required-platform", "linux", "--clear-required-platform"],
+    ["update", taskId, "--required-platform="],
+    ["list", "--compatible-platform", "Linux"],
+    ["ready", "--compatible-platform", "any"],
+  ])("rejects invalid or conflicting platform options before loading server configuration: %s", async (...args) => {
+    const f = fixture();
+    await expect(runTaskCommand(args, f.context, f.dependencies)).rejects.toBeInstanceOf(UsageError);
+    expect(f.dependencies.runServerCommand).not.toHaveBeenCalled();
+  });
+
+  it.each([null, "windows", "linux", "macos"] as const)("renders platform %s in complete, inventory and graph output", async (requiredPlatform) => {
+    const f = fixture();
+    const value = { ...task, requiredPlatform };
+    f.api.getTask.mockResolvedValue(value);
+    f.api.listTasks.mockResolvedValue([value]);
+    f.api.getTaskGraph.mockResolvedValue({ ...graph, tasks: graph.tasks.map((item) => ({ ...item, requiredPlatform })) });
+    for (const args of [["show", taskId], ["list"], ["graph"]]) await runTaskCommand([...args, "--project", projectId], f.context, f.dependencies);
+    for (const [output] of f.context.stdout.mock.calls) expect(output).toContain(`Required platform: ${requiredPlatform === null ? "any" : requiredPlatform}\n`);
+  });
+
   it.each([true, false])("forwards automatic-execution filter %s before list and ready pagination", async (allowAgents) => {
     const f = fixture();
     await runTaskCommand(["list", "--allow-agents", String(allowAgents), "--ready", "--project", projectId], f.context, f.dependencies);
     await runTaskCommand(["ready", "--allow-agents", String(allowAgents), "--limit", "1", "--project", projectId], f.context, f.dependencies);
     expect(f.api.listTasks).toHaveBeenCalledExactlyOnceWith(projectId, { ready: true, allowAgents });
-    expect(f.api.listReadyTasks).toHaveBeenCalledExactlyOnceWith(projectId, 1, allowAgents);
+    expect(f.api.listReadyTasks).toHaveBeenCalledExactlyOnceWith(projectId, 1, { allowAgents });
   });
 
   it.each(["yes", "TRUE", "0", "", "null"])("rejects invalid permission %s before loading runtime", async (value) => {
@@ -239,7 +292,7 @@ describe("task request contracts", () => {
   it.each([{ args: [], limit: 10 }, { args: ["--limit", "1"], limit: 1 }, { args: ["--limit=100"], limit: 100 }, { args: ["--limit=002"], limit: 2 }])("requests a bounded ready page with limit $limit", async ({ args, limit }) => {
     const f = fixture();
     await runTaskCommand(["ready", ...args, "--project", projectId], f.context, f.dependencies);
-    expect(f.api.listReadyTasks).toHaveBeenCalledExactlyOnceWith(projectId, limit);
+    expect(f.api.listReadyTasks).toHaveBeenCalledExactlyOnceWith(projectId, limit, {});
     expect(f.api.listTasks).not.toHaveBeenCalled();
     expect(f.context.stdout).toHaveBeenCalledExactlyOnceWith(renderTaskList([task]));
   });
@@ -376,7 +429,7 @@ describe("task output contracts", () => {
     let contentLength = 0;
     for (const current of tasks) {
       expect(output).toContain(`ID: ${current.id}\nProject: ${projectId}\nTitle: ${current.title}\n`);
-      contentLength += current.id.length + current.projectId.length + current.title.length + current.description.length + current.status.length + current.version.toString().length + current.createdAt.length + current.updatedAt.length + `Automatic execution: ${current.allowAgents}\n`.length;
+      contentLength += current.id.length + current.projectId.length + current.title.length + current.description.length + current.status.length + current.version.toString().length + current.createdAt.length + current.updatedAt.length + `Automatic execution: ${current.allowAgents}\nRequired platform: ${current.requiredPlatform === null ? "any" : current.requiredPlatform}\n`.length;
     }
     expect(output.length).toBeLessThanOrEqual(contentLength + 190 * tasks.length);
   });

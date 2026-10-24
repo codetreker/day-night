@@ -1,7 +1,7 @@
 import mime from "mime";
 import { isTaskVersion, parseApiJson, stringifyApiJson } from "./json";
 import { canonicalId, isAttachmentPath, parseAttachment, parseAttachmentPage, parseProjectPage, parseServerError, parseTaskDetail, parseTaskGraph } from "./parse";
-import type { ApprovalAction, Attachment, AttachmentPage, GraphLimitDetails, ProjectPage, TaskDetail, TaskGraph } from "./types";
+import type { ApprovalAction, ExecutionPlatform, Attachment, AttachmentPage, GraphLimitDetails, ProjectPage, TaskDetail, TaskGraph } from "./types";
 import { decodeProjectPageJson, decodeTaskGraphJson } from "./project-json";
 
 const serverMessages: Readonly<Record<string, string>> = {
@@ -200,6 +200,25 @@ export const setTaskAgentPermission = async (
   return json(response, signal, (data) => {
     const result = parseTaskDetail(data, project, task);
     if (response.status !== 200 || result.allowAgents !== allowAgents || result.version !== exactVersion && result.version !== exactVersion + 1n) {
+      throw new ApiError("protocol", response.status);
+    }
+    return result;
+  });
+};
+
+export const setTaskRequiredPlatform = async (
+  projectId: string, taskId: string, requiredPlatform: ExecutionPlatform | null, exactVersion: bigint, signal: AbortSignal,
+): Promise<TaskDetail> => {
+  const project = requestId(projectId);
+  const task = requestId(taskId);
+  if (requiredPlatform !== null && requiredPlatform !== "windows" && requiredPlatform !== "linux" && requiredPlatform !== "macos" || !isTaskVersion(exactVersion)) throw new ApiError("protocol");
+  const response = await request(`/api/v1/projects/${project}/tasks/${task}`, signal, {
+    method: "PATCH", redirect: "error", headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: stringifyApiJson({ version: exactVersion, requiredPlatform }),
+  });
+  return json(response, signal, (data) => {
+    const result = parseTaskDetail(data, project, task);
+    if (response.status !== 200 || result.requiredPlatform !== requiredPlatform || result.version !== exactVersion && result.version !== exactVersion + 1n) {
       throw new ApiError("protocol", response.status);
     }
     return result;

@@ -345,7 +345,7 @@ func acceptanceSettingsSave(t *testing.T, process *acceptanceProcess, before api
 func acceptanceCLITaskResource(t *testing.T, text string) api.Task {
 	t.Helper()
 	fields := acceptanceCLIJSON[map[string]json.RawMessage](t, text)
-	for _, name := range []string{"startedAt", "completedAt", "allowAgents", "externalDependsOn"} {
+	for _, name := range []string{"startedAt", "completedAt", "allowAgents", "requiredPlatform", "externalDependsOn"} {
 		if _, exists := fields[name]; !exists {
 			t.Fatalf("installed CLI task omitted required task field %s", name)
 		}
@@ -365,7 +365,7 @@ func acceptanceCLIGraphResource(t *testing.T, text string) api.TaskGraph {
 	}
 	acceptanceCLIProjectResource(t, string(fields.Project))
 	for _, task := range fields.Tasks {
-		for _, name := range []string{"startedAt", "completedAt", "allowAgents", "externalDependsOn"} {
+		for _, name := range []string{"startedAt", "completedAt", "allowAgents", "requiredPlatform", "externalDependsOn"} {
 			if _, exists := task[name]; !exists {
 				t.Fatalf("installed CLI graph omitted required task field %s", name)
 			}
@@ -384,7 +384,7 @@ func acceptanceCLITaskListJSON(t *testing.T, text string, expected []api.Task) {
 		if _, included := task["description"]; included {
 			t.Fatal("installed CLI list JSON included description")
 		}
-		for _, name := range []string{"startedAt", "completedAt", "allowAgents", "externalDependsOn"} {
+		for _, name := range []string{"startedAt", "completedAt", "allowAgents", "requiredPlatform", "externalDependsOn"} {
 			if _, exists := task[name]; !exists {
 				t.Fatalf("installed CLI list omitted required task field %s", name)
 			}
@@ -822,6 +822,7 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 			t.Fatal("installed graph included full-resource properties")
 		}
 		acceptanceCLIAllowAgents(t, cli, process)
+		acceptanceCLIPlatforms(t, cli, process)
 		firstBefore, targetBefore := cli.task(t, first), cli.task(t, target)
 		process.signal(t)
 		process.stopped(t, 0)

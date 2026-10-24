@@ -19,8 +19,10 @@ boolean `allowAgents`. This decision supersedes the Human/Agent role
 portion of the [worker design](2026-10-22-worker-design.md); its service/worker/
 Herdr/agent responsibilities and recovery rules remain unchanged. The service
 persists and exposes the permission, the CLI updates and filters it, and the Web
-implements the confirmed switch. Platform restrictions, worker-specific claim
-and foreground runtime integration remain separate implementation work.
+implements the confirmed switch. Optional platform restrictions are implemented
+under the [platform decision](../feature/2026-10-24-task-required-platform.md),
+which preserves this permission independently. Worker-specific claim and
+foreground runtime integration remain separate implementation work.
 
 New tasks always start with `allowAgents=false`; a database migration gives
 existing tasks `true` while preserving their other fields, versions and business
@@ -86,7 +88,7 @@ before candidate pagination and included in cursor scope. Future worker claim
 must recheck it inside the claim transaction. A local filter on a bounded page
 cannot establish that no eligible work exists.
 
-Switch changes share the task write gate with approval and withdrawal. Version
+Switch changes share the task write gate with platform saves, approval and withdrawal. Version
 conflicts require a fresh decision, confirmed failures retain the prior value,
 and uncertain writes remain unresolved until actual state is observed. Those
 guarantees accompany the implemented permission controls, existing task/attachment

@@ -13,6 +13,7 @@ import { TaskApproval } from './TaskApproval';
 import { matchesAgentPermissionReview, TaskAgentPermissionConfirmation, TaskAgentPermissionFeedback, TaskAgentPermissionSwitch, type AgentPermissionConfirmation } from './TaskAgentPermission';
 import { matchesApprovalReview, TaskApprovalConfirmation, type ApprovalConfirmation } from './TaskApprovalConfirmation';
 import { TaskDetailReading } from './TaskDetailReading';
+import { TaskPlatform, TaskPlatformBadge, TaskPlatformFeedback } from './TaskPlatform';
 import { TaskId } from './TaskId';
 import { TaskPullRequests } from './TaskPullRequests';
 import '../../styles/task-detail.css';
@@ -138,7 +139,7 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
         <header className="task-detail-header">
           <div className="task-detail-title-row">
             <h2 id={headingId} className="task-detail-title" ref={titleRef} tabIndex={detail === null ? -1 : 0} title={detail?.title}>{detail === null ? status === 'error' ? m.failed : m.loading : detail.title}</h2>
-            {detail !== null && action !== null && <button className={`button task-detail-title-action${action === 'approve' ? ' primary' : ''}`} type="button" disabled={!canAct} onClick={() => setConfirmation({ action, detail })}>{task.mutation.phase === 'pending' && task.mutation.operation?.action !== 'allowAgents' ? messages.inspection.approval.submitting : action === 'approve' ? messages.inspection.approval.approve : messages.inspection.approval.unapprove}</button>}
+            {detail !== null && action !== null && <button className={`button task-detail-title-action${action === 'approve' ? ' primary' : ''}`} type="button" disabled={!canAct} onClick={() => setConfirmation({ action, detail })}>{task.mutation.phase === 'pending' && (task.mutation.operation?.action === 'approve' || task.mutation.operation?.action === 'unapprove') ? messages.inspection.approval.submitting : action === 'approve' ? messages.inspection.approval.approve : messages.inspection.approval.unapprove}</button>}
           </div>
           <button className="button task-detail-close" type="button" ref={closeRef} aria-label={m.close} onClick={onClose}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
@@ -164,6 +165,7 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
           )}
           {detail === null && task.mutation.phase !== 'idle' && <div className="task-detail-approval">
             <TaskApproval detail={null} approval={task.mutation} onReconcile={task.reconcile} />
+            <TaskPlatformFeedback mutation={task.mutation} onReconcile={task.reconcile} />
           </div>}
           {detail !== null && (
             <>
@@ -172,6 +174,7 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
                   <div className="task-detail-badges">
                     <StatusBadge status={detail.status} />
                     {detail.status === 'todo' && <span className={detail.ready ? 'task-detail-ready' : 'task-detail-blocked'}>{detail.ready ? m.ready : m.blocked}</span>}
+                    <TaskPlatformBadge requiredPlatform={detail.requiredPlatform} />
                   </div>
                   <TaskAgentPermissionSwitch detail={detail} disabled={!task.canSetAgentPermission} describedBy={automationFeedbackId}
                     onClick={() => setPermissionConfirmation({ detail, allowAgents: !detail.allowAgents })} />
@@ -180,7 +183,7 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
                 {retainedDetail && <p className="task-detail-retained" role="status">{m.retainedDetail}</p>}
                 {stale && (
                   <div className="task-detail-stale" role="status">
-                    <p>{task.mutation.phase === 'confirmed' && task.mutation.operation?.action !== 'allowAgents' ? messages.inspection.approval.confirmedSnapshot : m.stale}</p>
+                    <p>{task.mutation.phase === 'confirmed' && (task.mutation.operation?.action === 'approve' || task.mutation.operation?.action === 'unapprove') ? messages.inspection.approval.confirmedSnapshot : m.stale}</p>
                     <button className="button" type="button" onClick={onRefreshGraph}>{m.refreshGraph}</button>
                   </div>
                 )}
@@ -193,6 +196,7 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
                       <h4>{m.description}</h4>
                       {description}
                     </section>
+                    <TaskPlatform detail={detail} disabled={!task.canSetRequiredPlatform} mutation={task.mutation} onSave={task.setRequiredPlatform} onReconcile={task.reconcile} />
                     <TaskPullRequests pullRequests={detail.properties.pullRequests} />
                   </div>
                   <aside className="task-detail-aside" aria-label={m.relationsMetadata}>

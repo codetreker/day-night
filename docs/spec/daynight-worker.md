@@ -1,6 +1,6 @@
 # Worker 需求
 
-本文定义 `daynight worker run` 的目标行为与可观察验收条件。自动执行许可、服务端/CLI/Web 控制与筛选已实现；worker 运行时、平台要求和唯一 worker claim 仍是后续能力。[架构](../design/daynight-worker.md)说明机制。
+本文定义 `daynight worker run` 的目标行为与可观察验收条件。自动执行许可与可选平台要求的服务端/CLI/Web 控制及候选筛选已实现；worker 运行时与唯一 worker claim 仍是后续能力。[架构](../design/daynight-worker.md)说明机制。
 
 ## 目标与范围
 
@@ -31,10 +31,12 @@ Worker 作为前台常驻进程，通过 Daynight HTTP REST API 领取配置仓�
 
 ### W-03：可选执行平台
 
-- Task 可要求 `windows`、`linux`、`macos` 之一；未设置表示任意支持平台，新旧 task 默认均不限制。支持明确清除要求。
-- 服务端、CLI 和 Web 一致支持设置、清除、展示及必要筛选。已 claim 时与自动执行许可一并锁定，完成或合法人工解除后才可修改。
+- Task 的必填 `requiredPlatform` 值为 `null`、`windows`、`linux` 或 `macos`；null 表示任意支持平台，新旧 task 默认均不限制。创建可省略或显式提供 null/枚举；更新省略保持，显式 null 清除，非法类型和枚举拒绝。
+- 服务端、CLI 和 Web 一致支持设置、清除、展示及兼容筛选。CLI create/update 使用 `--required-platform windows|linux|macos`，update 使用互斥的 `--clear-required-platform` 清除，list/ready 使用 `--compatible-platform windows|linux|macos`；查询平台不充当运行环境配置。Web 平台选择不提交，显式保存 Any platform、Windows、Linux、macOS。
+- in_progress 与自动执行许可一并锁定实际变化，完成或合法人工解除后才可修改；精确版本同值更新保留版本与时间，旧版本仍冲突。普通人工 claim 不受平台要求限制。平台保存、许可和审批共享每任务写入控制，未知结果先核对，迟到响应保持原 task 归属。
 - 平台条件不改变 task 的 ready 语义，不匹配的候选不占名额、不创建资源、不消耗恢复次数。
-- 自动执行许可、ready 与平台条件须在有界候选排序和分页前组合，不能让较早的未开启许可或不兼容任务遮住后续合格任务。
+- `compatiblePlatform` 包含 null 和与查询平台相同的任务要求。自动执行许可、ready 与平台条件须在有界候选排序和分页前按 AND 组合，并绑定游标范围，不能让较早的未开启许可或不兼容任务遮住后续合格任务。
+- 平台字段、领域匹配与候选查询的验收独立于后续运行时。实际平台识别、自动 worker claim 事务重验、资源启动及历史执行平台由对应 worker 能力提供运行证据。
 
 ### W-04：原子领取与执行归属
 

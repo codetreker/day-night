@@ -155,7 +155,10 @@ evidence. The prototype remains with its actual owner when shared across a Goal.
 
 New tasks have `allowAgents=false`; creation cannot enable the permission.
 Automatic workers and agent workflows must not turn it on themselves. Approval
-and automatic-execution permission remain separate explicit decisions.
+and automatic-execution permission remain separate explicit decisions. Tasks
+without `--required-platform` are unrestricted; set `windows`, `linux` or `macos`
+only when the confirmed task requires that execution environment. Platform
+requirements do not approve tasks or enable automatic execution.
 
 Reuse the established project and suitable tasks. Create new tasks in `proposed`,
 retaining each confirmed ID. Set concrete descriptions and actual ordinary and

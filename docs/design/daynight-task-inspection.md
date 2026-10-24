@@ -54,7 +54,7 @@ ProjectPage保持详情资源和入口/关闭恢复所有权。当前画布拥�
 
 ## 审批与详情会话
 
-创建默认为 proposed，显式 approve 转为 todo，unapprove 仅把 todo 撤回 proposed，claim 与 complete 继续按前态、精确版本和前置条件推进生命周期。图节点不携带 task version，也不因检查而发起写请求。详情的 TaskDetailSession 与版本化审批、自动执行许可修改、同任务保留读取、冲突/结果未知核对及资源隔离由[审批设计](daynight-web.md#版本化审批与任务会话)与[生命周期决策](../../.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)拥有。审批及许可修改刷新继续保留图选择、S、视口、详情页签和附件控制器；404、身份或资源变化按原会话规则卸载私有内容。图检查与 Details 入口保持独立。
+创建默认为 proposed，显式 approve 转为 todo，unapprove 仅把 todo 撤回 proposed，claim 与 complete 继续按前态、精确版本和前置条件推进生命周期。图节点不携带 task version，也不因检查而发起写请求。详情的 TaskDetailSession 与版本化审批、自动执行许可和平台修改、同任务保留读取、冲突/结果未知核对及资源隔离由[审批设计](daynight-web.md#版本化审批与任务会话)与[生命周期决策](../../.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)拥有。审批、许可和平台修改刷新继续保留图选择、S、视口、详情页签和附件控制器；404、身份或资源变化按原会话规则卸载私有内容。图检查与 Details 入口保持独立。
 
 ## Markdown 与附件链接
 

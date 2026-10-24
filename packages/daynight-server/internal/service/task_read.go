@@ -58,7 +58,10 @@ func (s *Tasks) List(ctx context.Context, principal core.Principal, projectID st
 	if request.Status != nil && !validTaskStatus(*request.Status) {
 		return TaskPage{}, invalidInput("Task status is invalid.")
 	}
-	scope := listScope{Kind: "tasks", ProjectID: projectID, Ready: request.Ready, AllowAgents: request.AllowAgents}
+	if request.CompatiblePlatform != nil && !request.CompatiblePlatform.Valid() {
+		return TaskPage{}, invalidInput("Compatible platform must be windows, linux or macos.")
+	}
+	scope := listScope{Kind: "tasks", ProjectID: projectID, Ready: request.Ready, AllowAgents: request.AllowAgents, CompatiblePlatform: request.CompatiblePlatform}
 	if request.Status != nil {
 		status := string(*request.Status)
 		scope.Status = &status
@@ -77,7 +80,7 @@ func (s *Tasks) List(ctx context.Context, principal core.Principal, projectID st
 			return err
 		}
 		var err error
-		result, err = snapshot.Tasks(ctx, projectID, store.TaskQuery{Page: page, Status: request.Status, Ready: request.Ready, AllowAgents: request.AllowAgents})
+		result, err = snapshot.Tasks(ctx, projectID, store.TaskQuery{Page: page, Status: request.Status, Ready: request.Ready, AllowAgents: request.AllowAgents, CompatiblePlatform: request.CompatiblePlatform})
 		return err
 	})
 	if err != nil {
