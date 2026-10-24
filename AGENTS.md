@@ -151,6 +151,7 @@ authorized PR merge, require real successful checks and a linear mainline.
 `.agents/skills/` is canonical. `CLAUDE.md` links to this file;
 `.claude/skills` and `.claude/worktrees` link to the shared skill and worktree
 directories. Keep these relative links intact so tools use the same workflow.
-Update skills in their owning source repository. Never modify globally installed
-skill copies.
+When updating `using-daynight`, modify only its source under
+`packages/daynight/src/commands/skill/skills/using-daynight/`. Do not edit installed
+copies; they are updated automatically with the next Daynight update.
 

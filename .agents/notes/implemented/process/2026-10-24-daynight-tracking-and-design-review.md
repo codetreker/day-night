@@ -9,8 +9,8 @@ conversation. Solution, architecture, and design discussions also need readable
 current material before a user can review them. A repository or PR link alone
 does not place that material with its owning task. Requiring separate creation
 permission after an explicit instruction to use Daynight leaves required tracking
-dependent on a redundant authorization request. Editing an installed skill copy
-also separates the effective instructions from their versioned source.
+dependent on a redundant authorization request. Editing an installed
+`using-daynight` copy also separates its instructions from their versioned source.
 
 ## Decision
 
@@ -31,8 +31,9 @@ autopilot and delivery gates. Availability is established through the actual CLI
 configured service and intended project; failed writes retain their actual cause
 and do not establish readable review material.
 
-Skill updates belong in their owning source repository. The repository instructions
-prohibit modifying globally installed skill copies. The
+Updates to `using-daynight` are made only in
+`packages/daynight/src/commands/skill/skills/using-daynight/`. Installed copies
+receive the changes automatically with the next Daynight update. The
 [skill requirements](../../../../docs/spec/daynight-agent-skill.md) and
 [design](../../../../docs/design/daynight-agent-skill.md) own the public workflow;
 the [Goal protocol](../../../../docs/design/daynight-goal-workflow.md) retains
@@ -49,9 +50,10 @@ repeated confirmation.
 an upload but leaves the task without the actual current material the user must
 review. Supplementary links remain useful after the content is saved and verified.
 
-**Edit the installed skill alongside its source.** This immediately changes one
-environment but bypasses source delivery and can mix instructions from different
-package versions. Source-only updates keep the requested rule versioned.
+**Edit installed `using-daynight` copies alongside their source.** This immediately
+changes one environment but bypasses source delivery and can mix instructions from
+different package versions. Updating only the repository source keeps this skill
+versioned and lets the next Daynight update refresh installed copies automatically.
 
 ## Consequences
 
