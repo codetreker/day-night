@@ -1,6 +1,7 @@
 import type { TaskStatus } from "../api/types";
 import type { WorkspaceMessages } from "./messages/workspace";
 import type { GraphMessages } from "./messages/graph";
+import type { PlatformMessages } from "./messages/platform";
 import type { AutomationMessages } from "./messages/automation";
 import type { InspectionMessages } from "./messages/inspection";
 import type { ExecutionMessages } from "./messages/execution";
@@ -19,6 +20,7 @@ export type Messages = {
   readonly graph: GraphMessages;
   readonly inspection: InspectionMessages;
   readonly automation: AutomationMessages;
+  readonly platform: PlatformMessages;
   readonly auth: AuthMessages;
   readonly execution: ExecutionMessages;
   readonly language: {

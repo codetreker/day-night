@@ -219,15 +219,15 @@ daynight task graph
 `project create` 与附件 `put/read/remove` 接受独立 `--` 结束选项解析；该终止符
 用于保留前导连字符的位置参数，其他操作继续使用其声明的语法。
 
-创建必需符合 PT6 文本规则的非空 task 标题，可选描述、重复的 `--depends-on`、`--external-depends-on` 和
+创建必需符合 PT6 文本规则的非空 task 标题，可选描述、`--required-platform windows|linux|macos`、重复的 `--depends-on`、`--external-depends-on` 和
 PR URL/title 配对；省略描述、依赖和 PR 引用分别使用服务规定的空字符串、空集合
-和空数组，新 task 总为 `proposed` 且 `allowAgents=false`，create 不提供许可选项。PR 标题只要求字符串类型，不使用 task 标题的内容
+和空数组；平台省略时为 null，不限制执行平台。新 task 总为 `proposed` 且 `allowAgents=false`，create 不提供许可选项。PR 标题只要求字符串类型，不使用 task 标题的内容
 校验。任务响应解码接受 `proposed`、`todo`、`in_progress`、`done`，列表默认选择
 所有未完成任务，包含 `proposed`；`--all` 选择所有状态，
 单个 `--status` 选择指定状态，包括 `done`。`--all` 与 `--status` 互斥，组合使用
 属于参数错误；列表状态值为 `proposed`、`todo`、`in_progress`、`done`，共享语法负责校验和静态候选，
 帮助显示选项说明。`--ready` 表示 `ready=true`，与所选状态按 AND 组合，支持
-`--all --ready`。`list` 与 `ready` 均接受 `--allow-agents true|false`，严格拒绝其他值，未提供时不按许可筛选；所有过滤由服务在分页前执行。列表读完全部匹配分页后，按 `in_progress`、ready、其余 `todo`、
+`--all --ready`。`list` 与 `ready` 均接受 `--allow-agents true|false` 和 `--compatible-platform windows|linux|macos`，严格拒绝其他值；省略对应选项时不按该条件筛选。平台兼容包含 null 及同值要求，全部条件由服务在排序和分页前按 AND 组合执行，不能在本地丢弃不匹配项代替服务筛选。列表读完全部匹配分页后，按 `in_progress`、ready、其余 `todo`、
 `proposed`、`done` 分组排序；组内保留跨页的服务顺序，文本和 JSON 使用同一顺序。详情按选定
 project 和 task ID 查询。显式 project ID、show/update 的 task ID、标题、描述、状态、
 版本及修改字段组合的参数错误必须先于配置读取、Git 和网络访问拒绝；两类依赖 ID 在本地正规化并排序，
@@ -237,7 +237,7 @@ project 和 task ID 查询。显式 project ID、show/update 的 task ID、标�
 默认 `N=10`，可通过 `--limit <N>` 指定。limit 仅接受十进制整数字符串且数值为
 `1..100`；拒绝符号、小数、指数、非十进制形式、空值及越界值。limit 参数错误
 必须在配置读取、Git 和网络访问之前拒绝。该操作只发送一次 task GET，查询固定
-`ready=true`、所选 `limit` 及可选的 `allowAgents`；响应中的合法 `nextCursor` 不触发续页，不提供 `--status` 或 `--cursor`。`task list --ready` 保持遍历全部匹配页的行为。
+`ready=true`、所选 `limit` 及可选的 `allowAgents`、`compatiblePlatform`；响应中的合法 `nextCursor` 不触发续页，不提供 `--status` 或 `--cursor`。`task list --ready` 保持遍历全部匹配页的行为。
 
 ready 沿用服务定义：task 为 `todo`，且每个直接依赖均为 `done`。服务按
 `createdAt ASC, id ASC` 排序；CLI 保留该顺序，不重新排序。返回项数不得超过所选
@@ -254,7 +254,7 @@ invalid_transition。显式版本不预读；省略时在提交前读取一次�
 必须显式携带其读取版本，不能靠临时 GET 替代。冲突不重试；不确定结果先读取核对，
 不将取消解释为回滚。四状态、事务和错误规则由[服务规范](daynight-server.md)拥有。
 
-更新至少提供标题、描述、普通/外部依赖、自动执行许可或预定义属性中的一个字段。`update --allow-agents true|false` 显式设置许可，省略保留，false 关闭；服务在 in_progress 拒绝实际切换，同值精确版本不改版本或时间。该选项不批准任务，不改变 ready；普通 claim 仍可显式执行未启用许可的任务。`task update --status`
+更新至少提供标题、描述、普通/外部依赖、自动执行许可、平台要求或预定义属性中的一个字段。`update --allow-agents true|false` 显式设置许可，省略保留，false 关闭；服务在 in_progress 拒绝实际切换，同值精确版本不改版本或时间。该选项不批准任务，不改变 ready；普通 claim 仍可显式执行未启用许可的任务。`--required-platform windows|linux|macos` 设置平台，`--clear-required-platform` 明确清除，两选项互斥；省略均不写平台字段。平台设置/清除采用精确版本，in_progress 实际变化拒绝，同值版本匹配请求保留版本与时间，旧版本仍冲突。平台查询选择不声明实际运行环境，普通人工 claim 保持不受平台要求限制。`task update --status`
 作为不支持的选项拒绝，帮助引导使用 approve、unapprove、claim 和 complete。省略字段表示保持，空描述表示
 清空描述。两类依赖选项分别形成普通 N 和外部 E，任一出现就提交完整 D=N∪E 及精确 E。
 只给普通选项会显式清空外部子集，只给外部选项会把完整关系替换为这些外部边，不是追加或仅标记。
@@ -279,7 +279,7 @@ PR 的 `--pull-request-url` 和 `--pull-request-title` 在 create/update 中分�
 `total = proposed + todo + inProgress + done`。proposed 任务无论前置是否完成均不可
 ready，默认清单、show 和 graph 保留其状态。公开列表 `--status proposed` 可筛选待审批
 任务；状态写入只通过 approve、unapprove、claim、complete。标题预览、快照边界、
-节点和边上限均继承服务要求。完整任务和图节点均严格读取必填布尔 `allowAgents`；缺失、null 或非布尔作为协议错误，JSON 保留原值，可读输出展示自动执行许可。有许可筛选的 list/ready 同时验证返回项匹配该值。图响应还必须包含数据库时间样本 `observedAt`；full task 和图节点均有必填可空的 `startedAt`、`completedAt`。缺失或错误类型作为协议错误拒绝，不从创建、编辑或客户端时间补值。超限时报告数量及上限，不返回部分图。
+节点和边上限均继承服务要求。完整任务和图节点均严格读取必填布尔 `allowAgents` 及必填可空枚举 `requiredPlatform`；许可缺失、null 或非布尔、平台缺失或非 null 非三个枚举均为协议错误，不补默认值。JSON 保留原值，可读输出展示自动执行许可和 `Required platform`，null 显示为 any。有许可或平台兼容筛选的 list/ready 同时验证返回项符合条件。图响应还必须包含数据库时间样本 `observedAt`；full task 和图节点均有必填可空的 `startedAt`、`completedAt`。缺失或错误类型作为协议错误拒绝，不从创建、编辑或客户端时间补值。超限时报告数量及上限，不返回部分图。
 
 附件 `put/list/read/remove` 继承相同的 project 选择，逐文件处理完整相对路径。
 目标 basename、MIME 推导、目录拒绝与原始内容输出的完整要求由
@@ -358,12 +358,13 @@ API 字段的名称、类型和原始字符串，不应用终端显示转义或�
 | V12 | CLI 既有 `pnpm typecheck`、`pnpm test`、`pnpm build` 及相关安装验收通过；Linux、macOS、Windows 的 Git、锁及文件替换有原生证据 |
 | V13 | `task ready` 的默认和显式 limit、参数在 I/O 前拒绝、单次 `ready=true` 查询、合法 cursor 不续页、稳定服务顺序、完整 int64 JSON、空结果及超量/非 ready/重复 ID 响应拒绝均可观察；`task list --ready` 仍完整翻页，真实服务证明选择前 N 项及依赖完成后的 ready 变化 |
 | V14 | `--allow-agents true/false` 的 update/list/ready 路径、静态补全、非法值在 I/O 前拒绝、字段必填严格读取、分页前筛选及跨页保留、返回筛选不符拒绝、精确版本/同值/运行锁与响应丢失不重试、JSON 及可读许可输出通过适用安装入口验证 |
+| V15 | 平台 create/update 设置、update 清除与互斥、list/ready 兼容筛选、全部 shell 补全、非法值在 I/O 前拒绝、必填 null/枚举资源严格读取、兼容条件跨页保留和响应校验、精确版本/同值/运行锁/拒绝不重试及 JSON/可读平台输出通过适用安装入口和真实服务验证 |
 
 配置、HTTP、仓库关联基础及 Project 命令已提供对应模块验证；Project 的实际编译
 入口已在受控 HTTP 条件下验证创建、完整分页、详情、参数错误、服务拒绝、
 取消、原始 JSON 与依赖隔离。Task 已通过参数、操作、渲染、仓库选择及实际编译
 入口的受控 HTTP 验证；共享补全保留既有场景，并在真实 Bash/zsh 验证 Task 语法。
-V1–V12 继续约束完整 CLI 交付。CLI 必须通过三原生平台的安装 CLI 受控 HTTP/Git
+V1–V15 继续约束完整 CLI 交付。CLI 必须通过三原生平台的安装 CLI 受控 HTTP/Git
 验收，以及实际安装 CLI 与真实 Go 1.27.2/PostgreSQL 18.6 的完整流程、重启和版本
 竞争。生产默认值必须保持单次请求 30 秒、总操作 5 分钟、单响应 128 MiB 和
 累计响应 256 MiB，并由测试单独断言。期限行为通过公开安装命令与流式 HTTP

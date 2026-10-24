@@ -1,6 +1,6 @@
 # Worker 需求
 
-本文定义 `daynight worker run` 的目标行为与可观察验收条件。自动执行许可、服务端/CLI/Web 控制与筛选已实现；worker 运行时、平台要求和唯一 worker claim 仍是后续能力。[架构](../design/daynight-worker.md)说明机制。
+本文定义 `daynight worker run` 的目标行为与可观察验收条件。自动执行许可与可选平台要求的服务端/CLI/Web 控制及候选筛选已实现；worker 运行时与唯一 worker claim 仍是后续能力。[架构](../design/daynight-worker.md)说明机制。
 
 ## 目标与范围
 
@@ -22,7 +22,7 @@ Worker 作为前台常驻进程，通过 Daynight HTTP REST API 领取配置仓�
 
 - Task 具有独立的布尔字段 `allowAgents`，表示是否允许 worker 自动领取并交给 Agent 处理。它与用户身份、项目权限、实际执行者及 agent 类型独立。
 - 旧任务通过数据库迁移设为 `true`，保留其余业务数据、版本与时间；新任务始终默认为 `false`，创建输入不能直接启用。普通字段更新未提供此字段时保留原值，显式 `false` 表示关闭。
-- 服务端、CLI 和 Web 一致支持许可的查询、展示与明确操作。完整 task 与图节点必填布尔 allowAgents，严格拒绝缺失、null 或非布尔响应。CLI 的 update/list/ready 使用 `--allow-agents true|false`，自动候选选择使用 true 筛选并在补充候选清单中保留；自动 worker 和随包 Agent 工作流不得自行启用许可。
+- 服务端、CLI 和 Web 一致支持许可的查询、展示与明确操作。完整 task 与图节点必填布尔 allowAgents，严格拒绝缺失、null 或非布尔响应。CLI 的 update/list/ready 使用 `--allow-agents true|false`，自动候选选择使用 true 与实际平台兼容筛选，并在补充候选清单中保留两者；随包工作流从实际 process.platform 映射 win32/windows、darwin/macos、linux/linux（含 WSL），未知或不支持时等待。精确版本 claim 前用最新完整详情重验许可、ready 和平台，自动选出的 ID 不构成人工指定；自动 worker 和随包 Agent 工作流不得自行启用许可。
 - Web 在任务详情标题下的状态行右侧提供单一“自动执行” / “Automatic execution”标签与开关组合，左侧保留状态、ready 与可选平台信息。详情不重复展示独立自动执行状态 badge 或下方 Overview 开关；列表中的状态标记可保留。长标题与窄屏不得重叠或横向溢出；平台等左侧信息可在左组内换行，右侧组合控件保持右对齐并与第一行状态顶部对齐。错误、未知结果、锁定和等待人工输入的说明在该控件附近呈现。当前详情观察到自动执行设置提交成功时显示浮动气泡，3 秒后自动消失且不占正文高度；后台刷新、语言切换和重开已确认的详情不重复提示。
 - 开启和关闭都先弹确认框，确认按钮直接提交修改；取消、Escape 或关闭弹框均不提交。提交期间阻止重复操作，服务端确认成功后才更新开关；明确失败保留原值，未知结果先读取核对，不自动重发。
 - 修改沿用已认证用户的项目成员写权限、精确版本与普通 task PATCH。确认表达明确操作意图，session 或 PAT 不能证明操作者是物理人工；不另设处理角色操作或重复确认字段。
@@ -31,10 +31,12 @@ Worker 作为前台常驻进程，通过 Daynight HTTP REST API 领取配置仓�
 
 ### W-03：可选执行平台
 
-- Task 可要求 `windows`、`linux`、`macos` 之一；未设置表示任意支持平台，新旧 task 默认均不限制。支持明确清除要求。
-- 服务端、CLI 和 Web 一致支持设置、清除、展示及必要筛选。已 claim 时与自动执行许可一并锁定，完成或合法人工解除后才可修改。
+- Task 的必填 `requiredPlatform` 值为 `null`、`windows`、`linux` 或 `macos`；null 表示任意支持平台，新旧 task 默认均不限制。创建可省略或显式提供 null/枚举；更新省略保持，显式 null 清除，非法类型和枚举拒绝。
+- 服务端、CLI 和 Web 一致支持设置、清除、展示及兼容筛选。CLI create/update 使用 `--required-platform windows|linux|macos`，update 使用互斥的 `--clear-required-platform` 清除，list/ready 使用 `--compatible-platform windows|linux|macos`；查询平台不充当运行环境配置。Web 平台选择不提交，显式保存 Any platform、Windows、Linux、macOS。
+- in_progress 与自动执行许可一并锁定实际变化，完成或合法人工解除后才可修改；精确版本同值更新保留版本与时间，旧版本仍冲突。普通人工 claim 不受平台要求限制。平台保存、许可和审批共享每任务写入控制，未知结果先核对，迟到响应保持原 task 归属。
 - 平台条件不改变 task 的 ready 语义，不匹配的候选不占名额、不创建资源、不消耗恢复次数。
-- 自动执行许可、ready 与平台条件须在有界候选排序和分页前组合，不能让较早的未开启许可或不兼容任务遮住后续合格任务。
+- `compatiblePlatform` 包含 null 和与查询平台相同的任务要求。自动执行许可、ready 与平台条件须在有界候选排序和分页前按 AND 组合，并绑定游标范围，不能让较早的未开启许可或不兼容任务遮住后续合格任务。
+- 平台字段、领域匹配与候选查询的验收独立于后续运行时。随包自动工作流已经按实际执行平台筛选和领取前重验；worker daemon 的原生平台识别、自动 worker claim 事务重验、资源启动及历史执行平台由对应 worker 能力提供运行证据。
 
 ### W-04：原子领取与执行归属
 

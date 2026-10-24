@@ -3,6 +3,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, 
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { parse as parseYaml } from "yaml";
+import { inspectInstalledSkill, instructionScenarios, verifyInstructionScenario } from "../fixtures/skill-contract.js";
 
 const root = path.resolve(import.meta.dirname, "../../../../.tmp/copy-skill-tests");
 const packageDirectory = path.resolve(import.meta.dirname, "../..");
@@ -48,6 +49,35 @@ afterEach(() => {
 });
 
 describe("packaged skill resource copy", () => {
+  it.each([{ name: "LF", lineEnding: "\n" }, { name: "CRLF", lineEnding: "\r\n" }])("retains platform-filtered automatic selection and the full-task claim recheck with $name line endings", async ({ lineEnding }) => {
+    const f = fixture();
+    const source = f.source(bundles[1]);
+    for (const name of files(source).filter((name) => name.endsWith(".md"))) {
+      const file = path.join(source, name);
+      writeFileSync(file, readFileSync(file, "utf8").replaceAll("\r\n", "\n").replaceAll("\n", lineEnding));
+    }
+    const copied = f.run();
+    expect(copied.status, copied.stderr).toBe(0);
+    const bundle = await inspectInstalledSkill(f.destination(bundles[1]));
+    expect(bundle.documents.get("references/run-task.md")!.includes("\r\n")).toBe(lineEnding === "\r\n");
+    for (const instruction of instructionScenarios) verifyInstructionScenario(bundle, instruction);
+    const scenario = instructionScenarios.find(({ id }) => id === "automatic-selection-platform")!;
+    expect(verifyInstructionScenario(bundle, scenario)).toHaveLength(4);
+    const mutations = [
+      { resource: "references/autopilot.md", before: "task ready --allow-agents true --compatible-platform <actual-platform>", after: "task ready --allow-agents true" },
+      { resource: "references/autopilot.md", before: "task list --allow-agents true --compatible-platform <actual-platform>", after: "task list --allow-agents true" },
+      { resource: "references/run-task.md", before: "Immediately before claim, reread the full task and", after: "Use the previously selected candidate and" },
+      { resource: "references/run-task.md", before: "An automatically selected ID passed here remains automatic\nselection, even though run-task receives a concrete ID.", after: "A task ID always uses manual selection." },
+    ];
+    for (const mutation of mutations) {
+      const documents = new Map(bundle.documents);
+      const original = documents.get(mutation.resource)!.replaceAll("\r\n", "\n");
+      expect(original).toContain(mutation.before);
+      documents.set(mutation.resource, original.replace(mutation.before, mutation.after).replaceAll("\n", lineEnding));
+      expect(() => verifyInstructionScenario({ ...bundle, documents }, scenario)).toThrow();
+    }
+  });
+
   it("copies the two complete allowlisted bundles byte-for-byte from an unrelated cwd", () => {
     const f = fixture();
     const publicBundle = bundles[1];

@@ -30,8 +30,18 @@ with its resources. An unfinished output of the current stage is not a missing
 input.
 
 An explicitly user-selected task may use the manual claim path regardless of
-`allowAgents`; this flag gates automatic selection, not explicit task assignment.
-Automated task selection requires true and must not enable the flag itself.
+`allowAgents` or platform compatibility; these conditions gate automatic selection,
+not explicit task assignment. Automated task selection requires true and must not
+enable the flag itself. An automatically selected ID passed here remains automatic
+selection, even though run-task receives a concrete ID. Carry its actual runtime
+platform from autopilot; follow autopilot's runtime mapping and wait if the platform
+is unsupported or unknown. Immediately before claim, reread the full task and
+recheck `todo`, ready, `allowAgents=true`, and `requiredPlatform` either null or
+equal to that same actual platform. A changed or incompatible requirement prevents
+claim and requires a new selection decision; a changed execution environment
+requires fresh runtime identification and candidate queries. Use the exact version
+from this full-task recheck with `--if-version`; an earlier candidate page does not
+authorize the ordinary claim path after eligibility changes.
 
 Check state, every direct prerequisite, authorized scope, and required stage
 inputs. Read `dependsOn` and its `externalDependsOn` subset: ordinary edges

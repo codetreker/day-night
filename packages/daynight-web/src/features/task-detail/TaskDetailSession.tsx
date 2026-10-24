@@ -1,10 +1,11 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { ApiError, approveTask, getTask, isAbortError, setTaskAgentPermission, unapproveTask } from "../../api/client";
+import { ApiError, approveTask, getTask, isAbortError, setTaskAgentPermission, setTaskRequiredPlatform, unapproveTask } from "../../api/client";
 import { isTaskStale, taskDescriptor } from "./freshness";
-import type { ApprovalAction, GraphTask, TaskDetail } from "../../api/types";
+import type { ApprovalAction, ExecutionPlatform, GraphTask, TaskDetail } from "../../api/types";
 
 export type ApprovalOperation = { readonly action: ApprovalAction; readonly version: bigint };
-export type TaskMutationOperation = ApprovalOperation | { readonly action: "allowAgents"; readonly allowAgents: boolean; readonly version: bigint };
+export type TaskMutationOperation = ApprovalOperation | { readonly action: "allowAgents"; readonly allowAgents: boolean; readonly version: bigint } |
+  { readonly action: "requiredPlatform"; readonly requiredPlatform: ExecutionPlatform | null; readonly version: bigint };
 export type TaskMutationState = {
   readonly operation: TaskMutationOperation | null;
   readonly phase: "idle" | "pending" | "confirmed" | "refused" | "conflict" | "unknown" | "reconciled";
@@ -48,6 +49,7 @@ const canMutate = (state: DetailState): boolean => state.detail !== null && stat
   state.mutation.phase !== "pending" && state.mutation.phase !== "unknown" && !state.mutation.reconciling && state.mutation.reconciliationError === null && !state.requiresFreshRead && state.error === null;
 export const canPerformApproval = (state: DetailState, action: ApprovalAction): boolean => approvalAction(state.detail) === action && canMutate(state);
 export const canSetAgentPermission = (state: DetailState): boolean => state.detail !== null && state.detail.status !== "in_progress" && canMutate(state);
+export const canSetRequiredPlatform = canSetAgentPermission;
 export const canApprove = (state: DetailState): boolean => canPerformApproval(state, "approve");
 export const canUnapprove = (state: DetailState): boolean => canPerformApproval(state, "unapprove");
 
@@ -186,6 +188,11 @@ export class TaskDetailSessions {
     if (!canSetAgentPermission(state) || state.detail!.version !== version || state.detail!.allowAgents === allowAgents) return;
     this.performMutation(projectId, taskId, { action: "allowAgents", allowAgents, version });
   }
+  setRequiredPlatform(projectId: string, taskId: string, requiredPlatform: ExecutionPlatform | null, version: bigint): void {
+    const state = this.entry(projectId, taskId).state;
+    if (!canSetRequiredPlatform(state) || state.detail!.version !== version || state.detail!.requiredPlatform === requiredPlatform) return;
+    this.performMutation(projectId, taskId, { action: "requiredPlatform", requiredPlatform, version });
+  }
   private performMutation(projectId: string, taskId: string, operation: TaskMutationOperation): void {
     const entry = this.entry(projectId, taskId);
     const previous = entry.state.detail!;
@@ -197,10 +204,14 @@ export class TaskDetailSessions {
         const signal = new AbortController().signal;
         const detail = operation.action === "allowAgents"
           ? await setTaskAgentPermission(projectId, taskId, operation.allowAgents, operation.version, signal)
-          : await (operation.action === "approve" ? approveTask : unapproveTask)(projectId, taskId, operation.version, signal);
+          : operation.action === "requiredPlatform"
+            ? await setTaskRequiredPlatform(projectId, taskId, operation.requiredPlatform, operation.version, signal)
+            : await (operation.action === "approve" ? approveTask : unapproveTask)(projectId, taskId, operation.version, signal);
         const validResult = operation.action === "allowAgents"
-          ? detail.status === previous.status && detail.allowAgents === operation.allowAgents
-          : detail.status === (operation.action === "approve" ? "todo" : "proposed") && detail.allowAgents === previous.allowAgents;
+          ? detail.status === previous.status && detail.allowAgents === operation.allowAgents && detail.requiredPlatform === previous.requiredPlatform
+          : operation.action === "requiredPlatform"
+            ? detail.status === previous.status && detail.requiredPlatform === operation.requiredPlatform && detail.allowAgents === previous.allowAgents
+            : detail.status === (operation.action === "approve" ? "todo" : "proposed") && detail.allowAgents === previous.allowAgents && detail.requiredPlatform === previous.requiredPlatform;
         if (detail.projectId !== projectId || detail.id !== taskId || !validResult || detail.version !== operation.version + 1n) throw new ApiError("protocol");
         entry.committedVersion = detail.version;
         this.publish(entry, { ...entry.state, detail: preserveCollection(entry.state.detail, detail), status: "ready", refreshing: false, requiresFreshRead: false, error: null,

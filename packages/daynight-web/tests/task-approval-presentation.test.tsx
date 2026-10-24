@@ -6,7 +6,7 @@ import { TaskApproval } from '../src/features/task-detail/TaskApproval';
 import type { TaskMutationState } from '../src/features/task-detail/TaskDetailSession';
 import { LanguageSelector } from '../src/i18n/LanguageSelector';
 import { renderWithLocale } from './helpers/renderWithLocale';
-const detail: TaskDetail = { allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null, id: 'task', projectId: 'project', version: 1n, title: 'Task content', description: '',
+const detail: TaskDetail = { requiredPlatform: null, allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null, id: 'task', projectId: 'project', version: 1n, title: 'Task content', description: '',
   properties: { pullRequests: [] }, status: 'proposed', dependsOn: [], blockedBy: [], ready: false, createdAt: '', updatedAt: '' };
 const idle: TaskMutationState = { operation: null, phase: 'idle', error: null, reconciling: false, reconciliationError: null };
 const mount = (approval = idle, task = detail) => {
@@ -53,11 +53,11 @@ describe('task approval feedback', () => {
     [new ApiError('server', 400, 'validation_failed', 'validation-request'), 'The service refused the approval operation.'],
     [new Error('transport failure'), 'The approval operation failed.'],
   ])('shows refusal with accessible error feedback %#', (error, text) => {
-    mount({ ...idle, phase: 'refused', error });
+    mount({ ...idle, operation: { action: 'approve', version: detail.version }, phase: 'refused', error });
     expect(screen.getByRole('alert')).toHaveTextContent(text);
   });
   it.each(['in_progress', 'done'] as const)('reports a reconciled %s task without falsely claiming unfinished prerequisites', (status) => {
-    mount({ ...idle, phase: 'reconciled', error: new ApiError('network') }, { ...detail, status });
+    mount({ ...idle, operation: { action: 'approve', version: detail.version }, phase: 'reconciled', error: new ApiError('network') }, { ...detail, status });
     expect(screen.getByText('The current task state has been loaded.')).toBeVisible();
     expect(screen.queryByText('The task is approved. Unfinished prerequisites still block it.')).toBeNull();
   });

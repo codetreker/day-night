@@ -26,13 +26,28 @@ possible. Do not select another task because CI, review, or merge is pending.
 
 ## Select one related task
 
-When there is no current task, query:
+When there is no current task, identify the actual runtime in the environment
+where task commands and implementation will execute:
 
 ```bash
-daynight task ready --allow-agents true --json
+node -p "process.platform"
 ```
 
-Pick exactly one approved ready `todo` task with `allowAgents=true` most relevant to the confirmed Goal and
+Map `win32` to `windows`, `darwin` to `macos`, and `linux` to `linux`.
+A Linux runtime in WSL is `linux`, regardless of its outer Windows host.
+Use this result as `<actual-platform>` in the commands below. Unsupported or
+unknown runtime platforms leave selection waiting with the concrete reason;
+do not claim a task. Do not substitute a configured platform, remote host OS,
+or requested task platform for the observed runtime.
+
+Query platform-compatible candidates:
+
+```bash
+daynight task ready --allow-agents true --compatible-platform <actual-platform> --json
+```
+
+Pick exactly one approved ready `todo` task with `allowAgents=true` and
+`requiredPlatform` either null or equal to the actual platform, most relevant to the confirmed Goal and
 authorized work. Compare concrete actions, scope, deliverables, solution,
 acceptance criteria, and actual dependencies; creation order does not establish
 relevance. Read full details and actual task-specific and shared inputs for
@@ -40,8 +55,16 @@ plausible candidates before choosing. Inspect complete `dependsOn` and the
 `externalDependsOn` subset. External prerequisites still block readiness, and
 cross-chain classification does not authorize executing them or expand the
 confirmed scope. Readiness checks all prerequisites, not stage artifact
-completeness or execution authorization. Pass the selected ID to
-`run-task`, which claims the version observed for that decision before starting.
+completeness or execution authorization. Pass the selected ID, automatic-selection
+mode and actual platform to `run-task`. Immediately before claim, reread the full
+task with `daynight task show <task-id> --json` and recheck `todo`, ready,
+`allowAgents=true`, and `requiredPlatform` either null or equal to the same actual
+platform. A changed or incompatible requirement prevents claim and requires a
+new selection decision; a changed execution environment requires fresh runtime
+identification and candidate queries. `run-task` claims the version observed for
+that decision before starting, using the exact version from this full-task recheck
+with `--if-version`. A prior compatible candidate page is not permission to use
+the ordinary claim path after eligibility changes.
 Autopilot never auto-approves proposed work. Goal registration, completed
 discussions, and permission to execute do not authorize task approval for delivery.
 An explicit user request to start a Goal discussion or direct its next discussion
@@ -52,7 +75,10 @@ requirements or solution.
 Ready returns at most 10 candidates by default, or the requested bounded
 `--limit`; it is not a complete backlog. If this page is empty or no candidate
 matches, obtain the additional context actually needed through selected reads,
-the graph, or `daynight task list --allow-agents true --json` as described in the handbook. Distinguish
+the graph, or `daynight task list --allow-agents true --compatible-platform <actual-platform> --json`
+as described in the handbook. Both ready and supplemental list queries retain
+the actual-platform filter before pagination; do not filter a bounded unfiltered
+page locally. Distinguish
 completed scope, work awaiting explicit approval, prerequisite-blocked work, other
 ongoing work, and insufficient
 candidates. Do not take unrelated work to stay busy or report completion from an
@@ -73,7 +99,9 @@ its completion does not start delivery.
 
 Automatic selection never enables `allowAgents` on a task. If the user explicitly
 selects a task for execution, its manual claim path remains available regardless
-of the flag; preserve all approval, prerequisite and authorization checks.
+of the flag or platform compatibility; preserve all approval, prerequisite and
+authorization checks. An automatically selected ID passed to run-task remains
+automatic selection and does not acquire this manual exception.
 
 ## Advance serially and accept the scope
 

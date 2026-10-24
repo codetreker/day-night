@@ -3,7 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { gzipSync } from "node:zlib";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError, createApiClient, createOperation, DEFAULT_OPERATION_LIMITS, OperationError, parseApiJson, parseVersionArgument, stringifyApiJson } from "../../src/api/index.js";
-import type { Operation, TaskGraph } from "../../src/api/index.js";
+import type { Operation, TaskGraph, TaskPlatform } from "../../src/api/index.js";
 
 const projectId = "11111111-1111-1111-1111-111111111111";
 const taskId = "22222222-2222-2222-2222-222222222222";
@@ -11,7 +11,7 @@ const otherId = "33333333-3333-3333-3333-333333333333";
 const normalId = "44444444-4444-4444-4444-444444444444";
 const time = "2026-10-20T01:02:03.123456789Z";
 const project = { id: projectId, name: "Project", repoUrl: "git@github.com:Org/Repo.git", settings: { version: 1n, executionWarningMinutes: 60 }, createdAt: time, updatedAt: time };
-const task = { id: taskId, projectId, title: "Task", description: "", properties: { pullRequests: [] }, status: "todo", allowAgents: false, version: 1n, startedAt: null, completedAt: null, createdAt: time, updatedAt: time, dependsOn: [], externalDependsOn: [], blockedBy: [], ready: true };
+const task = { id: taskId, projectId, title: "Task", description: "", properties: { pullRequests: [] }, status: "todo", allowAgents: false, requiredPlatform: null, version: 1n, startedAt: null, completedAt: null, createdAt: time, updatedAt: time, dependsOn: [], externalDependsOn: [], blockedBy: [], ready: true };
 const refusal = (code = "not_found", details?: unknown) => ({ error: { code, message: "Actual server explanation.", requestId: "req-1", ...(details === undefined ? {} : { details }) } });
 const jsonResponse = (value: unknown, status = 200) => new Response(stringifyApiJson(value), { status, headers: { "Content-Type": "application/json" } });
 const cleanups: (() => void | Promise<void>)[] = [];
@@ -39,6 +39,70 @@ afterEach(async () => {
 });
 
 describe("operation-scoped API access", () => {
+  it.each([null, "windows", "linux", "macos"] as const)("preserves requiredPlatform=%s in create, update and graph resources", async (requiredPlatform) => {
+    const value = { ...task, requiredPlatform };
+    const taskGraph = { ...graph(), tasks: graph().tasks.map((item) => ({ ...item, requiredPlatform })) };
+    const fetch = vi.fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse(value, 201))
+      .mockResolvedValueOnce(jsonResponse(value))
+      .mockResolvedValueOnce(jsonResponse(taskGraph));
+    const api = client(fetch);
+    await expect(api.createTask(projectId, { title: "Platform task", requiredPlatform })).resolves.toEqual(value);
+    await expect(api.updateTask(projectId, taskId, { version: 9_223_372_036_854_775_807n, requiredPlatform })).resolves.toEqual(value);
+    await expect(api.getTaskGraph(projectId)).resolves.toEqual(taskGraph);
+    expect(parseApiJson(String(fetch.mock.calls[0]![1]!.body))).toEqual({ title: "Platform task", requiredPlatform });
+    expect(parseApiJson(String(fetch.mock.calls[1]![1]!.body))).toEqual({ version: 9_223_372_036_854_775_807n, requiredPlatform });
+  });
+
+  it("omits unspecified platform changes while preserving the server requirement", async () => {
+    const value = { ...task, requiredPlatform: "windows" };
+    const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async () => jsonResponse(value));
+    const api = client(fetch);
+    await expect(api.updateTask(projectId, taskId, { version: 1n, allowAgents: true })).resolves.toEqual(value);
+    expect(parseApiJson(String(fetch.mock.calls[0]![1]!.body))).toEqual({ version: 1n, allowAgents: true });
+  });
+
+  it.each(["windows", "linux", "macos"] as const)("binds compatiblePlatform=%s with permission and readiness across every page", async (compatiblePlatform) => {
+    const first = { ...task, allowAgents: true };
+    const second = { ...first, id: otherId, requiredPlatform: compatiblePlatform };
+    const fetch = vi.fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse({ items: [first], nextCursor: "platform cursor" }))
+      .mockResolvedValueOnce(jsonResponse({ items: [second], nextCursor: null }))
+      .mockResolvedValueOnce(jsonResponse({ items: [second], nextCursor: "not followed" }));
+    const api = client(fetch);
+    await expect(api.listTasks(projectId, { ready: true, allowAgents: true, compatiblePlatform })).resolves.toEqual([first, second]);
+    await expect(api.listReadyTasks(projectId, 1, { allowAgents: true, compatiblePlatform })).resolves.toEqual([second]);
+    expect(fetch.mock.calls.map(([url]) => Object.fromEntries(new URL(String(url)).searchParams))).toEqual([
+      { ready: "true", allowAgents: "true", compatiblePlatform, limit: "100" },
+      { ready: "true", allowAgents: "true", compatiblePlatform, limit: "100", cursor: "platform cursor" },
+      { ready: "true", limit: "1", allowAgents: "true", compatiblePlatform },
+    ]);
+  });
+
+  it.each(["windows", "linux", "macos"] as const)("rejects a server candidate outside compatiblePlatform=%s", async (compatiblePlatform) => {
+    const requiredPlatform: TaskPlatform = compatiblePlatform === "windows" ? "linux" : "windows";
+    const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async () => jsonResponse({ items: [{ ...task, requiredPlatform }], nextCursor: null }));
+    const api = client(fetch);
+    await expect(api.listTasks(projectId, { compatiblePlatform })).rejects.toMatchObject({ operation: "task.list", phase: "protocol" });
+    await expect(api.listReadyTasks(projectId, 1, { compatiblePlatform })).rejects.toMatchObject({ operation: "task.ready", phase: "protocol" });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([undefined, "", "darwin", "win32", "Linux", true, 1, {}, []])("requires a nullable public platform in task and graph resources: %s", async (requiredPlatform) => {
+    const value = { ...task, requiredPlatform };
+    const taskGraph = graph();
+    const invalidGraph = { ...taskGraph, tasks: taskGraph.tasks.map((item, index) => index === 0 ? { ...item, requiredPlatform } : item) };
+    const fetch = vi.fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse(value))
+      .mockResolvedValueOnce(jsonResponse({ items: [value], nextCursor: null }))
+      .mockResolvedValueOnce(jsonResponse(invalidGraph));
+    const api = client(fetch);
+    await expect(api.getTask(projectId, taskId)).rejects.toMatchObject({ phase: "protocol" });
+    await expect(api.listReadyTasks(projectId, 1)).rejects.toMatchObject({ phase: "protocol" });
+    await expect(api.getTaskGraph(projectId)).rejects.toMatchObject({ phase: "protocol" });
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+
   it.each([true, false])("preserves explicit allowAgents=%s while keeping permission independent of ready", async (allowAgents) => {
     const value = { ...task, allowAgents };
     const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(jsonResponse(value));
@@ -58,7 +122,7 @@ describe("operation-scoped API access", () => {
       .mockResolvedValueOnce(jsonResponse({ items: [first], nextCursor: "not followed" }));
     const api = client(fetch);
     await expect(api.listTasks(projectId, { ready: true, allowAgents })).resolves.toEqual([first, second]);
-    await expect(api.listReadyTasks(projectId, 1, allowAgents)).resolves.toEqual([first]);
+    await expect(api.listReadyTasks(projectId, 1, { allowAgents })).resolves.toEqual([first]);
     expect(fetch.mock.calls.map(([url]) => Object.fromEntries(new URL(String(url)).searchParams))).toEqual([
       { ready: "true", allowAgents: String(allowAgents), limit: "100" },
       { ready: "true", allowAgents: String(allowAgents), limit: "100", cursor: "cursor" },
@@ -70,7 +134,7 @@ describe("operation-scoped API access", () => {
     const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async () => jsonResponse({ items: [{ ...task, allowAgents: !allowAgents }], nextCursor: null }));
     const api = client(fetch);
     await expect(api.listTasks(projectId, { allowAgents })).rejects.toMatchObject({ operation: "task.list", phase: "protocol" });
-    await expect(api.listReadyTasks(projectId, 1, allowAgents)).rejects.toMatchObject({ operation: "task.ready", phase: "protocol" });
+    await expect(api.listReadyTasks(projectId, 1, { allowAgents })).rejects.toMatchObject({ operation: "task.ready", phase: "protocol" });
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
@@ -437,8 +501,8 @@ const graph = (): TaskGraph => ({
   project,
   summary: { total: 2, proposed: 0, todo: 1, inProgress: 0, done: 1, ready: 1, blocked: 0 },
   tasks: [
-    { id: taskId, titlePreview: "Task", titleTruncated: false, allowAgents: false, status: "todo", dependsOn: [otherId], externalDependsOn: [], blockedBy: [], ready: true, startedAt: null, completedAt: null, createdAt: time, updatedAt: time },
-    { id: otherId, titlePreview: "Done", titleTruncated: false, allowAgents: false, status: "done", dependsOn: [], externalDependsOn: [], blockedBy: [], ready: false, startedAt: null, completedAt: null, createdAt: time, updatedAt: time },
+    { id: taskId, titlePreview: "Task", titleTruncated: false, allowAgents: false, requiredPlatform: null, status: "todo", dependsOn: [otherId], externalDependsOn: [], blockedBy: [], ready: true, startedAt: null, completedAt: null, createdAt: time, updatedAt: time },
+    { id: otherId, titlePreview: "Done", titleTruncated: false, allowAgents: false, requiredPlatform: null, status: "done", dependsOn: [], externalDependsOn: [], blockedBy: [], ready: false, startedAt: null, completedAt: null, createdAt: time, updatedAt: time },
   ],
 });
 

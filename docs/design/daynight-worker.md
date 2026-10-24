@@ -1,6 +1,6 @@
 # Worker 架构设计
 
-状态：自动执行许可的持久化、普通 PATCH、CLI 筛选/更新与 Web 确认开关已实现；worker 运行时、平台要求与唯一 worker claim 尚未实现。本文拥有机制；[需求](../spec/daynight-worker.md)拥有产品行为，[设计决策](../../.agents/notes/implemented/architecture/2026-10-22-worker-design.md)保留真实备选方案。
+状态：自动执行许可和平台要求的持久化、普通 PATCH、CLI 筛选/更新、Web 确认开关与平台显式保存已实现；worker 运行时与唯一 worker claim 尚未实现。本文拥有机制；[需求](../spec/daynight-worker.md)拥有产品行为，[设计决策](../../.agents/notes/implemented/architecture/2026-10-22-worker-design.md)保留真实备选方案。
 
 ## 目标与当前基础
 
@@ -83,7 +83,7 @@ Agent 类型不变时仓库字段覆盖全局字段；切换类型时按新类�
 
 ## 服务端模型与资格查询
 
-`allowAgents` 已在完整 task、图投影、普通 PATCH 与列表筛选中实现；持久化和版本事务见[服务架构](daynight-server.md)。以下 `requiredPlatform`、worker claim 与执行归属描述后续 worker 集成所需契约，不表示当前服务已开放这些字段或 endpoint。
+`allowAgents` 与 `requiredPlatform` 已在完整 task、图投影、普通 PATCH 与列表筛选中实现；持久化、可空字段存在性、锁定和版本事务见[服务架构](daynight-server.md)。本节的 worker claim 与执行归属仍描述后续集成契约，不表示当前服务已开放这些 endpoint。
 
 任务顶层字段：
 
@@ -92,7 +92,7 @@ allowAgents: boolean
 requiredPlatform: null | windows | linux | macos
 ```
 
-旧任务迁移为 `allowAgents=true` 且平台为 null，保留其他数据、版本和时间；新任务始终为 `allowAgents=false`、平台 null。创建输入拒绝 `allowAgents`，后续通过普通 task PATCH 显式设置布尔值；未提供字段保持原值，显式 false 关闭，null 和其他类型拒绝。迁移与严格 DTO 读取拥有默认值，不增加运行时缺字段 fallback。
+旧任务经各自迁移取得 `allowAgents=true`、平台 null，保留其他数据、版本和时间；新任务为 `allowAgents=false`，未指定平台时为 null。创建输入拒绝 `allowAgents`，平台接受省略、null 或三个枚举之一。普通 task PATCH 中许可未提供保持、显式 false 关闭、null 和其他类型拒绝；平台未提供保持、枚举设置、null 清除。资源必须显式输出 requiredPlatform，严格 DTO 不以缺字段 fallback 兼容旧数据。许可和平台变化均在 in_progress 锁定，精确版本同值请求不增加版本或时间；普通人工 claim 保持不受两字段限制。
 
 Web 在任务详情标题下的同一状态行中，左侧显示状态、ready 与可选平台信息，右侧显示单一“自动执行” / “Automatic execution”标签与开关组合。组合控件同时表达服务端已确认的许可状态并提供操作入口；详情仅保留此组合控件，自动执行状态不另设 badge 或下方 Overview 开关。列表中的自动执行状态标记保持其原有用途。实际任务标题直接用于详情顶栏并保留有界的完整文本键盘阅读，长标题与窄屏不覆盖状态或开关；平台等左侧信息仅在左组内换行，右侧控件保持右对齐并与第一行状态顶部对齐。错误、未知结果、锁定和等待人工输入的反馈紧邻该控件保留。成功反馈由详情中观察到的 pending→confirmed 转换触发，以不参与布局的浮动气泡展示 3 秒；持久 mutation 状态继续归属任务会话，关闭重开不重播已确认结果。
 
@@ -100,15 +100,15 @@ Web 在任务详情标题下的同一状态行中，左侧显示状态、ready �
 
 开启框说明 worker 可在任务获批、依赖完成并符合运行条件时自动领取；关闭框说明 worker 将不再自动领取。自动执行许可、审批和 ready 分别保有原义：`approve`、`unapprove`、手工 claim/complete 与普通元数据修改均保留许可。实际切换在 `in_progress` 拒绝；权限和版本检查先于同值判定，精确版本同值 PATCH 返回原 task，不增加版本或更新时间。关闭许可不隐式停止执行或移交资源。
 
-确认表示明确操作意图，不能从 session/PAT 类型推断物理人工。CLI/skill 禁止自动 worker 自行启用许可，操作沿用现有项目成员写权限。Web 的双向确认、状态展示和失败交互遵循本节的布局与操作规则，具体组件与工作空间请求归属由[看板设计](daynight-web.md#自动执行许可与确认)拥有。CLI update/list/ready 的 `--allow-agents true|false` 映射到该普通更新或查询字段；自动候选使用 true 筛选，明确指定的单任务执行仍可普通 claim。
+确认表示明确操作意图，不能从 session/PAT 类型推断物理人工。CLI/skill 禁止自动 worker 自行启用许可，操作沿用现有项目成员写权限。Web 的双向确认、状态展示和失败交互遵循本节的布局与操作规则，具体组件与工作空间请求归属由[看板设计](daynight-web.md#自动执行许可与确认)拥有。CLI update/list/ready 的 `--allow-agents true|false` 映射到该普通更新或查询字段；随包自动候选同时使用 true 与实际平台兼容筛选，领取前从最新完整详情重验许可、ready 和平台；明确由用户指定的单任务执行仍可普通 claim，自动选出的 ID 不属于人工例外。
 
-候选查询扩展现有列表：
+平台兼容查询已接入现有列表。随包 autopilot 从实际 process.platform 映射 win32/windows、darwin/macos、linux/linux（含 WSL），不确定或不支持时等待；ready 与补充 list 均传同一实际平台，领取前完整详情重验绑定精确版本。后续 worker daemon 以自身真实运行平台消费该接口：
 
 ```http
 GET /api/v1/projects/{project}/tasks?ready=true&allowAgents=true&compatiblePlatform=linux&limit=10
 ```
 
-查询可按 `allowAgents=true|false` 筛选，缺省保留现有全量任务语义。`allowAgents=true` 与 ready、`compatiblePlatform` 在排序/limit 前组合过滤，并加入游标范围。`compatiblePlatform` 包含 null 与相同平台。沿用服务端创建时间/UUID 顺序。Worker 按空闲名额读取候选，合法冲突后考虑下一个；空页/无兼容候选不占名额。已有未完成 worktree 的候选还需确认本机持有原执行资料，否则跳过并显示需要人工移交，不能在另一机器新建空 worktree。
+查询可按 `allowAgents=true|false` 筛选，缺省保留现有全量任务语义。`allowAgents=true` 与 ready、`compatiblePlatform` 在排序/limit 前组合过滤，并加入游标范围。`compatiblePlatform` 包含 null 与相同平台，CLI list/ready 的 `--compatible-platform` 直接映射该查询并保留至每页；客户端拒绝不满足声明条件的响应，不在本地删项。Web 平台编辑与既有许可和审批共用任务会话，界面与请求机制由[看板设计](daynight-web.md#平台要求与显式保存)拥有。沿用服务端创建时间/UUID 顺序。后续 Worker 按空闲名额读取候选，合法冲突后考虑下一个；空页/无兼容候选不占名额。已有未完成 worktree 的候选还需确认本机持有原执行资料，否则跳过并显示需要人工移交，不能在另一机器新建空 worktree。
 
 ### 受保护的执行属性
 

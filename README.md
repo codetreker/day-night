@@ -124,8 +124,10 @@ records that responsibility split and the choice to observe current Herdr status
 without another reporting protocol. The [automatic-execution decision](.agents/notes/implemented/architecture/2026-10-23-task-agent-automation.md)
 defines the boolean `allowAgents` permission and confirmation for both directions
 of the Web switch. The service, CLI and Web implement this permission; the
-worker runtime, platform controls and unique worker-claim integration remain
-implementation work. Authentication and the approval-based task lifecycle are
+service, CLI and Web also implement optional execution-platform requirements,
+explicit clearing and compatibility filtering under the
+[platform decision](.agents/notes/implemented/feature/2026-10-24-task-required-platform.md).
+The worker runtime and unique worker-claim integration remain implementation work. Authentication and the approval-based task lifecycle are
 delivered prerequisites; worker integration preserves the current task execution
 timestamp contract.
 
@@ -211,10 +213,15 @@ stage order, without precreating future stages. A specific request to begin a
 Goal discussion authorizes approval and claim of that discussion only. Ordinary
 creation, run-task and autopilot do not supply approval; confirming a solution does
 not approve or execute delivery subtasks. Approved ready work is claimed at the
-reviewed version. Automatic selection uses
-`task ready --allow-agents true --json` and preserves that filter on fallback
-inventories; workflows never enable the flag themselves. Explicitly designated
-manual work can be claimed with either value. Task descriptions are self-contained
+reviewed version. Automatic selection reads the actual runtime
+`process.platform`: win32 maps to windows, darwin to macos and linux to linux,
+including WSL. An unknown or unsupported runtime waits for clarification. It uses
+`task ready --allow-agents true --compatible-platform <actual-platform> --json`
+and retains both filters on fallback inventories. Before exact-version claim,
+the latest full task must still allow automatic execution, be ready and have a
+null or matching platform requirement. Workflows never enable the flag themselves
+or treat an automatically selected ID as explicit manual assignment. Explicitly
+designated manual work can use ordinary claim independently of automatic eligibility. Task descriptions are self-contained
 Markdown briefs: the concrete problem and action, scope, deliverables, constraints,
 observable completion summaries and actual input references. The Web renders that
 Markdown; API storage and CLI/Agent output preserve the original string bytes.
@@ -1058,7 +1065,7 @@ Complete when a valid login opens the workspace and a rejected login can retry.'
 daynight task create --title "Build the sign-in page" --depends-on <design-task-id> --external-depends-on <authentication-task-id>
 daynight task ready
 daynight task ready --limit 5 --json
-daynight task ready --allow-agents true --json
+daynight task ready --allow-agents true --compatible-platform linux --json
 daynight task list --allow-agents false --ready
 daynight task list --ready
 daynight task list --all --json
@@ -1066,6 +1073,9 @@ daynight task list --status in_progress --json
 daynight task show <task-id> --json
 daynight task update <task-id> --description=
 daynight task update <task-id> --allow-agents true --if-version <version>
+daynight task create --title "Check Windows build" --required-platform windows
+daynight task update <task-id> --required-platform macos --if-version <version>
+daynight task update <task-id> --clear-required-platform --if-version <version>
 daynight task approve <task-id> --if-version 1
 daynight task claim <task-id> --if-version 2
 daynight task complete <task-id> --if-version 3
@@ -1085,7 +1095,8 @@ server origin and repository identity, after ensuring `/.daynight/` is effective
 in the root `.gitignore`. A cached binding is verified against the server on each
 use and remains stable if another project later shares that repository.
 
-Creation starts in `proposed` with `allowAgents=false`; `task approve` moves it to `todo`; `task unapprove`
+Creation starts in `proposed` with `allowAgents=false` and unrestricted
+`requiredPlatform=null` unless an explicit platform is supplied; `task approve` moves it to `todo`; `task unapprove`
 withdraws approval of todo work and returns it to `proposed`; `task claim` moves
 ready todo to `in_progress`; `task complete` moves in-progress work to `done`.
 Approval and withdrawal permit unfinished prerequisites; claim and completion
@@ -1153,11 +1164,16 @@ work eligible for later claim and grants no implementation or merge permission.
 Task details place one **Automatic execution / 自动执行** label and switch on
 the right of the status row below the title. Both directions open confirmation;
 Cancel, close and Escape submit nothing. The switch updates only after a
-confirmed successful response. Permission and approval share the same per-task
+confirmed successful response. Permission, platform and approval share the same per-task
 write gate, retaining pending/unknown results across detail close/reopen.
 Actual permission changes are locked during `in_progress`; permission changes
 do not approve, withdraw, stop or transfer work. Independent task rows and graph
-nodes show each task's permission without treating a root flag as chain-wide.
+nodes show each task's permission and required platform without treating root
+values as chain-wide. Task details provide a separate Any platform / Windows /
+Linux / macOS select and explicit Save platform action. Selection alone sends no
+request; saving Any platform clears the requirement. Platform controls are
+locked during `in_progress`, use the reviewed exact task version and retain
+unknown-write reconciliation and request ownership across dialog changes.
 The [lifecycle decision](.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)
 and [withdrawal decision](.agents/notes/implemented/feature/2026-10-23-task-unapprove.md)
 record the state and approval boundaries.
@@ -1165,8 +1181,10 @@ record the state and approval boundaries.
 `task ready` selects up to 10 actionable tasks by
 default; `--limit <N>` accepts decimal integers from 1 through 100. It makes one
 task-list request with `ready=true`, the chosen limit and optional
-`--allow-agents true|false` filter, without fetching later pages. The service
-applies permission filtering before pagination and binds it to the cursor. The service orders results by creation time and then task ID, both
+`--allow-agents true|false` and `--compatible-platform windows|linux|macos`
+filters, without fetching later pages. Compatibility includes unrestricted tasks
+and tasks requiring that platform. The service applies all filters before
+pagination and binds them to the cursor. The service orders results by creation time and then task ID, both
 ascending. A ready task is `todo` with all direct dependencies `done`. This
 bounded selection supports choosing the next work without retrieving the whole
 project; `task graph` provides a dependency overview when needed. `task list`
@@ -1177,7 +1195,7 @@ statuses and can be combined with `--all`. List results place `in_progress`
 first, then ready tasks, other `todo` tasks, `proposed`, and `done`; each group retains
 service order across all pages. This order applies to human and JSON results.
 `task ready` accepts neither `--status` nor `--cursor`. `task list` supports the
-same optional permission filter across every matching page. The flag is
+same optional permission and compatibility filters across every matching page. The permission flag is
 independent of readiness and approval; manual claim accepts either value.
 
 Updates preserve omitted fields; an empty description clears it. Repeated
@@ -1193,6 +1211,14 @@ permission; omitted preserves it. Creation rejects the option. Existing tasks
 receive true through migration without changing versions or business timestamps.
 A matching same-value permission PATCH retains version and time, while a stale
 version still conflicts and an actual in-progress toggle fails atomically.
+Create and update accept `--required-platform windows|linux|macos`; update
+accepts `--clear-required-platform` to send null, mutually exclusive with setting
+a platform. Omission preserves an existing requirement. New and migrated tasks
+are unrestricted unless explicitly set. Exact-version equal platform updates
+preserve version and time; stale updates conflict and actual in-progress changes
+are refused atomically. Ordinary manual claim remains available for every
+requirement. The query platform selects candidates; it does not configure or
+prove the environment of a future worker.
 By default the CLI reads the task version before PATCH; `--if-version <n>`
 uses that exact positive int64 version. Conflicts and failed writes are reported
 without automatic retries.
@@ -1206,12 +1232,15 @@ inline assignment. Attachment `put` declares its `--path` as text, accepting
 paths starting with a dash. Other task operations retain their declared syntax.
 
 Human task lists use labeled blocks containing ID, project, title, PR references,
-status, readiness, automatic-execution permission, dependencies and blocking.
+status, readiness, automatic-execution permission, required platform, dependencies and blocking.
 Description, version and timestamps
 remain available in show, ready, create and update output. Graph nodes include
-state, permission, dependencies, blocking and title-preview truncation flags.
+state, permission, required platform, dependencies, blocking and title-preview truncation flags.
 Task and graph decoders require a boolean `allowAgents`; missing, null or
-nonboolean values are protocol errors. Queries support
+nonboolean values are protocol errors. They also require `requiredPlatform`
+as null or one of the three platform enums; missing keys or other values fail
+without a runtime default. Human output uses `Required platform: any` for null
+and the enum otherwise. Queries support
 `--json`: task `list` returns every matching task in one array, omitting only
 `description` while retaining every other API field, including raw PR strings,
 version and timestamps. This applies to the default list and every filter,

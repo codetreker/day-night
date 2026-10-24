@@ -147,7 +147,7 @@ const createGraph = (scenario: BrowsingScenario, number: number): TaskGraph => {
     const createdAt = new Date(Date.UTC(2026, 9, 21, 9, task.number * 10)).toISOString();
     const title = Array.from(task.title);
     titles.set(`${id(number)}:${id(task.number)}`, task.title);
-    return { allowAgents: false, startedAt: null, completedAt: null,
+    return { requiredPlatform: null, allowAgents: false, startedAt: null, completedAt: null,
       id: id(task.number), titlePreview: title.slice(0, 160).join(''), titleTruncated: title.length > 160, status: task.status,
       dependsOn: task.dependencies.map(id).sort(), externalDependsOn: task.externalDependencies.map(id).sort(), blockedBy,
       ready: task.status === 'todo' && blockedBy.length === 0, createdAt, updatedAt: createdAt,
@@ -175,7 +175,7 @@ export const browsingProjects = Object.fromEntries(
   (Object.keys(browsingScenarioLabels) as BrowsingScenario[]).map((scenario, index) => [scenario, createGraph(scenario, 101 + index)]),
 ) as Readonly<Record<BrowsingScenario, TaskGraph>>;
 
-const detail = (graph: TaskGraph, task: GraphTask | TaskDetail, scenario: BrowsingDetailScenario, version = 1n): TaskDetail => ({ allowAgents: task.allowAgents, startedAt: task.startedAt, completedAt: task.completedAt,
+const detail = (graph: TaskGraph, task: GraphTask | TaskDetail, scenario: BrowsingDetailScenario, version = 1n): TaskDetail => ({ requiredPlatform: task.requiredPlatform, allowAgents: task.allowAgents, startedAt: task.startedAt, completedAt: task.completedAt,
   id: task.id, projectId: graph.project.id, title: titles.get(`${graph.project.id}:${task.id}`)!, version,
   status: task.status, dependsOn: task.dependsOn, externalDependsOn: task.externalDependsOn, blockedBy: task.blockedBy, ready: task.ready,
   createdAt: task.createdAt, updatedAt: task.updatedAt,
@@ -216,7 +216,7 @@ const fault = (code: string, status: number): Response => jsonResponse({
 }, status);
 
 const graphSnapshot = (state: SceneState): TaskGraph => {
-  const tasks: GraphTask[] = [...state.tasks.values()].map((task) => ({ allowAgents: task.allowAgents, startedAt: task.startedAt, completedAt: task.completedAt,
+  const tasks: GraphTask[] = [...state.tasks.values()].map((task) => ({ requiredPlatform: task.requiredPlatform, allowAgents: task.allowAgents, startedAt: task.startedAt, completedAt: task.completedAt,
     id: task.id, titlePreview: Array.from(task.title).slice(0, 160).join(''), titleTruncated: Array.from(task.title).length > 160,
     status: task.status, dependsOn: task.dependsOn, externalDependsOn: task.externalDependsOn, blockedBy: task.blockedBy, ready: task.ready,
     createdAt: task.createdAt, updatedAt: task.updatedAt,

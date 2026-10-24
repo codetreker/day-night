@@ -76,6 +76,15 @@
 .task-automation-error { color: #a05252; margin-top: 8px; }
 .task-detail-toast { position: absolute; z-index: 2; right: 20px; bottom: 20px; max-width: calc(100% - 40px); padding: 12px 18px; border: 1px solid #d7e8de; border-radius: 8px; background: #f3f9f5; color: #438365; box-shadow: 0 8px 28px #17244722; font-size: 12px; overflow-wrap: anywhere; pointer-events: none; }
 
+.task-detail-badges .task-platform { padding: 3px 8px; }
+.task-platform-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.task-platform-controls select { flex: 1; min-width: 120px; max-width: 100%; font: inherit; font-size: 12px; border: 1px solid #dce0e8; border-radius: 6px; background: #fff; color: #344258; padding: 7px 9px; }
+.task-platform-controls select:focus-visible { outline: 3px solid #8c8cf0; outline-offset: 3px; }
+.task-platform-controls .button, .task-platform-feedback .button { font-size: 11px; }
+.task-platform-help, .task-platform-feedback { margin-top: 10px; color: #737d8e; font-size: 11px; line-height: 1.8; overflow-wrap: anywhere; }
+.task-platform-feedback .button, .task-platform-error { margin-top: 8px; }
+.task-platform-error { color: #a05252; }
+
 .task-detail-status-todo { background: #edf0f4; color: #667387; }
 .task-detail-status-proposed { background: #f1ebf8; color: #8262a5; }
 .task-detail-status-in_progress { background: #edf2ff; color: #4e74bd; }

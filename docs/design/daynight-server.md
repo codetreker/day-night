@@ -103,7 +103,7 @@ index 后由前端显示未找到页面。独立附件命名空间复用原始�
 | 对象 | 字段与含义 |
 |---|---|
 | Project | `id`、非空 `name`、`repoUrl`、`createdAt`、`updatedAt`，以及具体 `settings`（正 int64 version、正 int32 executionWarningMinutes） |
-| Task | `id`、`projectId`、非空 `title`、`description`、`status`、布尔 `allowAgents`、具体 `properties`、`version`、`createdAt`、`updatedAt`，以及可空 `startedAt`、`completedAt` |
+| Task | `id`、`projectId`、非空 `title`、`description`、`status`、布尔 `allowAgents`、可空平台枚举 `requiredPlatform`、具体 `properties`、`version`、`createdAt`、`updatedAt`，以及可空 `startedAt`、`completedAt` |
 | TaskDependency | `projectId`、`taskId`、`dependsOnTaskId`、非空布尔 `external`（默认 false） |
 
 `TaskDependency` 的方向是“`taskId` 依赖 `dependsOnTaskId`”。project 拥有任务及依赖
@@ -128,8 +128,10 @@ index 后由前端显示未找到页面。独立附件命名空间复用原始�
 `settings_version bigint DEFAULT 1`，两列均非空；既有项目的创建/更新时间保持不变。
 项目创建、成员可见列表、单项读取和完整图投影共用同一 settings 扫描与 HTTP DTO。
 `011_task_agent_permission.sql` 为 task 增加非空布尔 `allow_agents`：既有行取得 true，随后数据库新行默认值为 false；应用创建同样显式提供 false。迁移保持任务版本、业务时间及其他字段不变。完整读写、图精简投影和生命周期候选都显式携带许可，严格读取不补缺字段默认值。
+
 `012_external_dependencies.sql` 给依赖行增加 `external boolean NOT NULL DEFAULT false`，
 旧边保持原端点并取得普通性质，其他任务、设置、计时、自动执行许可和迁移校验和不变。
+`013_task_required_platform.sql` 增加 task 同行的 `required_platform` 可空 text，CHECK 仅接受 windows/linux/macos；既有和未指定值的新行均为 null，不重写任务版本、业务时间或其他字段。完整任务、图精简投影、创建/更新候选和生命周期写入都显式携带平台；API 资源始终输出 `requiredPlatform`，不以字段缺失表达任意平台。
 
 表不建立 foreign key。引用存在性、同 project 限制和图规则由获得 project 写锁后的
 service 写入路径校验；所有写入都必须经过该路径。没有删除 API，使引用不会因资源
@@ -179,7 +181,7 @@ externalDependsOn 是同项目关系中 external=true 的排序子集；三个�
 统计。派生数组不单独持久化，不因前置变化而修改本 task 的状态、版本或更新时间。
 POST/PATCH 接收 externalDependsOn，按最终完整依赖集合验证其子集。创建省略集合为空；
 更新字段独立可选：仅给完整 ID 时保留存续边性质、新边 false，仅给外部子集时保留端点，
-同时给两者时精确替换。候选及 delete/reinsert 携带完整分类，标题、PR、allowAgents 及
+同时给两者时精确替换。候选及 delete/reinsert 携带完整分类，标题、PR、allowAgents、requiredPlatform 及
 approve、unapprove、claim、complete 保留无关值。分类变化增加一次版本及 updatedAt，
 状态、执行起止保持；过期同值先冲突，正规化同值不写。执行验证继续遍历全部关系。
 完整写入组合见[外部依赖架构](daynight-external-dependencies.md)。
@@ -217,7 +219,7 @@ approve、unapprove、claim、complete 保留无关值。分类变化增加一�
 锁内读取的数据，不依赖请求前查询或进程缓存。
 
 PATCH 的语义空操作仍检查版本及输入，返回当前资源，保持 `version` 和 `updatedAt`
-不变。许可判断沿用此顺序：锁后检查成员与版本，再判断 `allowAgents` 是否变化；同值返回当前资源，实际变化在 `in_progress` 拒绝。许可编辑与 claim 并发时共享该项目锁；自动执行许可不改变普通 claim、审批、ready 或依赖约束。任意真实字段、状态或依赖集合变化只增加一次版本；依赖顺序变化不算真实变更。
+不变。许可与平台判断沿用此顺序：锁后检查成员与版本，再比较 `allowAgents`、`requiredPlatform` 的候选值；同值返回当前资源，任一实际变化在 `in_progress` 拒绝。两种编辑与 claim 并发时共享该项目锁，拒绝不留下其他字段的部分更新。普通人工 claim 不按许可或平台筛选，审批、ready 和依赖约束保持独立。任意真实字段、状态或依赖集合变化只增加一次版本；依赖顺序变化不算真实变更。
 业务校验先生成候选变更计划，完成全部检查后才执行写入。预期拒绝保留为业务结果，
 callback 不执行写入并正常结束；只有外层事务成功后才返回业务 Fault，提交或清理失败
 优先暴露为内部失败。没有删除 API，因此锁前确认过的 project 存在性不会由合法 API
@@ -259,7 +261,7 @@ PR 引用表示空数组。创建成功
 并用锁后的 statement 时间更新 project.updatedAt。响应在该事务内构造完整 Project，沿用已有提交/清理错误优先规则。
 
 Task PATCH 必须提交期望的 `version`，并至少提供 `title`、`description`、
-`dependsOn`、`externalDependsOn`、`allowAgents` 或一个已定义属性。只有 `version` 或空 `properties` 的请求返回
+`dependsOn`、`externalDependsOn`、`allowAgents`、`requiredPlatform` 或一个已定义属性。只有 `version` 或空 `properties` 的请求返回
 `invalid_input`；
 提供字段但值未变的请求采用前述语义空操作规则。例如：
 
@@ -276,8 +278,8 @@ status 是输入错误，含其他合法字段也不写入；HTTP 与日志保�
 作为独立的 409 分类。严格 request DTO 和具体服务 use case 共用原 project 锁。
 
 省略可更新字段表示保持原值；`description: ""` 清空描述，`dependsOn: []` 清空
-依赖，`properties.pullRequests: []` 清空 PR 引用。`allowAgents` 使用可选布尔输入保留 omitted/false 的区别，创建严格拒绝该字段。属性数组按序比较并整体替换，
-具体记录只有字符串 `url` 和 `title`；内容不做业务校验。显式 `null`、嵌套未知或
+依赖，`properties.pullRequests: []` 清空 PR 引用。`allowAgents` 使用可选布尔输入保留 omitted/false 的区别，创建严格拒绝该字段。`requiredPlatform` 使用明确的字段存在性和可空值区分省略、设置与清除：PATCH 省略保持、枚举设置、null 清除；创建省略或 null 均不限制。`core.TaskPlatform.Valid()` 验证枚举，`core.PlatformCompatible(required, actual)` 以 null/同值规则匹配，不读取服务进程的平台。PATCH 的双层指针明确区分未提供和显式 null，不把清除转换为省略。属性数组按序比较并整体替换，
+具体记录只有字符串 `url` 和 `title`；内容不做业务校验。除平台字段允许清除外，显式 `null`、嵌套未知或
 重复字段、不合理的类型及非法枚举均为输入错误。`id`、
 `projectId`、创建时间及更新时间不可由调用者写入。任务返回结构包含模型字段及
 `dependsOn`、`externalDependsOn`、`blockedBy`、`ready`；外部子集是必填读取字段，也是创建/PATCH 的可选分类输入。
@@ -298,7 +300,7 @@ project 中存在的 `taskId` 仍返回 `not_found`。依赖输入中的缺失�
 两个列表接口接受 `limit` 和不透明 `cursor`。`limit` 默认 50，范围为 1 至 100，
 使用 `(createdAt, id)` 升序 keyset 分页；响应为 `items` 和 `nextCursor`，没有
 下一页时后者为 `null`。
-task 列表另外接受单个 `status` 枚举及 `ready`、`allowAgents` 布尔筛选，按 AND 组合。许可筛选直接加入 SQL 谓词，先于排序、limit 和 lookahead；true、false 和未提供三种查询范围均绑定 cursor。
+task 列表另外接受单个 `status` 枚举、`ready`、`allowAgents` 布尔筛选和三个枚举之一的 `compatiblePlatform`，按 AND 组合。兼容谓词为 `required_platform IS NULL OR required_platform = requested_platform`；许可、平台和 ready 条件都在 SQL 中先于排序、limit 和 lookahead。cursor 绑定全部筛选，保留许可的未提供/true/false 与平台的未提供/三个枚举范围，切换或移除任一筛选不能沿用旧 cursor。
 
 cursor 编码最后一项的位置、资源类型、project 路径范围及规范化筛选条件。解码时
 校验格式和范围，拒绝将 project 列表 cursor 用于 task 列表，或在修改筛选后复用。
@@ -307,7 +309,7 @@ cursor 不承担身份授权或加密职责。列表不承诺跨多次请求维�
 
 单次 GET 或列表的任务状态、依赖与派生字段必须来自同一个数据库快照。实现可以在
 同一 SQL 语句中聚合，或在只读 `REPEATABLE READ` 事务内完成分页、依赖和状态查询。
-`ready` 筛选在数据库中使用同一状态条件，`allowAgents` 使用 task 同行许可；不能取一页后在应用中删掉 blocked 或许可不匹配的任务。
+`ready` 筛选在数据库中使用同一状态条件，`allowAgents` 和 `requiredPlatform` 使用 task 同行值；不能取一页后在应用中删掉 blocked、许可不匹配或平台不兼容的任务。
 分页边界应用于筛选后的结果，`nextCursor` 根据该结果中是否还有记录产生。
 
 ## 错误与诊断

@@ -4,7 +4,7 @@ import { OperationError } from "./operation.js";
 import { validateServerToken, validateTokenTransport } from "../config/server-token.js";
 import type { Operation } from "./operation.js";
 import { canonicalId, parsePage, parseProject, parseServerError, parseTask, parseTaskGraph, parseTaskAttachment, ProtocolError, validateAttachmentPath } from "./parse.js";
-import type { AttachmentConsumer, CreateProjectInput, CreateTaskInput, ErrorDetails, Project, PutTaskAttachmentInput, ServerError, Task, TaskActionInput, TaskAttachment, TaskFilters, TaskGraph, UpdateTaskInput } from "./types.js";
+import type { AttachmentConsumer, CreateProjectInput, CreateTaskInput, ErrorDetails, Project, PutTaskAttachmentInput, ReadyTaskFilters, ServerError, Task, TaskActionInput, TaskAttachment, TaskFilters, TaskGraph, UpdateTaskInput } from "./types.js";
 
 type Context = { readonly operation: string; readonly projectId?: string; readonly taskId?: string };
 export type ApiPhase = "prepare" | "request" | "response" | "protocol" | "pagination";
@@ -56,7 +56,7 @@ export type ApiClient = {
   createTask(projectId: string, input: CreateTaskInput): Promise<Task>;
   getTask(projectId: string, taskId: string): Promise<Task>;
   listTasks(projectId: string, filters?: TaskFilters): Promise<readonly Task[]>;
-  listReadyTasks(projectId: string, limit: number, allowAgents?: boolean): Promise<readonly Task[]>;
+  listReadyTasks(projectId: string, limit: number, filters?: ReadyTaskFilters): Promise<readonly Task[]>;
   updateTask(projectId: string, taskId: string, input: UpdateTaskInput): Promise<Task>;
   approveTask(projectId: string, taskId: string, input: TaskActionInput): Promise<Task>;
   unapproveTask(projectId: string, taskId: string, input: TaskActionInput): Promise<Task>;
@@ -324,6 +324,7 @@ export const createApiClient = (options: {
       const project = resourceId(projectId);
       return request({ operation: "task.create", projectId: project }, `/projects/${encodeURIComponent(project)}/tasks`, "POST", (value) => parseTask(value, project), {
         title: input.title,
+        ...(input.requiredPlatform === undefined ? {} : { requiredPlatform: input.requiredPlatform }),
         ...(input.description === undefined ? {} : { description: input.description }),
         ...(input.dependsOn === undefined ? {} : { dependsOn: input.dependsOn }),
         ...(input.externalDependsOn === undefined ? {} : { externalDependsOn: input.externalDependsOn }),
@@ -336,21 +337,22 @@ export const createApiClient = (options: {
     },
     listTasks: (projectId, filters = {}) => {
       const project = resourceId(projectId);
-      const query = { ...(filters.status === undefined ? {} : { status: filters.status }), ...(filters.ready === undefined ? {} : { ready: String(filters.ready) }), ...(filters.allowAgents === undefined ? {} : { allowAgents: String(filters.allowAgents) }) };
+      const query = { ...(filters.status === undefined ? {} : { status: filters.status }), ...(filters.ready === undefined ? {} : { ready: String(filters.ready) }), ...(filters.allowAgents === undefined ? {} : { allowAgents: String(filters.allowAgents) }), ...(filters.compatiblePlatform === undefined ? {} : { compatiblePlatform: filters.compatiblePlatform }) };
       return list({ operation: "task.list", projectId: project }, `/projects/${encodeURIComponent(project)}/tasks`, (value) => {
         const task = parseTask(value, project);
-        if ((filters.status !== undefined && task.status !== filters.status) || (filters.ready !== undefined && task.ready !== filters.ready) || (filters.allowAgents !== undefined && task.allowAgents !== filters.allowAgents)) throw new ProtocolError("Task does not match the requested filters.");
+        if ((filters.status !== undefined && task.status !== filters.status) || (filters.ready !== undefined && task.ready !== filters.ready) || (filters.allowAgents !== undefined && task.allowAgents !== filters.allowAgents) || (filters.compatiblePlatform !== undefined && task.requiredPlatform !== null && task.requiredPlatform !== filters.compatiblePlatform)) throw new ProtocolError("Task does not match the requested filters.");
         return task;
       }, (task) => task.id, query);
     },
-    listReadyTasks: (projectId, limit, allowAgents) => {
+    listReadyTasks: (projectId, limit, filters = {}) => {
       const project = resourceId(projectId);
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error("Ready task limit must be an integer from 1 to 100.");
-      const query = new URLSearchParams({ ready: "true", limit: String(limit), ...(allowAgents === undefined ? {} : { allowAgents: String(allowAgents) }) });
+      const { allowAgents, compatiblePlatform } = filters;
+      const query = new URLSearchParams({ ready: "true", limit: String(limit), ...(allowAgents === undefined ? {} : { allowAgents: String(allowAgents) }), ...(compatiblePlatform === undefined ? {} : { compatiblePlatform }) });
       return request({ operation: "task.ready", projectId: project }, `/projects/${encodeURIComponent(project)}/tasks?${query}`, "GET", (value) => {
         const page = parsePage(value, (item) => {
           const task = parseTask(item, project);
-          if (!task.ready || (allowAgents !== undefined && task.allowAgents !== allowAgents)) throw new ProtocolError("Task does not match the requested ready filters.");
+          if (!task.ready || (allowAgents !== undefined && task.allowAgents !== allowAgents) || (compatiblePlatform !== undefined && task.requiredPlatform !== null && task.requiredPlatform !== compatiblePlatform)) throw new ProtocolError("Task does not match the requested ready filters.");
           return task;
         }, (task) => task.id);
         if (page.items.length > limit) throw new ProtocolError("Ready task page exceeds the requested limit.");
@@ -362,6 +364,7 @@ export const createApiClient = (options: {
       return request({ operation: "task.update", projectId: project, taskId: task }, `/projects/${encodeURIComponent(project)}/tasks/${encodeURIComponent(task)}`, "PATCH", (value) => parseTask(value, project, task), {
         version: input.version,
         ...(input.allowAgents === undefined ? {} : { allowAgents: input.allowAgents }),
+        ...(input.requiredPlatform === undefined ? {} : { requiredPlatform: input.requiredPlatform }),
         ...(input.title === undefined ? {} : { title: input.title }),
         ...(input.description === undefined ? {} : { description: input.description }),
         ...(input.dependsOn === undefined ? {} : { dependsOn: input.dependsOn }),

@@ -24,7 +24,7 @@ export const TaskApproval = ({ detail, approval, onReconcile }: {
   useLayoutEffect(() => {
     if (approval.phase !== 'idle' && document.activeElement === document.body) message.current?.focus();
   }, [approval.phase, detail?.status]);
-  if (approval.phase === 'idle' || approval.operation?.action === 'allowAgents') return null;
+  if (approval.phase === 'idle' || approval.operation?.action !== 'approve' && approval.operation?.action !== 'unapprove') return null;
   const busy = approval.phase === 'pending' || approval.reconciling;
   const unresolved = approval.phase === 'unknown' || approval.reconciliationError !== null;
   const summary = approval.reconciling ? m.checking : approval.phase === 'pending' ? m.pending

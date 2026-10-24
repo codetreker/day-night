@@ -336,9 +336,9 @@ flowchart TD
 | `project create <name> [--repo <repo>]` | 完整 `GET /api/v1/projects` 预检；仅零匹配时 `POST /api/v1/projects`，提交原始 `name`、`repoUrl` |
 | `project list` | `GET /api/v1/projects`，读到 `nextCursor: null` |
 | `project show <id>` | `GET /api/v1/projects/{id}` |
-| `task create` | `POST /api/v1/projects/{projectId}/tasks` |
+| `task create [--required-platform <platform>]` | `POST /api/v1/projects/{projectId}/tasks`，可选 requiredPlatform |
 | `task list` | `GET /api/v1/projects/{projectId}/tasks`，保留相同筛选遍历 cursor |
-| `task ready [--limit <N>] [--allow-agents true\|false]` | 单次 `GET /api/v1/projects/{projectId}/tasks?ready=true&limit=N`，可带 allowAgents，不提交 cursor |
+| `task ready [--limit <N>] [--allow-agents true\|false] [--compatible-platform <platform>]` | 单次 `GET /api/v1/projects/{projectId}/tasks?ready=true&limit=N`，可带 allowAgents、compatiblePlatform，不提交 cursor |
 | `task show <id>` | `GET /api/v1/projects/{projectId}/tasks/{id}` |
 | `task update <id>` | 可选先 GET task，再 PATCH 同一路径，只写元数据 |
 | `task approve/unapprove/claim/complete <id>` | 可选先 GET task，再 POST 同一 task 的 `/approve`、`/unapprove`、`/claim` 或 `/complete`，body 只含 version |
@@ -356,7 +356,7 @@ flowchart TD
 
 `task list` 的状态选择和展示顺序属于命令层。默认从完整结果中排除 `done`；
 `--all` 保留所有状态，`--status` 使用既有单状态查询，两者互斥并在任何 I/O 前
-拒绝。`--ready` 沿用服务筛选，与所选状态取交集，包含 `--all --ready`。`list`、`ready` 的 `--allow-agents true|false` 直接投影到服务查询；未提供、true、false 各自保留。完整分页保持该筛选，返回项不匹配时拒绝，不在客户端过滤掉一页中的任务。
+拒绝。`--ready` 沿用服务筛选，与所选状态取交集，包含 `--all --ready`。`list`、`ready` 的 `--allow-agents true|false` 和 `--compatible-platform windows|linux|macos` 直接投影到服务查询；各字段省略时保留未筛选语义。服务在分页前组合许可、ready、状态与 null/同平台兼容条件，完整分页保留全部筛选。客户端验证返回项符合已声明条件，违反时拒绝，不在本地过滤掉一页中的任务。
 命令在全部分页成功后按 `in_progress`、ready、其余 `todo`、`proposed`、`done` 稳定分组，
 同一组保留服务按 `createdAt ASC, id ASC` 返回的跨页顺序。文本和 JSON 消费
 同一选择结果，因此分页边界不会改变组间优先顺序。此机制复用既有 API 筛选和分页，
@@ -374,7 +374,7 @@ API 的响应状态解码与命令输入 choices 分别拥有不同契约：task
 选择都读取完整 ready 集合。命令校验 `--limit` 为十进制整数 `1..100`，省略时
 为 `10`；无效值在配置读取、Git 与网络访问之前拒绝。它不接受 `--status` 或
 `--cursor`。`api/client.ts` 的 `listReadyTasks` 独立拥有有界操作，使用既有 task
-列表接口发送一次 `ready=true`、`limit=N` 和可选 `allowAgents` 请求。DTO 继续验证完整分页 envelope；
+列表接口发送一次 `ready=true`、`limit=N` 和可选 `allowAgents`、`compatiblePlatform` 请求。DTO 继续验证完整分页 envelope；
 合法 `nextCursor` 表示尚有候选，调用方不跟随。无论当前响应是否达到 N 项，都不
 补发请求。`task list --ready` 仍执行完整分页。
 
@@ -424,6 +424,8 @@ compileDependencies 只在关系选项出现时加载 UUID 校验；普通 N 与
 
 `Task` 和 graph-task 解码要求 `allowAgents` 为明确布尔值；不从缺失、null 或字符串补默认值。`update --allow-agents` 把实际布尔放入普通 PATCH，省略时不产生该字段；create 不接受该选项。同值与 in_progress 锁定由服务判定，命令不自动重试。参数定义同时提供 true/false 的静态补全。
 
+`requiredPlatform` 在完整 Task 与 graph-task 均为必填 null/三平台枚举。创建只在 `--required-platform` 出现时发送枚举；update 用同名选项设置，或用互斥的 `--clear-required-platform` 发送 null，二者都省略时不生成 key。静态 choices 为 windows/linux/macos，同一参数定义拥有帮助和三种 shell 补全。服务器负责同值、锁定和迁移语义；CLI 不以缺字段默认值兼容旧资源，也不把查询参数当作实际运行环境。后续 worker 根据自身运行环境选取该枚举，WSL 的 Linux 运行时属于 linux。
+
 `Task.version` 与 PATCH 版本覆盖完整正 `int64` 范围，内部使用 `bigint`；JSON 读取
 从数字原文保留精度，写入及 `--json` 使用 JSON 数字，不能转换为字符串或不精确的
 JavaScript `number`。Project、分页项目及 graph.project 的必填 settings 使用同一精确版本规则，
@@ -468,7 +470,7 @@ Project 渲染由 `commands/project/rendering.ts` 拥有，与 API 数据分离�
 显示为 `\uXXXX`。普通 Unicode、emoji 和原有反斜线保持原样；该转换只属于终端
 显示，不改变提交给服务或 JSON 输出的数据。
 
-Task 的 `rendering.ts` 提供列表标签块与完整资源标签块，均显示 `Automatic execution` 的真实布尔值，graph 的可读节点同样保留该许可。列表包含 `ID`、
+Task 的 `rendering.ts` 提供列表标签块与完整资源标签块，均显示 `Automatic execution` 的真实布尔值与 `Required platform`，null 平台显示为 any，其他值保留枚举；graph 的可读节点同样保留两字段。列表包含 `ID`、
 `Project`、`Title`、`Status`、`Ready`、`Depends on`、`Blocked by`，以及关联 PR
 数量、按顺序编号的 title/url；完整资源另外包含 `Description`、完整十进制
 `Version`、`Created` 和 `Updated`，供 show、ready、create 和 update 使用。
@@ -508,7 +510,7 @@ stderr 错误包含操作名、已确定的 project/task ID、失败阶段和可
 
 ## 验证与交付证据
 
-验证由需求 V1–V13 约束。测试按模块归属组织，避免只镜像实现分支：
+验证由需求 V1–V15 约束。测试按模块归属组织，避免只镜像实现分支：
 
 | 层次 | 关键观察 |
 |---|---|

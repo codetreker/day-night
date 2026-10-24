@@ -32,12 +32,12 @@ const graph: TaskGraphData = { observedAt: "2026-10-20T12:00:00Z",
   project: { settings: { version: 1n, executionWarningMinutes: 60 }, id: 'project', name: '项目', repoUrl: 'https://github.com/example/repo', createdAt: time, updatedAt: time },
   summary: { total: 6, proposed: 0, todo: 3, inProgress: 1, done: 2, ready: 2, blocked: 1 },
   tasks: [
-    { allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null, id: 'A', titlePreview: '基础 API', titleTruncated: false, status: 'done', dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
-    { allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null, id: 'B', titlePreview: '设计方案', titleTruncated: false, status: 'done', dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
-    { allowAgents: false, externalDependsOn: ['B'], startedAt: null, completedAt: null, id: 'C', titlePreview: '合流实现', titleTruncated: true, status: 'in_progress', dependsOn: ['A', 'B'], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
-    { allowAgents: false, externalDependsOn: ['F'], startedAt: null, completedAt: null, id: 'D', titlePreview: '最终验收', titleTruncated: false, status: 'todo', dependsOn: ['C', 'F'], blockedBy: ['C', 'F'], ready: false, createdAt: time, updatedAt: time },
-    { allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null, id: 'E', titlePreview: '独立任务', titleTruncated: false, status: 'todo', dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time },
-    { allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null, id: 'F', titlePreview: '发布检查', titleTruncated: false, status: 'todo', dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time },
+    { requiredPlatform: null, allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null, id: 'A', titlePreview: '基础 API', titleTruncated: false, status: 'done', dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
+    { requiredPlatform: null, allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null, id: 'B', titlePreview: '设计方案', titleTruncated: false, status: 'done', dependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
+    { requiredPlatform: null, allowAgents: false, externalDependsOn: ['B'], startedAt: null, completedAt: null, id: 'C', titlePreview: '合流实现', titleTruncated: true, status: 'in_progress', dependsOn: ['A', 'B'], blockedBy: [], ready: false, createdAt: time, updatedAt: time },
+    { requiredPlatform: null, allowAgents: false, externalDependsOn: ['F'], startedAt: null, completedAt: null, id: 'D', titlePreview: '最终验收', titleTruncated: false, status: 'todo', dependsOn: ['C', 'F'], blockedBy: ['C', 'F'], ready: false, createdAt: time, updatedAt: time },
+    { requiredPlatform: null, allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null, id: 'E', titlePreview: '独立任务', titleTruncated: false, status: 'todo', dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time },
+    { requiredPlatform: null, allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null, id: 'F', titlePreview: '发布检查', titleTruncated: false, status: 'todo', dependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time },
   ],
 };
 const index = buildGraphIndex(graph);
@@ -63,6 +63,16 @@ describe('task dependency canvas', () => {
       expect(node.style.width).toBe('220px');
       expect(node.style.height).toBe('96px');
     }
+  });
+
+  it('renders platform badges on main and external nodes without changing task status', async () => {
+    const platforms: TaskGraphData = { ...graph, tasks: graph.tasks.map((task) => ({ ...task, requiredPlatform: task.id === 'C' ? 'linux' : task.id === 'F' ? 'windows' : null })) };
+    const view = render(<TaskGraph index={buildGraphIndex(platforms)} rootId="A" onOpenTask={noop} />);
+    await ready(view.container);
+    expect(within(nodeButton('合流实现…')).getByText('Linux')).toHaveClass('task-platform-compact');
+    expect(within(nodeButton('发布检查')).getByText('Windows')).toHaveClass('task-platform-compact');
+    expect(within(nodeButton('基础 API')).getByText('不限平台')).toBeVisible();
+    expect(nodeShell('合流实现…')).toHaveClass('task-node-in_progress');
   });
 
   it('exposes proposed main and external nodes with their own status and unfinished prerequisites', async () => {

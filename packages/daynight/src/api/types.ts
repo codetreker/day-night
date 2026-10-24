@@ -1,4 +1,5 @@
 export type TaskStatus = "proposed" | "todo" | "in_progress" | "done";
+export type TaskPlatform = "windows" | "linux" | "macos";
 
 export type TaskAttachment = {
   readonly path: string;
@@ -43,6 +44,7 @@ export type Task = {
   readonly description: string;
   readonly status: TaskStatus;
   readonly allowAgents: boolean;
+  readonly requiredPlatform: TaskPlatform | null;
   readonly startedAt: string | null;
   readonly completedAt: string | null;
   readonly version: bigint;
@@ -81,6 +83,7 @@ export type Page<T> = { readonly items: readonly T[]; readonly nextCursor: strin
 export type CreateProjectInput = { readonly name: string; readonly repoUrl: string };
 export type CreateTaskInput = {
   readonly title: string;
+  readonly requiredPlatform?: TaskPlatform | null;
   readonly description?: string;
   readonly properties?: TaskProperties;
   readonly dependsOn?: readonly string[];
@@ -89,6 +92,7 @@ export type CreateTaskInput = {
 export type UpdateTaskInput = {
   readonly version: bigint;
   readonly allowAgents?: boolean;
+  readonly requiredPlatform?: TaskPlatform | null;
   readonly title?: string;
   readonly description?: string;
   readonly properties?: TaskProperties;
@@ -96,7 +100,8 @@ export type UpdateTaskInput = {
   readonly externalDependsOn?: readonly string[];
 };
 export type TaskActionInput = { readonly version: bigint };
-export type TaskFilters = { readonly status?: TaskStatus; readonly ready?: boolean; readonly allowAgents?: boolean };
+export type TaskFilters = { readonly status?: TaskStatus; readonly ready?: boolean; readonly allowAgents?: boolean; readonly compatiblePlatform?: TaskPlatform };
+export type ReadyTaskFilters = Pick<TaskFilters, "allowAgents" | "compatiblePlatform">;
 export type ErrorDetails = {
   readonly taskIds?: readonly string[];
   readonly nodeCount?: number;

@@ -437,15 +437,18 @@ All project members, including administrators, can perform these resource writes
 project settings, member management and invitation management require the administrator role. HTTP
 routes use that instance. Lifecycle POST routes and method-refusal handlers
 require authentication, enforce exact Origin for Cookie writes and return no-store.
-Creation uses `proposed` and `allowAgents=false`;
-its predefined `properties.pullRequests` list defaults to empty. The permission
+Creation uses `proposed`, `allowAgents=false` and unrestricted
+`requiredPlatform=null`; its predefined `properties.pullRequests` list defaults
+to empty. The permission
 is a required boolean in full tasks and graph nodes. Migration
 `011_task_agent_permission.sql` sets existing records to true and changes the
 database default for future inserts to false, preserving versions and business
 timestamps. Public creation rejects the field, including an explicit false. Updates require
 a positive expected version and at least one mutable pointer field. Nil means omitted, while an empty description or supplied empty dependency
-or PR list clears that value. The task HTTP boundary rejects explicit JSON null
-before constructing these Go parameters.
+or PR list clears that value. The task HTTP boundary rejects explicit JSON null for fields whose contract
+does not allow it. Platform creation accepts null or one of `windows`, `linux`
+and `macos`; platform PATCH retains field presence separately from its nullable
+value, so omitted preserves and explicit null clears.
 
 Dependencies are canonicalized UUIDs, sorted and checked for duplicate identity,
 self-reference, missing/cross-project tasks and cycles. Every update validates
@@ -468,8 +471,19 @@ and checks the exact version before same-value handling. A same-value update
 retains version and time; an actual change during `in_progress` is refused as
 `invalid_transition`, atomically with any other requested changes. Manual claim
 accepts either value. Approval, withdrawal, readiness and execution timing keep
-their independent meanings. Worker-specific claim enforcement remains part of
-the [worker design](../../docs/design/daynight-worker.md).
+their independent meanings. The required `requiredPlatform` resource key contains null or one of `windows`,
+`linux` and `macos`. Migration `013_task_required_platform.sql` adds the nullable text column with an
+enum check; existing and default new rows are unrestricted without rewriting
+versions, timestamps or other fields. Platform
+PATCH uses the same member/version/project-lock ordering, semantic no-op and
+in-progress refusal as permission changes. A stale same-value request still
+conflicts; an actual in-progress platform change refuses the whole patch.
+Platform and permission preserve each other through every lifecycle transition,
+and manual claim remains available regardless of either value. The shared
+`core.TaskPlatform.Valid()` and `core.PlatformCompatible(required, actual)`
+validate enum values and compatibility without using the server operating
+system as a remote worker identity. Worker-specific claim
+enforcement remains part of the [worker design](../../docs/design/daynight-worker.md).
 PR order and duplicate entries are retained; changing their order is a real change.
 Predecessor changes derive readiness on read without changing downstream status,
 version or timestamps.
@@ -496,8 +510,11 @@ Expected refusals are captured before any write and returned only after the
 outer lock-only transaction succeeds; transaction/cleanup failures remain
 operational errors. Lists and reads check project existence and task state
 inside one RR snapshot. Task cursors bind the canonical project and optional
-status/ready/allowAgents filters, preserving the difference between absent and
-false. Permission filtering runs in SQL before ordering, limit and lookahead.
+status/ready/allowAgents/compatiblePlatform filters, preserving the difference
+between absent and false and between an absent platform and each enum.
+`compatiblePlatform` accepts `windows`, `linux` or `macos` and includes tasks
+whose requirement is null or matches. All filtering runs in SQL before ordering,
+limit and lookahead; a bounded page cannot hide later compatible tasks.
 
 ## Complete task graph
 
@@ -528,7 +545,8 @@ and timestamps. The [lifecycle decision](../../.agents/notes/implemented/feature
 activates dedicated transitions after the [reader preparation](../../.agents/notes/implemented/feature/2026-10-22-proposed-task-readers.md).
 
 Nodes contain `id`, `titlePreview`, `titleTruncated`, `status`, `dependsOn`,
-`externalDependsOn`, `blockedBy`, `ready`, required boolean `allowAgents`, UTC creation/update timestamps and explicit nullable
+`externalDependsOn`, `blockedBy`, `ready`, required boolean `allowAgents`,
+required nullable enum `requiredPlatform`, UTC creation/update timestamps and explicit nullable
 `startedAt`/`completedAt`. SQL produces at most 160 Unicode code
 points of each title without selecting descriptions, properties or full titles. Use the
 existing task detail endpoint for complete content. Node order is `(createdAt,
@@ -568,8 +586,8 @@ receipts and fixed-capacity gates are in the
 | `POST` | `/api/v1/projects/{projectId}/tasks/{taskId}/complete` | `200`, in_progress→done task |
 
 Creation accepts required `title`, optional `description`, `dependsOn`,
-`externalDependsOn` and `properties`; omitted optional values mean empty text,
-empty complete/external dependency sets
+`externalDependsOn`, `requiredPlatform` and `properties`; omitted optional values
+mean empty text, empty complete/external dependency sets, unrestricted platform
 and an empty PR list. Status, version and identity are server-owned on creation.
 The external subset must belong to the final complete dependency set. On PATCH,
 omitting both fields preserves relationships; dependsOn-only replaces IDs and
@@ -579,9 +597,11 @@ Removing an edge removes its marker. Metadata and approve/unapprove/claim/comple
 preserve unrelated classification and execution timing. Exact write examples
 belong to the [external dependency design](../../docs/design/daynight-external-dependencies.md).
 PATCH accepts a positive integer `version` and at least one mutation of `title`,
-`description`, `dependsOn`, `externalDependsOn`, `allowAgents` or `properties.pullRequests`; a status field is rejected
+`description`, `dependsOn`, `externalDependsOn`, `allowAgents`,
+`requiredPlatform` or `properties.pullRequests`; a status field is rejected
 even alongside otherwise valid metadata. Omitted fields
-stay unchanged; explicit null (including null dependency or PR elements) fails.
+stay unchanged; explicit `requiredPlatform: null` clears the requirement. Null
+for other fields, including dependency or PR elements, fails.
 Empty description, `dependsOn: []` or `properties: {"pullRequests": []}` clears
 that value. `properties: {}` has no mutation intent and is accepted only with
 another mutable field. Fractions, exponents, strings and out-of-range versions fail.
@@ -598,16 +618,18 @@ additional count or string-length limits. The complete API behavior is owned by
 the [task properties requirements](../../docs/spec/daynight-task-properties.md).
 
 Task responses contain identity, project, title, description, status, required
-boolean `allowAgents`, version,
+boolean `allowAgents`, nullable enum `requiredPlatform`, version,
 UTC creation/update timestamps, explicit nullable execution timestamps
 `startedAt`/`completedAt`, sorted `dependsOn`/`externalDependsOn`/`blockedBy` arrays, `ready` and complete
 `properties` with an initialized `pullRequests` array. A missing
 project or a task outside the specified project returns 404. The initialized
 empty project returns `items: []`, `nextCursor: null`.
 
-Lists support `limit`, `cursor`, `status`, `ready` and `allowAgents`, once each.
-Both boolean filters accept literal `true` or `false`; filters combine with AND
-before pagination and remain bound to the
+Lists support `limit`, `cursor`, `status`, `ready`, `allowAgents` and
+`compatiblePlatform`, once each.
+Both boolean filters accept literal `true` or `false`; compatibility accepts
+`windows`, `linux` or `macos` and includes null requirements and exact matches.
+Filters combine with AND before ordering, pagination and lookahead and remain bound to the
 cursor's canonical project scope. HTTP input uses the same strict JSON and
 query rules as project operations.
 

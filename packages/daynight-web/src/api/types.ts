@@ -1,5 +1,7 @@
 export type ApprovalAction = "approve" | "unapprove";
 
+export type ExecutionPlatform = "windows" | "linux" | "macos";
+
 export type TaskStatus = "proposed" | "todo" | "in_progress" | "done";
 
 export type Project = {
@@ -31,6 +33,7 @@ export type GraphTask = {
   readonly blockedBy: readonly string[];
   readonly ready: boolean;
   readonly allowAgents: boolean;
+  readonly requiredPlatform: ExecutionPlatform | null;
   readonly startedAt: string | null;
   readonly completedAt: string | null;
   readonly createdAt: string;
@@ -76,6 +79,7 @@ export type TaskDetail = {
   readonly blockedBy: readonly string[];
   readonly ready: boolean;
   readonly allowAgents: boolean;
+  readonly requiredPlatform: ExecutionPlatform | null;
   readonly startedAt: string | null;
   readonly completedAt: string | null;
   readonly createdAt: string;

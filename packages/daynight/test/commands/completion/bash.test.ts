@@ -5,6 +5,13 @@ import type { CommandDefinition } from "../../../src/cli/schema.js";
 import { taskDefinition } from "../../../src/commands/task/definition.js";
 
 describe("Bash completion rendering", () => {
+  it.each(["create", "update", "list", "ready"])("completes public platform values for %s", (name) => {
+    const script = renderBashCompletion(taskDefinition.commands!.find((command) => command.name === name)!);
+    expect(script).toContain(name === "create" || name === "update" ? "'--required-platform'" : "'--compatible-platform'");
+    expect(script).toContain("dn_value_choices=('windows' 'linux' 'macos')");
+    expect(script.includes("'--clear-required-platform'")).toBe(name === "update");
+  });
+
   it.each(["update", "list", "ready"])("completes explicit automatic-execution booleans for %s", (name) => {
     const script = renderBashCompletion(taskDefinition.commands!.find((command) => command.name === name)!);
     expect(script).toContain("'--allow-agents'");

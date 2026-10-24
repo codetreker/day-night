@@ -38,7 +38,7 @@ func taskResponse(task core.Task) api.Task {
 	return api.Task{ID: task.ID, ProjectID: task.ProjectID, Title: task.Title, Description: task.Description,
 		Properties: propertiesResponse(task.Properties), Status: string(task.Status), Version: task.Version, CreatedAt: task.CreatedAt.UTC(), UpdatedAt: task.UpdatedAt.UTC(),
 		StartedAt: timestampResponse(task.StartedAt), CompletedAt: timestampResponse(task.CompletedAt),
-		DependsOn: append([]string{}, task.DependsOn...), ExternalDependsOn: append([]string{}, task.ExternalDependsOn...), BlockedBy: append([]string{}, task.BlockedBy...), Ready: task.Ready, AllowAgents: task.AllowAgents}
+		DependsOn: append([]string{}, task.DependsOn...), ExternalDependsOn: append([]string{}, task.ExternalDependsOn...), BlockedBy: append([]string{}, task.BlockedBy...), Ready: task.Ready, AllowAgents: task.AllowAgents, RequiredPlatform: platformResponse(task.RequiredPlatform)}
 }
 
 func propertiesResponse(properties core.TaskProperties) api.TaskProperties {
@@ -127,6 +127,13 @@ func createTaskInput(fields map[string]json.RawMessage) (api.CreateTaskRequest, 
 	if properties != nil && properties.PullRequests != nil {
 		input.Properties.PullRequests = *properties.PullRequests
 	}
+	platform, err := optionalRequiredPlatform(fields)
+	if err != nil {
+		return api.CreateTaskRequest{}, err
+	}
+	if platform != nil {
+		input.RequiredPlatform = *platform
+	}
 	return input, nil
 }
 
@@ -161,7 +168,11 @@ func updateTaskInput(fields map[string]json.RawMessage) (api.UpdateTaskRequest, 
 	if err != nil {
 		return api.UpdateTaskRequest{}, err
 	}
-	if input.Title == nil && input.Description == nil && input.DependsOn == nil && input.ExternalDependsOn == nil && input.AllowAgents == nil &&
+	input.RequiredPlatform, err = optionalRequiredPlatform(fields)
+	if err != nil {
+		return api.UpdateTaskRequest{}, err
+	}
+	if input.Title == nil && input.Description == nil && input.DependsOn == nil && input.ExternalDependsOn == nil && input.AllowAgents == nil && input.RequiredPlatform == nil &&
 		(input.Properties == nil || input.Properties.PullRequests == nil) {
 		return api.UpdateTaskRequest{}, invalidInput("at least one task field must be provided")
 	}
@@ -169,7 +180,7 @@ func updateTaskInput(fields map[string]json.RawMessage) (api.UpdateTaskRequest, 
 }
 
 func taskListRequest(request *http.Request) (service.TaskListRequest, error) {
-	values, err := queryValues(request, "limit", "cursor", "status", "ready", "allowAgents")
+	values, err := queryValues(request, "limit", "cursor", "status", "ready", "allowAgents", "compatiblePlatform")
 	if err != nil {
 		return service.TaskListRequest{}, err
 	}
@@ -196,6 +207,10 @@ func taskListRequest(request *http.Request) (service.TaskListRequest, error) {
 		allowAgents := value[0] == "true"
 		result.AllowAgents = &allowAgents
 	}
+	if value, exists := values["compatiblePlatform"]; exists {
+		platform := core.TaskPlatform(value[0])
+		result.CompatiblePlatform = &platform
+	}
 	return result, nil
 }
 
@@ -206,7 +221,7 @@ func (h *taskHandler) create(w http.ResponseWriter, request *http.Request, princ
 		writeError(w, request, logger, "task", "create", err)
 		return
 	}
-	fields, err := decodeObject(w, request, "title", "description", "dependsOn", "externalDependsOn", "properties")
+	fields, err := decodeObject(w, request, "title", "description", "dependsOn", "externalDependsOn", "properties", "requiredPlatform")
 	if err != nil {
 		writeError(w, request, logger, "task", "create", err)
 		return
@@ -217,7 +232,7 @@ func (h *taskHandler) create(w http.ResponseWriter, request *http.Request, princ
 		return
 	}
 	task, err := h.tasks.Create(request.Context(), principal, projectID, service.CreateTask{
-		Title: input.Title, Description: input.Description, DependsOn: input.DependsOn, ExternalDependsOn: input.ExternalDependsOn, Properties: propertyValues(input.Properties),
+		RequiredPlatform: platformValue(input.RequiredPlatform), Title: input.Title, Description: input.Description, DependsOn: input.DependsOn, ExternalDependsOn: input.ExternalDependsOn, Properties: propertyValues(input.Properties),
 	})
 	if err != nil {
 		writeError(w, request, logger, "task", "create", err)
@@ -275,7 +290,7 @@ func (h *taskHandler) update(w http.ResponseWriter, request *http.Request, princ
 		writeError(w, request, logger, "task", "update", err)
 		return
 	}
-	fields, err := decodeObject(w, request, "version", "title", "description", "dependsOn", "externalDependsOn", "properties", "allowAgents")
+	fields, err := decodeObject(w, request, "version", "title", "description", "dependsOn", "externalDependsOn", "properties", "allowAgents", "requiredPlatform")
 	if err != nil {
 		writeError(w, request, logger, "task", "update", err)
 		return
@@ -285,7 +300,7 @@ func (h *taskHandler) update(w http.ResponseWriter, request *http.Request, princ
 		writeError(w, request, logger, "task", "update", err)
 		return
 	}
-	values := service.UpdateTask{AllowAgents: input.AllowAgents, Version: input.Version, Title: input.Title, Description: input.Description, DependsOn: input.DependsOn, ExternalDependsOn: input.ExternalDependsOn}
+	values := service.UpdateTask{RequiredPlatform: platformPatch(input.RequiredPlatform), AllowAgents: input.AllowAgents, Version: input.Version, Title: input.Title, Description: input.Description, DependsOn: input.DependsOn, ExternalDependsOn: input.ExternalDependsOn}
 	if input.Properties != nil && input.Properties.PullRequests != nil {
 		properties := propertyValues(api.TaskProperties{PullRequests: *input.Properties.PullRequests})
 		values.Properties.PullRequests = &properties.PullRequests

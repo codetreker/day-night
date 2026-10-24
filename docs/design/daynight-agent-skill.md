@@ -178,7 +178,7 @@ Goal 讨论以用户确认与阶段验收为完成条件。没有用户确认时
 其他 run-task 完成后返回，不自行选择后继。
 
 autopilot 只在用户明确要求后运行。当前任务由已有检查点关联并刷新，`in_progress`
-清单只是恢复线索，不是所有权。无当前任务时读取有界 `task ready --allow-agents true --json`，按问题、范围、方案、验收和依赖选择与已授权目标最相关的一个已批准、许可开启的 ready todo，再调用 run-task。补充候选 list 同样携带 true 筛选，在服务端排序与分页前应用。
+清单只是恢复线索，不是所有权。无当前任务时先读取实际运行环境的 `process.platform`，将 win32/darwin/linux 映射为 windows/macos/linux，WSL 中的 Linux 仍为 linux；不以任务要求、配置、宿主或服务端平台代替，无法确认或不支持时等待并报告。读取有界 `task ready --allow-agents true --compatible-platform <actual-platform> --json`，按问题、范围、方案、验收和依赖选择与已授权目标最相关的一个已批准、许可开启且平台兼容的 ready todo，再调用 run-task。补充候选 list 保留 true 和实际平台两个筛选，在服务端排序与分页前应用。领取前用最新完整详情重验许可、ready 和 null/同平台兼容，再以该观察版本 claim；候选变化后重新判断，不用新版本重放，也不把自动选出的 ID 当作用户人工指定来跳过资格。
 自动选择只有确认 done 后才开始下一项。用户确认门槛不能由 autopilot 代替，讨论
 未获确认时保留当前任务；外部阻塞也不换做无关工作。明确讨论转场按 Goal 协议处理。
 发现目标范围缺少 task 时，只有取得或确认已有的明确创建许可后才能调用 create-task；

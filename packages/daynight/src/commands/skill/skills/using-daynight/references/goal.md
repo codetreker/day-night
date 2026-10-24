@@ -171,8 +171,10 @@ protocol above. Ordinary `run-task` otherwise returns after its specified task
 completes or needs external intervention. Neither discussion completion nor
 breakdown registration activates autopilot or starts delivery. Only explicitly
 active autopilot selects later delivery work, and only with the existing approval,
-`allowAgents`, readiness, input, and execution requirements. CI, review, and merge
-waits stay with the current delivery task.
+`allowAgents`, readiness, actual-runtime platform compatibility, input, and
+execution requirements. Use autopilot's platform-filtered queries and preserve
+automatic-selection context for run-task's full-task recheck before claim.
+CI, review, and merge waits stay with the current delivery task.
 
 Delivery tasks follow normal run-task completion: accepted outcomes, required
 review, all necessary authorized PR merges, and readable evidence. To report the

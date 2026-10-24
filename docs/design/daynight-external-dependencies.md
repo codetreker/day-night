@@ -106,7 +106,7 @@ core、`TaskWrite`、完整任务与图任务增加 `ExternalDependsOn`。
 
 创建和 PATCH 接受 externalDependsOn，独立于完整依赖字段合成最终候选；
 具体组合见下表。移除关系同时移除其性质。
-标题、描述、PR、allowAgents 修改及 approve、unapprove、claim、complete 继续携带已存储的外部子集。
+标题、描述、PR、allowAgents、requiredPlatform 修改及 approve、unapprove、claim、complete 继续携带已存储的外部子集。
 
 ### 分类写入
 
@@ -307,7 +307,7 @@ jq -c --arg rid "$REQUEST_ID" \
 
 下表的容量、几何和性能规则固定于源码 `2d7fdd1e4e178db17e46da5d3b6c0e4050edf730`；
 功能场景清单采用包含撤销批准、项目设置、执行耗时和自动执行许可场景的源码
-`d02994b22b744ae23eb67965679fb5d9edc84525`。Web 实现和独立整体验收共同引用这些基线。
+`d02994b22b744ae23eb67965679fb5d9edc84525`。Web 实现和独立整体验收共同引用这些基线。当前[看板验收](daynight-web.md#生产浏览器验收工具)另包含两个目标各自的 task-platform 功能场景；下表保留固定源码的 59 场景基线，当前完整 inventory 为 61 场景，不减少原有检查。
 实现需要按新普通分量和显式性质更新预期值，
 但不能通过减少场景、样本、输入规模、可见边断言或放宽阈值完成本目标。
 

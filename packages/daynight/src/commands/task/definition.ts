@@ -11,6 +11,9 @@ const externalDependencyOption: CommandOption = { names: ["--external-depends-on
 const dependencyDetails = "Supplying either dependency option replaces every dependency and its classification. --depends-on supplies ordinary prerequisites; --external-depends-on supplies external prerequisites. External-only input keeps only those external prerequisites; ordinary-only input makes every supplied prerequisite ordinary. IDs must be valid UUIDs and occur once across both options. Both kinds block execution until completed.";
 const statusOption: CommandOption = { names: ["--status"], description: "Task status", value: { name: "status", kind: "text", choices: ["proposed", "todo", "in_progress", "done"] } };
 const allowAgentsOption: CommandOption = { names: ["--allow-agents"], description: "Automatic-execution permission", value: { name: "true|false", kind: "text", choices: ["true", "false"] } };
+const platformChoices = ["windows", "linux", "macos"] as const;
+const requiredPlatformOption: CommandOption = { names: ["--required-platform"], description: "Required execution platform", value: { name: "platform", kind: "text", choices: platformChoices } };
+const compatiblePlatformOption: CommandOption = { names: ["--compatible-platform"], description: "Include unrestricted tasks and tasks requiring this execution platform", value: { name: "platform", kind: "text", choices: platformChoices } };
 const versionOption: CommandOption = { names: ["--if-version"], description: "Use this expected task version without reading a newer version", value: { name: "version", kind: "text" } };
 const pullRequestOptions: readonly CommandOption[] = [
   { names: ["--pull-request-url"], description: "PR URL text; repeat for the complete list", value: { name: "text", kind: "text", allowEmpty: true }, repeatable: true },
@@ -25,20 +28,20 @@ export const taskDefinition: CommandDefinition = {
     {
       name: "create",
       description: "Create a proposed task with optional dependencies and PR references",
-      options: [{ ...titleOption, required: true }, descriptionOption, dependencyOption, externalDependencyOption, ...pullRequestOptions, projectOption, helpOption],
-      details: `New tasks start in proposed with automatic execution disabled and require approval before they can be claimed. Omitting both dependency options creates a task with no prerequisites.\n${dependencyDetails}\nPR URL and title counts must match; the nth URL pairs with the nth title. Empty values are accepted, and all text is stored as supplied.`,
+      options: [{ ...titleOption, required: true }, descriptionOption, requiredPlatformOption, dependencyOption, externalDependencyOption, ...pullRequestOptions, projectOption, helpOption],
+      details: `New tasks start in proposed with automatic execution disabled and require approval before they can be claimed. Without --required-platform, execution has no platform restriction. Omitting both dependency options creates a task with no prerequisites.\n${dependencyDetails}\nPR URL and title counts must match; the nth URL pairs with the nth title. Empty values are accepted, and all text is stored as supplied.`,
     },
     {
       name: "list",
       description: "List unfinished tasks, with in-progress and ready tasks first",
-      options: [{ names: ["--all"], description: "Include completed tasks; conflicts with --status" }, statusOption, { names: ["--ready"], description: "Include only tasks ready to start" }, allowAgentsOption, projectOption, listJsonOption, helpOption],
-      details: "By default, exclude done tasks. Use --all for every status or --status for a specific status.\nCombine --ready and --allow-agents with the selected statuses using AND. Read every page before printing.\nOrder in_progress first, then ready todo, blocked todo, proposed, and done tasks; preserve server order within each group.\nText lists omit description, version, and timestamps. --json omits description and preserves every other task field with the same filtering and ordering.",
+      options: [{ names: ["--all"], description: "Include completed tasks; conflicts with --status" }, statusOption, { names: ["--ready"], description: "Include only tasks ready to start" }, allowAgentsOption, compatiblePlatformOption, projectOption, listJsonOption, helpOption],
+      details: "By default, exclude done tasks. Use --all for every status or --status for a specific status.\nCombine --ready, --allow-agents and --compatible-platform with the selected statuses using AND. Platform compatibility includes unrestricted tasks and exact matches, without changing readiness. All filters apply before pagination; read every page before printing.\nOrder in_progress first, then ready todo, blocked todo, proposed, and done tasks; preserve server order within each group.\nText lists omit description, version, and timestamps. --json omits description and preserves every other task field with the same filtering and ordering.",
     },
     {
       name: "ready",
       description: "Show the first ready tasks in the project",
-      options: [{ names: ["--limit"], description: "Maximum number of tasks to return, from 1 to 100 (default: 10)", value: { name: "count", kind: "text" } }, allowAgentsOption, projectOption, jsonOption, helpOption],
-      details: "Read one bounded page ordered by creation time, then task UUID, ascending. A task is ready when it is todo and every dependency is done. --allow-agents filters before the page limit and does not change readiness.",
+      options: [{ names: ["--limit"], description: "Maximum number of tasks to return, from 1 to 100 (default: 10)", value: { name: "count", kind: "text" } }, allowAgentsOption, compatiblePlatformOption, projectOption, jsonOption, helpOption],
+      details: "Read one bounded page ordered by creation time, then task UUID, ascending. A task is ready when it is todo and every dependency is done. --allow-agents and --compatible-platform combine with ready before the page limit and do not change readiness. Platform compatibility includes unrestricted tasks and exact matches.",
     },
     {
       name: "show",
@@ -50,13 +53,14 @@ export const taskDefinition: CommandDefinition = {
       name: "update",
       description: "Atomically update task fields, dependencies, and PR references",
       arguments: [taskArgument],
-      options: [titleOption, descriptionOption, allowAgentsOption, dependencyOption, externalDependencyOption,
+      options: [titleOption, descriptionOption, allowAgentsOption, requiredPlatformOption,
+        { names: ["--clear-required-platform"], description: "Remove the execution-platform requirement" }, dependencyOption, externalDependencyOption,
         { names: ["--clear-dependencies"], description: "Clear the complete dependency set" },
         ...pullRequestOptions,
         { names: ["--clear-pull-requests"], description: "Clear the complete PR reference list" },
         versionOption,
         projectOption, helpOption],
-      details: `Provide at least one changed field. --allow-agents changes the automatic-execution permission independently of approval; actual changes are locked during in_progress. Use daynight task approve, unapprove, claim, or complete to change status.\n${dependencyDetails}\nOmitting both dependency options preserves all dependencies and classifications. --clear-dependencies clears both sets and conflicts with either dependency option.\nPR URL and title counts must match; the nth URL pairs with the nth title. Pairs replace the complete list; empty values are accepted. --clear-pull-requests conflicts with either PR option. Omitted PR options preserve the current list.\nWithout --if-version, read the current version before submitting the update. Conflicts are not retried.`,
+      details: `Provide at least one changed field. --allow-agents changes the automatic-execution permission independently of approval. --required-platform sets the execution-platform requirement; --clear-required-platform removes it and conflicts with --required-platform. Omitting both platform options preserves the requirement. Actual permission or platform changes are locked during in_progress; exact-version same-value updates keep version and timestamps. Use daynight task approve, unapprove, claim, or complete to change status.\n${dependencyDetails}\nOmitting both dependency options preserves all dependencies and classifications. --clear-dependencies clears both sets and conflicts with either dependency option.\nPR URL and title counts must match; the nth URL pairs with the nth title. Pairs replace the complete list; empty values are accepted. --clear-pull-requests conflicts with either PR option. Omitted PR options preserve the current list.\nWithout --if-version, read the current version before submitting the update. Conflicts are not retried.`,
     },
     ...([
       { name: "approve", description: "Approve a proposed task, moving it to todo", rule: "Unfinished prerequisites are allowed." },

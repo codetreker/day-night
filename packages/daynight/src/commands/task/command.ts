@@ -1,4 +1,4 @@
-import type { CreateTaskInput, Project, Task, TaskFilters, UpdateTaskInput } from "../../api/types.js";
+import type { CreateTaskInput, Project, Task, TaskFilters, TaskPlatform, UpdateTaskInput } from "../../api/types.js";
 import { UsageError } from "../../cli/context.js";
 import type { CliContext } from "../../cli/context.js";
 import { parseCommand, renderCommandHelp } from "../../cli/schema.js";
@@ -65,6 +65,11 @@ export const runTaskCommand = async (
   const status = command.options.get("--status") as TaskFilters["status"];
   const allowAgentsArgument = command.options.get("--allow-agents") as "true" | "false" | undefined;
   const allowAgents = allowAgentsArgument === undefined ? undefined : allowAgentsArgument === "true";
+  const requiredPlatform = command.options.get("--required-platform") as TaskPlatform | undefined;
+  const clearRequiredPlatform = command.options.has("--clear-required-platform");
+  if (clearRequiredPlatform && requiredPlatform !== undefined) throw new UsageError("--clear-required-platform conflicts with --required-platform.", help);
+  const platformFields = clearRequiredPlatform ? { requiredPlatform: null } : requiredPlatform === undefined ? {} : { requiredPlatform };
+  const compatiblePlatform = command.options.get("--compatible-platform") as TaskPlatform | undefined;
   const all = command.options.has("--all");
   if (all && status !== undefined) throw new UsageError("--all conflicts with --status.", help);
   const dependsOn = command.options.get("--depends-on") as readonly string[] | undefined;
@@ -84,12 +89,13 @@ export const runTaskCommand = async (
   const dependencyFields = await compileDependencies(dependsOn, externalDependsOn, clearDependencies, help);
   const changes: Omit<UpdateTaskInput, "version"> = {
     ...(allowAgents === undefined ? {} : { allowAgents }),
+    ...platformFields,
     ...(title === undefined ? {} : { title }),
     ...(description === undefined ? {} : { description }),
     ...dependencyFields,
     ...(properties === undefined ? {} : { properties }),
   };
-  if (name === "update" && Object.keys(changes).length === 0) throw new UsageError("Task update requires a title, description, automatic-execution permission, dependency, or PR reference change.", help);
+  if (name === "update" && Object.keys(changes).length === 0) throw new UsageError("Task update requires a title, description, automatic-execution permission, platform requirement, dependency, or PR reference change.", help);
   const rawProjectId = command.options.get("--project") as string | undefined;
   let projectId: string | undefined;
   let taskId: string | undefined;
@@ -123,13 +129,13 @@ export const runTaskCommand = async (
     const { renderTask, renderTaskGraph, renderTaskJson, renderTaskList, renderTaskListJson, renderTaskSummaryList } = await import("./rendering.js");
     operation.check();
     if (command.command.name === "create") {
-      const input: CreateTaskInput = { title: title!, ...(description === undefined ? {} : { description }), ...dependencyFields, ...(properties === undefined ? {} : { properties }) };
+      const input: CreateTaskInput = { title: title!, ...(description === undefined ? {} : { description }), ...platformFields, ...dependencyFields, ...(properties === undefined ? {} : { properties }) };
       const task = await api.createTask(project.id, input);
       operation.check();
       return `Task created.\n${renderTask(task)}`;
     }
     if (command.command.name === "list") {
-      const filters: TaskFilters = { ...(status === undefined ? {} : { status }), ...(command.options.has("--ready") ? { ready: true } : {}), ...(allowAgents === undefined ? {} : { allowAgents }) };
+      const filters: TaskFilters = { ...(status === undefined ? {} : { status }), ...(command.options.has("--ready") ? { ready: true } : {}), ...(allowAgents === undefined ? {} : { allowAgents }), ...(compatiblePlatform === undefined ? {} : { compatiblePlatform }) };
       const tasks = (await api.listTasks(project.id, filters))
         .filter((task) => all || status !== undefined || task.status !== "done")
         .toSorted((left, right) => taskPriority(left) - taskPriority(right));
@@ -137,7 +143,7 @@ export const runTaskCommand = async (
       return command.options.has("--json") ? renderTaskListJson(tasks) : renderTaskSummaryList(tasks);
     }
     if (command.command.name === "ready") {
-      const tasks = await api.listReadyTasks(project.id, readyLimit, ...(allowAgents === undefined ? [] : [allowAgents]));
+      const tasks = await api.listReadyTasks(project.id, readyLimit, { ...(allowAgents === undefined ? {} : { allowAgents }), ...(compatiblePlatform === undefined ? {} : { compatiblePlatform }) });
       operation.check();
       return command.options.has("--json") ? renderTaskJson(tasks) : tasks.length === 0 ? "No ready tasks.\n" : renderTaskList(tasks);
     }

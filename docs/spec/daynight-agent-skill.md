@@ -92,7 +92,7 @@ handbook 保持为命令用途索引与操作背景说明。索引只列命令�
 
 元数据更新及 approve/unapprove/claim/complete 必须携带决策时实际读取的精确版本，不能依赖临提交前的默认读取来保护旧判断，
 也不能截断或舍入 int64。描述、依赖和 PR 列表按整个字段替换，保留仍需的数据；冲突
-后重新读取并判断变更，而非仅更换版本重放。状态与 readiness 不提供所有权或锁。`allowAgents` 是自动执行许可，独立于审批与 ready；新任务为 false，明确指定的 run-task/普通 claim 可处理两种许可值。自动选择只接受许可为 true 的新候选，worker 与随包工作流不得自行启用。
+后重新读取并判断变更，而非仅更换版本重放。状态与 readiness 不提供所有权或锁。`allowAgents` 是自动执行许可，独立于审批与 ready；新任务为 false，明确指定的 run-task/普通 claim 可处理两种许可值。自动选择只接受许可为 true 且 requiredPlatform 为 null 或匹配实际执行平台的新候选，worker 与随包工作流不得自行启用许可。
 
 任务详情不包含附件清单；附件读写独立于任务版本、状态和更新时间。多个文件操作
 独立，文件内容与元数据可能部分改变；任务版本不能充当附件版本。写入结果不确定时
@@ -169,7 +169,7 @@ run-task 接收指定 ID，读取自足正文、专属主附件和真实共享�
 尚待产出的完整要求、UI 或架构不能反过来阻止启动。proposed 没有明确审批授权时
 保持等待，run-task 或 autopilot 本身不授权批准；Goal 的明确讨论开始指令按共享
 协议授权当前阶段 approve、claim。获准时使用已审阅版本 approve；
-已批准 ready todo 在依赖、阶段输入及执行授权齐备后使用 task claim 和观察版本领取，确认 in_progress 再工作。显式指定任务不要求 allowAgents=true。已有 in_progress 核对实际工作和检查点后恢复；done 只报告
+已批准 ready todo 在依赖、阶段输入及执行授权齐备后使用 task claim 和观察版本领取，确认 in_progress 再工作。用户明确指定的任务可走普通人工 claim，不要求 allowAgents=true；autopilot 选出 task ID 后仍属于自动选择，不能借此使用人工例外。自动候选在精确版本 claim 前须从最新完整详情重验许可、ready 和平台。已有 in_progress 核对实际工作和检查点后恢复；done 只报告
 事实，没有重开操作。输入缺失或依赖未完成时保留实际问题，不凭标题补出方案。
 
 Goal 讨论阶段按用户确认和自身阶段验收完成；确认前保持 in_progress，不能由 Agent
@@ -193,7 +193,7 @@ run-task 一次处理指定任务。普通 CI、review 或合并等待仍属于�
 
 autopilot 必须有用户明确启动要求，沿用确认的目标与授权范围。先刷新检查点中的当前
 任务；若身份未知，按需查询 in-progress 清单并核对上下文，不能任意认领。无当前任务
-时，用 `task ready --allow-agents true --json` 读取有界候选，从已经批准、许可开启的 ready `todo` 中比较问题、范围、方案、验收及依赖，选择与已授权目标最相关的一个，刷新详情与附件后进入 run-task。补充候选清单继续保留许可筛选；进行中的既定任务按已有检查点恢复，不因候选筛选被替换。
+时，先读取实际执行环境的 `process.platform`：win32 映射 windows、darwin 映射 macos、linux 映射 linux，WSL 的 Linux 运行时仍为 linux。不得从 task 要求、仓库配置、外层宿主或服务端平台推断；无法确认或不支持的平台保持等待并报告。使用 `task ready --allow-agents true --compatible-platform <actual-platform> --json` 读取有界候选，从已经批准、许可开启且平台兼容的 ready `todo` 中比较问题、范围、方案、验收及依赖，选择与已授权目标最相关的一个，刷新详情与附件后进入 run-task。补充候选 list 保留 true 和同一实际平台两个筛选，由服务在分页前组合；不能从未筛选的有界页本地删项后断言没有候选。精确版本 claim 前重新读取完整详情，确认 allowAgents=true、ready=true 及 requiredPlatform 为 null 或匹配实际平台；变化后重新判断，不能把自动选出的 ID 当成人工指定来跳过资格。进行中的既定任务按已有检查点恢复，不因候选筛选被替换。
 
 每个会话一次只推进一个任务，候选页不构成批量开工指令。等待交付及 subagent 协作
 期间保持当前任务。只有确认 done 才继续选择下一项；遇到需要外部介入的阻塞时保留

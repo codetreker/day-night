@@ -152,7 +152,7 @@ func acceptanceHistoricalRows(t *testing.T, fixture *acceptanceFixture, ids []st
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
-	rows, err := fixture.admin.Query(ctx, "SELECT id::text, (to_jsonb(t) - 'started_at' - 'completed_at' - 'allow_agents')::text FROM tasks t WHERE id = ANY($1::uuid[]) ORDER BY id", ids)
+	rows, err := fixture.admin.Query(ctx, "SELECT id::text, (to_jsonb(t) - 'started_at' - 'completed_at' - 'allow_agents' - 'required_platform')::text FROM tasks t WHERE id = ANY($1::uuid[]) ORDER BY id", ids)
 	if err != nil {
 		t.Fatal("cannot read preserved historical rows")
 	}
@@ -270,8 +270,8 @@ func TestInstalledCLIPreLifecycleMigrationAcceptance(t *testing.T) {
 		if err := binaryAcceptance.update(func() { migration.AfterLedger, migration.AfterRows = afterLedger, afterRows }); err != nil {
 			t.Fatal("cannot persist migrated ledger and resource snapshots")
 		}
-		if len(migration.AfterLedger) != 12 || !reflect.DeepEqual(migration.AfterLedger[:6], migration.BeforeLedger) ||
-			migration.AfterLedger[6].Version != 7 || migration.AfterLedger[7].Version != 8 || migration.AfterLedger[8].Version != 9 || migration.AfterLedger[9].Version != 10 || migration.AfterLedger[10].Version != 11 || migration.AfterLedger[11].Version != 12 || !reflect.DeepEqual(migration.AfterRows, migration.BeforeRows) {
+		if len(migration.AfterLedger) != 13 || !reflect.DeepEqual(migration.AfterLedger[:6], migration.BeforeLedger) ||
+			migration.AfterLedger[6].Version != 7 || migration.AfterLedger[7].Version != 8 || migration.AfterLedger[8].Version != 9 || migration.AfterLedger[9].Version != 10 || migration.AfterLedger[10].Version != 11 || migration.AfterLedger[11].Version != 12 || migration.AfterLedger[12].Version != 13 || !reflect.DeepEqual(migration.AfterRows, migration.BeforeRows) {
 			t.Fatal("built startup did not append genuine migrations while preserving old rows and ledger")
 		}
 		acceptanceError(t, process.request(context.Background(), http.MethodGet, "/api/v1/projects/"+projectID, nil, ""), http.StatusNotFound, "not_found")

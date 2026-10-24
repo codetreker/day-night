@@ -112,7 +112,7 @@ test('task-agent-permission', scenario, async ({ page, api, allowBrowserWrites }
     await detail(page).getByRole('button', { name: '关闭任务详情', exact: true }).click();
     await page.reload(); await open(page, task.id);
     await expect(automatic(page)).toBeDisabled(); await expect(automatic(page)).not.toBeChecked();
-    await expect(detail(page).getByText(/任务已被领取/)).toBeVisible();
+    await expect(detail(page).locator('.task-automation-feedback').getByText(/任务已被领取/)).toBeVisible();
     await page.setViewportSize({ width: 390, height: 844 }); await geometry(page);
     await detail(page).getByRole('button', { name: '关闭任务详情', exact: true }).click();
     await page.getByRole('combobox', { name: '语言 / Language', exact: true }).selectOption('en');

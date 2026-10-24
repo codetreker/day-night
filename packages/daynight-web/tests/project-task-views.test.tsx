@@ -20,7 +20,7 @@ vi.mock('../src/features/task-graph/TaskGraph', () => ({ TaskGraph: ({ index, ro
 const project = 'project-one';
 const otherProject = 'project-two';
 const timestamp = '2026-10-20T12:00:00.123456Z';
-const seed = (id: string, status: GraphTask['status'] = 'todo', dependsOn: string[] = [], externalDependsOn: string[] = []): GraphTask => ({ allowAgents: false, externalDependsOn, startedAt: null, completedAt: null,
+const seed = (id: string, status: GraphTask['status'] = 'todo', dependsOn: string[] = [], externalDependsOn: string[] = []): GraphTask => ({ requiredPlatform: null, allowAgents: false, externalDependsOn, startedAt: null, completedAt: null,
   id, titlePreview: `任务 ${id}`, titleTruncated: false, status, dependsOn, blockedBy: [], ready: false,
   createdAt: timestamp, updatedAt: timestamp,
 });
@@ -49,7 +49,7 @@ beforeEach(() => {
   root = document.createElement('div'); root.id = 'root'; document.body.append(root);
   graphRequest.mockReset(); graphRequest.mockImplementation(async (id) => snapshot(seeds, id));
   vi.mocked(getTask).mockReset();
-  vi.mocked(getTask).mockImplementation(async (projectId, id) => ({ allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null,
+  vi.mocked(getTask).mockImplementation(async (projectId, id) => ({ requiredPlatform: null, allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null,
     id, projectId, title: `详情 ${id}`, description: '', properties: { pullRequests: [] }, status: 'todo', version: 1n, dependsOn: [], blockedBy: [], ready: true,
     createdAt: timestamp, updatedAt: timestamp,
   }));
@@ -91,6 +91,14 @@ describe('project task views', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: '显示已完成独立任务（1）' }));
     expect(row('G')).toBeVisible();
     expectUnfinishedCounts(4, 1);
+  });
+
+  it('shows confirmed platform requirements in standalone rows without changing readiness', async () => {
+    graphRequest.mockResolvedValue(snapshot(seeds.map((task) => ({ ...task, requiredPlatform: task.id === 'C' ? 'linux' : task.id === 'E' ? 'windows' : null }))));
+    mount(); await screen.findByRole('tab', { name: '独立任务' }); fireEvent.click(tab('standalone'));
+    expect(row('C').querySelector('.task-platform')).toHaveTextContent('Linux');
+    expect(row('E').querySelector('.task-platform')).toHaveTextContent('Windows');
+    expect(row('C')).toHaveTextContent('可开始'); expect(row('E')).toHaveTextContent('进行中');
   });
 
   it('classifies complete dependencies independently from status and keeps summary and API order intact', async () => {

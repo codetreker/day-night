@@ -1,6 +1,6 @@
-import type { ApprovalAction, GraphTask } from "../../api/types";
+import type { ApprovalAction, ExecutionPlatform, GraphTask } from "../../api/types";
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
-import { canApprove, canSetAgentPermission, canUnapprove, useTaskDetailSessions, type TaskDetailSessions } from "./TaskDetailSession";
+import { canApprove, canSetAgentPermission, canSetRequiredPlatform, canUnapprove, useTaskDetailSessions, type TaskDetailSessions } from "./TaskDetailSession";
 
 export const useTaskDetail = (projectId: string, taskId: string, revision: number, observedTask: GraphTask | undefined) => {
   const sessions = useTaskDetailSessions();
@@ -28,9 +28,10 @@ export const useTaskDetail = (projectId: string, taskId: string, revision: numbe
   const approve = useCallback(() => { sessions.approve(projectId, taskId); }, [sessions, projectId, taskId]);
   const performApproval = useCallback((action: ApprovalAction, version: bigint) => { sessions.performApproval(projectId, taskId, action, version); }, [sessions, projectId, taskId]);
   const setAgentPermission = useCallback((allowAgents: boolean, version: bigint) => { sessions.setAgentPermission(projectId, taskId, allowAgents, version); }, [sessions, projectId, taskId]);
+  const setRequiredPlatform = useCallback((requiredPlatform: ExecutionPlatform | null, version: bigint) => { sessions.setRequiredPlatform(projectId, taskId, requiredPlatform, version); }, [sessions, projectId, taskId]);
   const reconcile = useCallback(() => { sessions.reconcile(projectId, taskId); }, [sessions, projectId, taskId]);
   const visible = sameIdentity || state.mutation.phase !== "idle" ? state
     : { ...state, detail: null, loadedRevision: null, status: "loading" as const, refreshing: false, error: null };
   const requiresFreshRead = sessions.requiresFreshRead(projectId, taskId, observedTask);
-  return { ...visible, requiresFreshRead, retry, approve, performApproval, setAgentPermission, reconcile, canSetAgentPermission: canSetAgentPermission({ ...visible, requiresFreshRead }), canApprove: canApprove({ ...visible, requiresFreshRead }), canUnapprove: canUnapprove({ ...visible, requiresFreshRead }) };
+  return { ...visible, requiresFreshRead, retry, approve, performApproval, setAgentPermission, setRequiredPlatform, reconcile, canSetRequiredPlatform: canSetRequiredPlatform({ ...visible, requiresFreshRead }), canSetAgentPermission: canSetAgentPermission({ ...visible, requiresFreshRead }), canApprove: canApprove({ ...visible, requiresFreshRead }), canUnapprove: canUnapprove({ ...visible, requiresFreshRead }) };
 };

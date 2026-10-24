@@ -31,6 +31,7 @@ export const renderTask = (task: Task): string => [
   ...taskPullRequests(task),
   `Status: ${terminalText(task.status)}`,
   `Automatic execution: ${task.allowAgents}`,
+  `Required platform: ${task.requiredPlatform === null ? "any" : task.requiredPlatform}`,
   `Version: ${task.version}`,
   ...taskDependencies(task),
   `Created: ${terminalText(task.createdAt)}`,
@@ -45,6 +46,7 @@ export const renderTaskSummaryList = (tasks: readonly Task[]): string => tasks.l
   ...taskPullRequests(task),
   `Status: ${terminalText(task.status)}`,
   `Automatic execution: ${task.allowAgents}`,
+  `Required platform: ${task.requiredPlatform === null ? "any" : task.requiredPlatform}`,
   ...taskDependencies(task),
   "",
 ].join("\n")).join("\n");
@@ -55,6 +57,7 @@ const renderGraphTask = (task: GraphTask): string => [
   `Title truncated: ${task.titleTruncated}`,
   `Status: ${terminalText(task.status)}`,
   `Automatic execution: ${task.allowAgents}`,
+  `Required platform: ${task.requiredPlatform === null ? "any" : task.requiredPlatform}`,
   ...taskDependencies(task),
   `Created: ${terminalText(task.createdAt)}`,
   `Updated: ${terminalText(task.updatedAt)}`,

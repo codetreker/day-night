@@ -22,10 +22,10 @@ const ordinaryId = "c1b2c3d4-1111-4222-8333-123456789abc";
 const externalId = "d1b2c3d4-1111-4222-8333-123456789abc";
 const time = "2026-10-20T00:00:00.123456789Z";
 const project = (projectId = id, repoUrl = "git@git.example:Org/Repo.git"): Project => ({ id: projectId, name: "Project 中文", repoUrl, settings: { version: 1n, executionWarningMinutes: 60 }, createdAt: time, updatedAt: time });
-const task = (projectId = id): Task => ({ id: taskId, projectId, title: "Task 中文", description: "", properties: { pullRequests: [] }, status: "todo", allowAgents: false, version: 1n, startedAt: null, completedAt: null, createdAt: time, updatedAt: time, dependsOn: [], externalDependsOn: [], blockedBy: [], ready: true });
+const task = (projectId = id): Task => ({ id: taskId, projectId, title: "Task 中文", description: "", properties: { pullRequests: [] }, status: "todo", allowAgents: false, requiredPlatform: null, version: 1n, startedAt: null, completedAt: null, createdAt: time, updatedAt: time, dependsOn: [], externalDependsOn: [], blockedBy: [], ready: true });
 const taskListItem = (value: Task): Omit<Task, "description"> => ({
   id: value.id, projectId: value.projectId, title: value.title, properties: value.properties,
-  status: value.status, allowAgents: value.allowAgents, version: value.version, startedAt: value.startedAt, completedAt: value.completedAt, createdAt: value.createdAt, updatedAt: value.updatedAt,
+  status: value.status, allowAgents: value.allowAgents, requiredPlatform: value.requiredPlatform, version: value.version, startedAt: value.startedAt, completedAt: value.completedAt, createdAt: value.createdAt, updatedAt: value.updatedAt,
   dependsOn: value.dependsOn, externalDependsOn: value.externalDependsOn, blockedBy: value.blockedBy, ready: value.ready,
 });
 const send = (response: ServerResponse, value: unknown, status = 200): void => { response.writeHead(status, { "Content-Type": "application/json" }); response.end(stringifyApiJson(value)); };
@@ -55,6 +55,7 @@ it("runs the actual installed launcher through native project/task discovery, pe
   let properties: Task["properties"] = { pullRequests: [] };
   let description = "";
   let allowAgents = false;
+  let requiredPlatform: Task["requiredPlatform"] = null;
   let dependencies: Pick<Task, "dependsOn" | "externalDependsOn"> = { dependsOn: [], externalDependsOn: [] };
   let broken: "none" | "page" | "json" | "dependency" | "write" | "hold" | "conflict" = "none";
   let readyPage: { items: readonly Task[]; nextCursor: string | null } | undefined;
@@ -91,20 +92,22 @@ it("runs the actual installed launcher through native project/task discovery, pe
           if (parts.length === 8) {
             const action = parts[7]!;
             const status = action === "approve" ? "todo" : action === "unapprove" ? "proposed" : action === "claim" ? "in_progress" : "done";
-            send(response, { ...task(projectId), ...dependencies, description, properties, allowAgents, status, ready: status === "todo", version: (body as { version: bigint }).version + 1n }); return;
+            send(response, { ...task(projectId), ...dependencies, description, properties, allowAgents, requiredPlatform, status, ready: status === "todo", version: (body as { version: bigint }).version + 1n }); return;
           }
           if (request.method === "PATCH" && typeof body === "object" && body !== null && "allowAgents" in body && typeof body.allowAgents === "boolean") allowAgents = body.allowAgents;
+          if (request.method === "POST") requiredPlatform = null;
+          if (typeof body === "object" && body !== null && "requiredPlatform" in body) requiredPlatform = body.requiredPlatform as Task["requiredPlatform"];
           if (typeof body === "object" && body !== null && "description" in body && typeof body.description === "string") description = body.description;
           if (request.method === "POST") dependencies = { dependsOn: [], externalDependsOn: [] };
           const dependencyFields = body as Partial<Pick<Task, "dependsOn" | "externalDependsOn">>;
           dependencies = { ...dependencies, ...(dependencyFields.dependsOn === undefined ? {} : { dependsOn: dependencyFields.dependsOn }), ...(dependencyFields.externalDependsOn === undefined ? {} : { externalDependsOn: dependencyFields.externalDependsOn }) };
-          send(response, { ...task(projectId), ...dependencies, description, ...(request.method === "PATCH" ? { allowAgents } : {}), ...(body as object), ...(request.method === "POST" ? { status: "proposed", ready: false } : {}), version: request.method === "PATCH" ? 9_007_199_254_740_994n : 1n }, request.method === "POST" ? 201 : 200); return;
+          send(response, { ...task(projectId), ...dependencies, description, requiredPlatform, ...(request.method === "PATCH" ? { allowAgents } : {}), ...(body as object), ...(request.method === "POST" ? { status: "proposed", ready: false } : {}), version: request.method === "PATCH" ? 9_007_199_254_740_994n : 1n }, request.method === "POST" ? 201 : 200); return;
         }
         if (parts[5] === "task-graph") { send(response, { observedAt: time, project: project(projectId), summary: { total: 0, proposed: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 }, tasks: [] }); return; }
-        if (parts.length === 7) { send(response, { ...task(projectId), ...dependencies, description, properties, allowAgents, version: 9_007_199_254_740_993n }); return; }
+        if (parts.length === 7) { send(response, { ...task(projectId), ...dependencies, description, properties, allowAgents, requiredPlatform, version: 9_007_199_254_740_993n }); return; }
         if (readyPage !== undefined && url.searchParams.get("ready") === "true") { send(response, readyPage); return; }
         if (broken === "page" && url.searchParams.has("cursor")) { fault(response, "internal_error", "native-later-page", 500); return; }
-        send(response, { items: [listResponseTask ?? { ...task(projectId), ...dependencies, properties, allowAgents }], nextCursor: broken === "page" ? "native later page" : null });
+        send(response, { items: [listResponseTask ?? { ...task(projectId), ...dependencies, properties, allowAgents, requiredPlatform }], nextCursor: broken === "page" ? "native later page" : null });
       });
     });
     servers.push(server);
@@ -165,6 +168,9 @@ it("runs the actual installed launcher through native project/task discovery, pe
       ["create", "--title", "Title", "--allow-agents", "true"],
       ["update", taskId, "--allow-agents", "yes"],
       ["ready", "--allow-agents=TRUE"],
+      ["create", "--title", "Title", "--required-platform", "darwin"],
+      ["update", taskId, "--required-platform", "linux", "--clear-required-platform"],
+      ["list", "--compatible-platform", "any"],
       ...["approve", "unapprove", "claim", "complete"].flatMap((action) => [[action, "invalid"], [action, taskId, "--if-version=0"], [action, taskId, "--status=todo"]]),
     ]) await invoke(["task", ...args], outside, 2, true);
 
@@ -211,6 +217,28 @@ it("runs the actual installed launcher through native project/task discovery, pe
       readyPage = undefined;
     }
     scenarios.push("installed-automatic-permission-true-false-exact-version-filtered-list-and-bounded-ready");
+    for (const platform of ["windows", "linux", "macos"] as const) {
+      const created = await invoke(["task", "create", "--title", "Native platform", "--required-platform", platform, ...explicit], outside, 0, true);
+      expect(created.stdout).toContain(`Required platform: ${platform}`);
+      expect(requests.at(-1)!.body).toEqual({ title: "Native platform", requiredPlatform: platform });
+      const changed = await invoke(["task", "update", taskId, "--required-platform", platform, "--if-version", "9223372036854775807", ...explicit], outside, 0, true);
+      expect(changed.stdout).toContain(`Required platform: ${platform}`);
+      expect(requests.at(-1)!.body).toEqual({ version: 9_223_372_036_854_775_807n, requiredPlatform: platform });
+      expect(parseApiJson((await invoke(["task", "show", taskId, "--json", ...explicit], outside, 0, true)).stdout)).toMatchObject({ requiredPlatform: platform });
+      const listed = await invoke(["task", "list", "--compatible-platform", platform, "--allow-agents", "false", "--ready", "--json", ...explicit], outside, 0, true);
+      expect(parseApiJson(listed.stdout)).toEqual([taskListItem({ ...task(), requiredPlatform: platform })]);
+      expect(Object.fromEntries(new URL(requests.at(-1)!.path, firstUrl).searchParams)).toEqual({ ready: "true", allowAgents: "false", compatiblePlatform: platform, limit: "100" });
+      readyPage = { items: [{ ...task(), requiredPlatform: platform }], nextCursor: "unfollowed platform page" };
+      const before = requests.length;
+      expect(parseApiJson((await invoke(["task", "ready", "--compatible-platform", platform, "--limit", "1", "--json", ...explicit], outside, 0, true)).stdout)).toEqual(readyPage.items);
+      expect(requests.slice(before).length).toBe(2);
+      expect(Object.fromEntries(new URL(requests.at(-1)!.path, firstUrl).searchParams)).toEqual({ ready: "true", limit: "1", compatiblePlatform: platform });
+      readyPage = undefined;
+    }
+    expect((await invoke(["task", "update", taskId, "--clear-required-platform", "--if-version", "9007199254740993", ...explicit], outside, 0, true)).stdout).toContain("Required platform: any");
+    expect(requests.at(-1)!.body).toEqual({ version: 9_007_199_254_740_993n, requiredPlatform: null });
+    expect(parseApiJson((await invoke(["task", "show", taskId, "--json", ...explicit], outside, 0, true)).stdout)).toMatchObject({ requiredPlatform: null, allowAgents: false });
+    scenarios.push("installed-platform-create-set-clear-readback-compatible-query-and-bounded-ready");
     listResponseTask = { ...task(), status: "proposed", ready: false, description: "Proposed description omitted from inventory" };
     expect(parseApiJson((await invoke(["task", "list", "--status", "proposed", "--json", ...explicit], outside, 0, true)).stdout)).toEqual([taskListItem(listResponseTask)]);
     expect(requests.at(-1)!.path).toContain("status=proposed");
