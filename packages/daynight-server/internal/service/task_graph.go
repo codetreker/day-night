@@ -72,8 +72,6 @@ func summarizeGraph(tasks []core.GraphTask) core.TaskGraphSummary {
 	summary := core.TaskGraphSummary{Total: int64(len(tasks))}
 	for _, task := range tasks {
 		switch task.Status {
-		case core.TaskProposed:
-			summary.Proposed++
 		case core.TaskTodo:
 			summary.Todo++
 			if task.Ready {

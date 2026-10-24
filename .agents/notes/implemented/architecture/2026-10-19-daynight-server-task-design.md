@@ -41,21 +41,17 @@ operations. They do not change the existing client review configuration or SQLit
 state. The [foreground CLI decision](2026-10-16-foreground-review-cli.md) retains
 ownership of that execution model; this design does not supersede it.
 
-The original service exposed three states and created todo tasks through the
-generic write API. The [four-state reader decision](../feature/2026-10-22-proposed-task-readers.md)
-prepared storage and readers with proposed before public creation changed. The
-[approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md) now creates proposed
-and exposes versioned approve, claim and complete transitions; the later
-[withdrawal decision](../feature/2026-10-23-task-unapprove.md) adds only todo to
-proposed through unapprove. This retains
-the project transaction and dependency policy while replacing arbitrary status
-updates and reopening.
+The original service exposed three editable states through general updates.
+Reader preparation and approval actions later introduced proposed. The adopted
+[status assignment decision](2026-10-24-task-status-assignment.md) removes that
+state and those actions, defaults creation to todo and gives status a dedicated
+versioned resource. It preserves the project transaction and restores arbitrary
+transitions with direct-dependent reopening protection.
 
-Task dependencies stay inside a project. Every `in_progress` or `done` task
-requires completed direct predecessors. The original three-state policy allowed
-backward writes only when direct dependents stayed valid; the initial approval
-lifecycle removed that reopening path. Todo-only withdrawal does not reopen
-active or completed work and therefore does not restore it. Each task write
+Dependencies stay inside a project. Every active/done task requires completed
+direct predecessors; done can reopen only when no direct active/done dependent
+would become invalid. Ordinary and external edges have identical execution
+constraints. Each task write
 locks its project row before fresh `READ COMMITTED` queries, validates the
 candidate graph and status, and commits fields and edges together. Task versions
 add client conflict detection without replacing cross-task exclusion.

@@ -430,91 +430,67 @@ a response.
 
 ## Task service
 
-`service.NewTasks` exposes create/read/update and dedicated approve, unapprove,
-claim and complete operations over the same concrete store. `Approve`, `Unapprove`,
-`Claim` and `Complete` explicitly receive `(ctx, principal, projectID, taskID, version)`.
-All project members, including administrators, can perform these resource writes;
-project settings, member management and invitation management require the administrator role. HTTP
-routes use that instance. Lifecycle POST routes and method-refusal handlers
-require authentication, enforce exact Origin for Cookie writes and return no-store.
-Creation uses `proposed`, `allowAgents=false` and unrestricted
-`requiredPlatform=null`; its predefined `properties.pullRequests` list defaults
-to empty. The permission
-is a required boolean in full tasks and graph nodes. Migration
-`011_task_agent_permission.sql` sets existing records to true and changes the
-database default for future inserts to false, preserving versions and business
-timestamps. Public creation rejects the field, including an explicit false. Updates require
-a positive expected version and at least one mutable pointer field. Nil means omitted, while an empty description or supplied empty dependency
-or PR list clears that value. The task HTTP boundary rejects explicit JSON null for fields whose contract
-does not allow it. Platform creation accepts null or one of `windows`, `linux`
-and `macos`; platform PATCH retains field presence separately from its nullable
-value, so omitted preserves and explicit null clears.
+`service.NewTasks` exposes create/read/update and `SetStatus` over the same
+concrete store. `SetStatus` receives context, principal, project/task IDs and a
+version/status input. Every project member can write tasks; administrator role
+additionally manages members, invitations and project settings. Status PUT and
+method-refusal handlers authenticate, require exact Cookie Origin and use no-store.
 
-Dependencies are canonicalized UUIDs, sorted and checked for duplicate identity,
-self-reference, missing/cross-project tasks and cycles. Every update validates
-its complete candidate, including metadata-only updates and semantic no-ops.
-Active/done tasks require done predecessors; proposed and todo may have unfinished
-prerequisites. Approve moves proposed to todo, unapprove returns todo to proposed,
-claim moves todo to in_progress, and complete moves in_progress to done. Approval
-and withdrawal permit unfinished prerequisites; claim and completion require them
-done. Withdrawal preserves materials, dependencies, execution timestamps and
-attachments and makes readiness false. It does not change successor states or
-release active work. There is no reopening or direct todo-to-done transition. Fault task IDs are sorted and do not
-include other projects' task content.
+Creation uses todo, version 1, nullable execution endpoints, allowAgents=false
+and unrestricted requiredPlatform=null unless explicitly supplied.
+It rejects caller-supplied status, timing and permission; platform creation accepts
+null or windows/linux/macos. PATCH retains field presence separately from nullable value. Properties/PRs and both
+dependency collections have explicit empty defaults. Updates require a positive
+expected int64 version and at least one mutable field; omitted pointers preserve
+values, while empty description/dependency/PR lists clear them. Only requiredPlatform accepts null to clear; other JSON null input is rejected.
+Dependencies are canonical sorted UUIDs, checked for duplicate identity,
+self-reference, missing/cross-project tasks and cycles. Active/done metadata
+candidates require all predecessors done; todo may have unfinished predecessors.
 
-Task writes acquire the project lock, check current membership, then compare
-versions and validate the graph. A stale version conflicts even when values match. A matching semantic
-no-op preserves version and update time; any actual change increments once.
-Dependency order/case spelling does not create a change after canonicalization.
-Permission PATCH preserves omission versus false, rejects null/nonboolean input,
-and checks the exact version before same-value handling. A same-value update
-retains version and time; an actual change during `in_progress` is refused as
-`invalid_transition`, atomically with any other requested changes. Manual claim
-accepts either value. Approval, withdrawal, readiness and execution timing keep
-their independent meanings. The required `requiredPlatform` resource key contains null or one of `windows`,
-`linux` and `macos`. Migration `013_task_required_platform.sql` adds the nullable text column with an
-enum check; existing and default new rows are unrestricted without rewriting
-versions, timestamps or other fields. Platform
-PATCH uses the same member/version/project-lock ordering, semantic no-op and
-in-progress refusal as permission changes. A stale same-value request still
-conflicts; an actual in-progress platform change refuses the whole patch.
-Platform and permission preserve each other through every lifecycle transition,
-and manual claim remains available regardless of either value. The shared
-`core.TaskPlatform.Valid()` and `core.PlatformCompatible(required, actual)`
-validate enum values and compatibility without using the server operating
-system as a remote worker identity. Worker-specific claim
-enforcement remains part of the [worker design](../../docs/design/daynight-worker.md).
-PR order and duplicate entries are retained; changing their order is a real change.
-Predecessor changes derive readiness on read without changing downstream status,
-version or timestamps.
+Status accepts all nine pairs across todo/in_progress/done. The project write
+transaction acquires the project lock, rechecks membership, compares the exact
+version and only then handles same-state. A current same-state request returns
+the full current Task without a stored write; stale same-state conflicts. Actual
+change increments once. Entering active/done requires all direct predecessors
+done, including external edges; reopening done refuses sorted direct active/done
+dependent IDs. No dependent is changed. Status preserves requiredPlatform and all other fields,
+properties, dependency classifications and attachments. The old four routes are removed.
 
-Tasks expose nullable `startedAt` and `completedAt` execution facts. Claim records
-`startedAt` and clears the previous end; complete records `completedAt`. These
-values, status, version and update time commit in the same project transaction.
-SQL uses `statement_timestamp()` after the project lock, so waiting for that lock
-is not counted as execution. Metadata and same-state low-level writes preserve
-existing timing. A genuine new entry into execution replaces the latest start;
-this storage rule does not add a public reopening operation.
+Execution timing describes the current attempt. Actual entry into in_progress
+uses statement_timestamp() after the lock and clears the end; return to todo
+clears both. In-progress to done preserves its nullable start and records an end;
+todo to done records an end with null start. Metadata and same-state preserve time.
+No missing historical start is inferred. State, timing, version and update time
+commit atomically. Details are owned by the [status architecture](../../docs/design/daynight-task-status.md).
 
-Migration `009_task_timing.sql` leaves historical start and end values unknown.
-Creation starts both fields at `null`; approve and unapprove preserve existing
-timing without creating execution facts. Completing a historical active task
-records its real end while retaining an unknown start. No caller may submit these
-read-only fields, and neither creation/update time nor deployment time is used to
-invent an execution interval. Completed intervals survive later edits and service
-restart. The [timing requirements](../../docs/spec/daynight-task-timing.md) and
-[architecture](../../docs/design/daynight-task-timing.md) own the interval contract;
-the project settings API supplies the shared warning threshold for live presentation.
+Migration 014 converts historical proposed rows to todo, advancing only their
+version/update time and preserving every other field, including timing. It
+atomically changes the default, rows, CHECK and ledger; restart does not rerun it.
+Applied historical migrations are immutable. Runtime input and readers reject proposed.
 
-Expected refusals are captured before any write and returned only after the
-outer lock-only transaction succeeds; transaction/cleanup failures remain
-operational errors. Lists and reads check project existence and task state
-inside one RR snapshot. Task cursors bind the canonical project and optional
-status/ready/allowAgents/compatiblePlatform filters, preserving the difference
-between absent and false and between an absent platform and each enum.
-`compatiblePlatform` accepts `windows`, `linux` or `macos` and includes tasks
-whose requirement is null or matches. All filtering runs in SQL before ordering,
-limit and lookahead; a bounded page cannot hide later compatible tasks.
+Migration 013_task_required_platform.sql adds nullable required_platform with its
+enum CHECK, preserving old versions, timestamps and other fields. Full tasks and
+graph nodes always expose requiredPlatform as null/windows/linux/macos. PATCH
+distinguishes omitted/set/null; exact-version same-value preserves version/time,
+stale values conflict and actual in-progress changes reject the whole edit.
+Platform, permission and status changes preserve each other. TaskPlatform.Valid
+and PlatformCompatible(required, actual) own null/exact compatibility without
+inferring worker identity from the server OS. Explicit manual status setting
+remains available regardless of automatic eligibility.
+
+Permission PATCH distinguishes omission from false, rejects null/nonboolean,
+checks version before same-value handling and rejects actual changes while
+in_progress as invalid_transition. Explicit task execution accepts either value;
+automatic discovery requires true. Future worker claims remain a separate
+[planned design](../../docs/design/daynight-worker.md). PR order and duplicates
+remain significant. Readiness changes do not advance dependent task revisions.
+
+Expected refusals are returned only after the lock-only transaction succeeds;
+transaction/cleanup failures preserve operational errors. Reads use an RR snapshot.
+Task cursors bind project and optional status/ready/allowAgents/compatiblePlatform
+filters, retaining absent/false and absent/each-enum distinctions. Compatibility
+includes unrestricted and exact-platform tasks; all filters run in SQL before
+ordering, limit and lookahead, so a bounded page cannot hide later compatible work.
 
 ## Complete task graph
 
@@ -529,20 +505,11 @@ has been read. It shares the clock authority of task execution timestamps withou
 changing stored task metadata. Its changing value is not graph-content identity;
 clients preserve task/index identity on clock-only responses.
 
-The summary requires `total`, `proposed`, `todo`, `inProgress`, `done`, `ready`
-and `blocked` counts, including zero values. Each project task counts once,
-regardless of how many graph contexts display it: `total = proposed + todo + inProgress + done` and
-`todo = ready + blocked`. Proposed tasks may have unfinished prerequisites; their
-`blockedBy` remains accurate, but they are never ready and do not contribute to
-`todo` or `blocked`. Graph reads do not change stored status, revisions or times.
-
-Migration `007_task_proposed.sql` expands the stored status check to include
-`proposed`, preserving existing records, versions and timestamps. Applied
-migrations remain unchanged. Task get/list/graph responses support all four
-states, including public list status filters. A later migration changes only the
-creation default to proposed, preserving all existing task fields, states, versions
-and timestamps. The [lifecycle decision](../../.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)
-activates dedicated transitions after the [reader preparation](../../.agents/notes/implemented/feature/2026-10-22-proposed-task-readers.md).
+The summary requires total, todo, inProgress, done, ready and blocked, including
+zero values. Each project task counts once: `total = todo + inProgress + done`
+and `todo = ready + blocked`. Only todo contributes to ready/blocked; ready means
+all direct prerequisites are done. Task/get/list/graph and status filters accept
+only three states. Graph reads do not change stored status, revisions or time.
 
 Nodes contain `id`, `titlePreview`, `titleTruncated`, `status`, `dependsOn`,
 `externalDependsOn`, `blockedBy`, `ready`, required boolean `allowAgents`,
@@ -580,10 +547,7 @@ receipts and fixed-capacity gates are in the
 | `GET` | `/api/v1/projects/{projectId}/tasks` | `200`, task page |
 | `GET` | `/api/v1/projects/{projectId}/tasks/{taskId}` | `200`, task |
 | `PATCH` | `/api/v1/projects/{projectId}/tasks/{taskId}` | `200`, updated metadata/dependencies |
-| `POST` | `/api/v1/projects/{projectId}/tasks/{taskId}/approve` | `200`, proposed→todo task |
-| `POST` | `/api/v1/projects/{projectId}/tasks/{taskId}/unapprove` | `200`, todo→proposed task |
-| `POST` | `/api/v1/projects/{projectId}/tasks/{taskId}/claim` | `200`, todo→in_progress task |
-| `POST` | `/api/v1/projects/{projectId}/tasks/{taskId}/complete` | `200`, in_progress→done task |
+| `PUT` | `/api/v1/projects/{projectId}/tasks/{taskId}/status` | `200`, exact-version three-state assignment; full Task response |
 
 Creation accepts required `title`, optional `description`, `dependsOn`,
 `externalDependsOn`, `requiredPlatform` and `properties`; omitted optional values
@@ -593,7 +557,7 @@ The external subset must belong to the final complete dependency set. On PATCH,
 omitting both fields preserves relationships; dependsOn-only replaces IDs and
 keeps surviving classifications with new edges ordinary; externalDependsOn-only
 keeps IDs and replaces the exact external subset; both supplied replace both.
-Removing an edge removes its marker. Metadata and approve/unapprove/claim/complete
+Removing an edge removes its marker. Metadata and status updates
 preserve unrelated classification and execution timing. Exact write examples
 belong to the [external dependency design](../../docs/design/daynight-external-dependencies.md).
 PATCH accepts a positive integer `version` and at least one mutation of `title`,
@@ -651,9 +615,8 @@ For example, after saving a PAT through setup and obtaining a project ID:
 
 ```bash
 daynight task create --project PROJECT_ID --title "Implement API"
-daynight task approve TASK_ID --project PROJECT_ID --if-version 1
-daynight task claim TASK_ID --project PROJECT_ID --if-version 2
-daynight task complete TASK_ID --project PROJECT_ID --if-version 3
+daynight task set-status TASK_ID in_progress --project PROJECT_ID --if-version 1
+daynight task set-status TASK_ID done --project PROJECT_ID --if-version 2
 ```
 
 To inspect a failure, match its response `requestId` with JSON logs on stderr:
@@ -707,7 +670,7 @@ the [V1–V10 requirements](../../docs/spec/daynight-server.md) as follows:
 | V1: persistent resources | `workflow_restart_persistence`, `graceful_sigterm_drains_committed_request`, `forced_sigterm_cancels_without_late_write`; complete objects survive process restart and listener reuse |
 | V2: dependency refusal and rollback | `refusals_scopes_filters_and_cursors`, `partial_write_http_failure_rolls_back`; rejected writes preserve complete tasks, with a sequence proving metadata and the first edge changed before the injected failure |
 | V3: concurrency and project independence | `concurrent_reverse_dependencies`, `canceled_request_and_independent_project`; owned backend waiters prove competing requests and independent progress |
-| V4: state gates | Workflow/refusal scenarios, `concurrent_lifecycle_same_version` (approve/unapprove/claim/complete), `concurrent_dependency_update_and_claim`, `installed_cli_same_version_claim`, `installed_cli_same_version_dependency_edit_and_claim`, `installed_cli_same_version_unapprove` and `installed_cli_same_version_unapprove_and_claim`; [service tests](internal/service/task_test.go) and [HTTP transition tests](internal/server/task_transitions_test.go) cover wrong predecessor states, same-version action races and metadata candidates |
+| V4: state gates | `three_state_read_projection`, `concurrent_status_same_version`, `concurrent_dependency_update_and_status`, `concurrent_reopen_and_successor_status` plus installed start/done/distinct-target/dependency-edit/same-state races; [service tests](internal/service/task_test.go) and [HTTP status tests](internal/server/task_transitions_test.go) cover all nine pairs, +0/+1, stale no-op and ordinary/external predecessor/dependent protection |
 | V5: revisions and no-ops | Workflow/refusal scenarios and `concurrent_same_version`; actual changes compete on one version and matching semantic no-ops retain fields/timestamps |
 | V6: listing and HTTP contract | `refusals_scopes_filters_and_cursors`, [HTTP tests](internal/server/tasks_test.go) and service tests cover tied keysets, scoped filters, initialized empty resources, DTOs and error mapping |
 | V7: transactions and lifecycle | Partial-failure, cancellation, graceful/forced-signal, unsupported/failed-migration-history, concurrent-startup and `installed_cli_pre_lifecycle_migration_restart` scenarios; owning store tests prove finer snapshot and cross-migration interleavings |
@@ -733,6 +696,18 @@ status, readiness, dependencies and escaped PR references while omitting
 description, version and timestamps; `task show` retains those detail fields.
 Both detail and all-status list output preserve visible PR control-character
 escaping without emitting raw terminal controls.
+
+The independent [platform/status scenario](cmd/daynight-server/acceptance_platform_cli_test.go),
+`TestInstalledCLIPlatformAcceptance` / `installed_cli_platform_status_workflow`,
+owns a separate PostgreSQL fixture, installed CLI workspace and server process.
+It checks all four required-platform values across nine status pairs, exact +0/+1,
+platform and material preservation, compatibility-filtered candidates, explicit
+clear, stale/no-op behavior and in-progress platform refusals. It requires graceful
+SIGTERM exit 0 and the fixture's normal cleanup receipt. The original project/task
+workflow retains its assertions; the platform matrix has its own unchanged
+45-second server lifetime. Runtime success remains established by source-bound
+acceptance receipts, separately from this scenario inventory.
+
 The [attachment scenario](cmd/daynight-server/acceptance_attachment_cli_test.go)
 reuses the same packed/installed CLI and real-process fixture. It checks exact
 text, empty and multi-chunk binary bytes above 1 MiB; nested/special paths,
@@ -747,35 +722,34 @@ K1 remains recorded only, without asserting cross-store rollback.
 The [combined acceptance decision](../../.agents/notes/implemented/testing/2026-10-21-task-attachment-cross-layer-acceptance.md)
 owns this proof alongside the same-data CLI/browser journeys.
 
-The [lifecycle scenarios](cmd/daynight-server/acceptance_lifecycle_cli_test.go)
-reuse this installation and actual-process fixture. The migration journey
-executes checked-in migrations 001 through 006 and records their raw-byte
-checksum ledger and old todo/in-progress/done rows before startup. The current
-built service applies 007/008/009/010 through its production migration engine. An
-unassigned legacy project first returns 404 to the authenticated nonmember. The
-fixture then explicitly provisions admin membership for the actual `/api/v1/me`
-user, verifies membership through the API and compares the original raw task
-rows with their original columns unchanged and nullable unknown timing. This prepares authorized test access, not automatic ownership
-adoption or rewritten task/migration history. Packed CLI reads verify old records, new proposed creation, explicit prerequisite/dependent
-progression, blocked/stale refusals, lifecycle timing, project setting defaults and readable plan attachment bytes. Actual
-restart compares the historical rows and ledger plus new task and attachment
-state. Settings acceptance also performs real HTTP saves, same-value no-ops,
-stale conflicts and cross-project isolation, then uses the packed CLI to read
-exact nested int64 settings versions above JavaScript's safe integer range through
-project show/list and graph output across restart. Preparing the current schema
-and rewriting its history is not this oracle.
+The [status scenarios](cmd/daynight-server/acceptance_lifecycle_cli_test.go)
+reuse the packed installation and actual-process fixture.
+`TestInstalledCLIStatusMigrationAcceptance` runs installed_cli_v12_status_migration_restart
+against genuine checked-in migrations 001–012, then lets the current service apply
+013 platform followed by 014 status. The status-only preservation oracle separately starts
+from genuine prefix13 and compares non-null platform requirements across14;
+v12 rows first gain the expected nullable platform column. It compares raw historical rows and checksum ledgers: proposed changes to todo
+once with version/update-time advancement; non-proposed rows and all other fields,
+timing, permission, properties, ordinary/external edges and attachment bytes survive.
+Database defaults/CHECK, overflow rollback and restart idempotence are separate
+oracles. Explicit fixture membership establishes test access without adopting
+legacy projects or rewriting migration history.
 
-The claim and dependency-edit/claim competitions launch two real installed CLI
-processes with one observed version. An actual project-row lock and observed
-waiters order the requests. Distinct correlated request IDs, exactly one
-successful mutation, one visible `version_conflict` and process exits prove the
-winner/refusal without an automatic retry. Complete before/after snapshots and
-attachment bytes establish preserved metadata, version/timestamp progression and
-the active/done prerequisite invariant. Deterministic service/HTTP races remain
-separate interleaving evidence; one observed process order does not prove all
-orders. Optional scenario `lifecycle` evidence records platform/scope, migration
-ledgers/rows, action/refusal snapshots and outputs, and race request/process
-results. The [cross-layer decision](../../.agents/notes/implemented/testing/2026-10-22-task-lifecycle-cross-layer-acceptance.md)
+`TestInstalledCLIStatusRacesAcceptance` starts two real installed processes with
+one observed version. Installed scenarios are installed_cli_same_version_start,
+installed_cli_same_version_done, installed_cli_same_version_distinct_targets,
+installed_cli_same_version_dependency_edit_and_start and installed_cli_same_version_same_state.
+Project-row locks and observed waiters order actual requests. Changed races require
+one committed winner and one visible version_conflict; current same-state contenders
+both succeed without changing stored fields. Correlated request IDs, process exits,
+complete snapshots and attachment bytes prove no hidden retry or material loss.
+Service/native ordinary/external reopening versus successor-start/complete races
+provide separate interleaving evidence; one process order does not prove every order.
+Settings acceptance retains real saves, no-ops, conflicts, project isolation and
+nested exact-int64 CLI readback. Optional lifecycle receipts record source, migration,
+snapshot, request/process and restart evidence without treating fixture preparation
+or a mocked client as runtime proof.
+The [cross-layer decision](../../.agents/notes/implemented/testing/2026-10-22-task-lifecycle-cross-layer-acceptance.md)
 owns these methods and their relationship to production browser journeys.
 
 The Node orchestrator reuses that installation for six budget probes after the

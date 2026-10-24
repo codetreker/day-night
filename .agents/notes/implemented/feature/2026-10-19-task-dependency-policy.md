@@ -73,14 +73,14 @@ invariant, including metadata-only changes, retries and no-ops. Public faults
 contain fixed messages and sorted task IDs rather than other projects' content.
 The service retains pointer-based metadata omission semantics without accepting
 JSON null as a fallback value at its HTTP boundary. Metadata updates allow
-proposed tasks and cannot advance lifecycle.
+todo tasks with unfinished prerequisites and cannot change status.
 
 Real PostgreSQL tests exercise all state pairs, candidate replacement, rejected
 mutations, canonical references, no-op/version behavior, snapshot reads and
 filter-bound pages. Distinct sessions with exact application-name barriers prove
-reverse-edge, dependency-update/claim and same-version lifecycle races. Earlier
-reopen/start tests belonged to the original general-status contract; its
-replacement rejects every backward transition. Database failure after partial
+reverse-edge, dependency-update/status and same-version status races. The
+[status assignment decision](../architecture/2026-10-24-task-status-assignment.md)
+restores arbitrary transitions with ordinary/external direct-dependent reopening protection. Database failure after partial
 writes proves full rollback; lock/query cancellation proves no delayed mutation
 and reusable resources. No storage substitute or product coverage exclusion is
 needed.

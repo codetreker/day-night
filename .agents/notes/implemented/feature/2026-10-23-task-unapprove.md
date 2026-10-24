@@ -12,71 +12,35 @@ compete with claim without cancelling work that has already started.
 
 ## Decision
 
-The dedicated `unapprove` action changes only todo to proposed. Both ready and
-dependency-blocked todo tasks qualify; proposed, in-progress and done tasks do
-not. It uses the same project-lock transaction, current membership check and
-positive int64 expected version as approve. Version is checked before predecessor
-state. A successful action increments version and updatedAt once, preserves
-metadata, properties, dependency edges, execution timestamps and attachments,
-and makes readiness false through the existing read model. No migration or new
-stored state is required.
+The original withdrawal delivery added a versioned todo-to-proposed unapprove
+action to the [approval lifecycle](2026-10-22-task-approval-lifecycle.md). Ready
+and blocked todo qualified; active/done did not. It reused project locking,
+membership and exact version checks, preserved all materials and timing, and
+did not change successors or release active work. Same-version withdrawal/start
+and withdrawal/withdrawal had one winner; a blocked start refusal did not prevent
+withdrawal. HTTP authentication, Origin, no-store and strict parsing, CLI project
+selection, lossless versions and no-retry behavior shared existing owners.
 
-The HTTP route is `POST /api/v1/projects/{projectId}/tasks/{taskId}/unapprove`.
-Its request contains only version and its successful response is the complete
-task. Authentication, Cookie Origin validation, method refusal, no-store,
-resource visibility and structured request diagnostics share the existing
-lifecycle owners. Member and administrator permissions are identical to
-approve. The CLI exposes `task unapprove` with the same project and exact-version
-options, output, completion and no-retry behavior as the other lifecycle actions.
+The [three-state assignment decision](../architecture/2026-10-24-task-status-assignment.md)
+supersedes that public route and its approval meaning. Runtime tasks now default
+to todo, use one status setter, migrate legacy proposed rows and reject the deleted
+state. This note retains withdrawal's original rationale and the client ownership
+mechanisms that continue under status/allowAgents.
 
-The project lock serializes withdrawal and claim. For the same ready todo and
-observed version, one action commits and the other receives version_conflict.
-Two withdrawals at that version also have one winner. A blocked todo can still
-be withdrawn when claim is refused for unfinished prerequisites. A rejected or
-uncertain response is not permission to submit the action again with a newer
-version. Clients reconcile the actual task before a new decision.
+The original Web extension put task-specific confirmation in a common header,
+available on both tabs. Confirmation froze resource, source, target and exact
+version, invalidated on known changes, focused Cancel first, kept the lower dialog
+inert and restored focus without a write on cancellation. One session/confirmation
+owner preserved pending and unknown outcomes across close/reopen and prevented
+competing submissions. Exact target/version responses, confirmed revision floors,
+GET-only reconciliation, identity isolation and mounted attachment reading remain
+part of the successor. A graph-refresh failure cannot restore old detail.
 
-Task details place the applicable action beside the actual task title in the
-common header: Approve task for proposed, Unapprove task for todo, and no approval
-action for in-progress or done. The entry remains available on overview and
-attachment tabs. The body reserves a reading area for the resource panels and
-retains status and retained/stale notices in its shrinkable native scrolling
-context. The [compact-header decision](../simplification/2026-10-24-compact-task-detail-header.md)
-partially supersedes the original shared title/context allocation: the complete
-title now owns bounded, focusable native scrolling in the header. Retained read
-errors keep a separately bounded, keyboard-focusable scrolling area. This
-allocation keeps tabs, materials and actions reachable when errors and long
-valid names coexist. Both actions open a task-specific
-confirmation before sending any mutation. Approval explains that todo becomes
-claimable only after prerequisites finish; withdrawal explains the return to
-proposal review and retention of task materials. Cancel and Escape send no
-request. The confirmation retains its bounded modal geometry and places the
-complete task name in a keyboard-scrollable body, keeping its header and action
-footer accessible. The topmost confirmation owns focus, initially focuses Cancel,
-makes the underlying detail inert and restores the originating title action on cancel.
-
-One confirmation/session mechanism owns both actions. Confirmation retains the
-reviewed action, project/task identity, source status and exact version. A known
-change invalidates that decision rather than silently switching action or
-version. Pending, unknown and reconciling operations prevent another submission,
-including across detail closure. The existing detail session retains
-action-specific feedback, GET-only reconciliation, identity isolation, confirmed
-version protection and mounted attachment state. Success verifies the matching
-resource, target status and exactly one version increase; graph-refresh failure
-does not replace the confirmed detail with an older snapshot.
-
-This limited transition partially supersedes the original
-[approval lifecycle](2026-10-22-task-approval-lifecycle.md), whose removal of
-generic status writes and separation of approval from execution remain intact.
-The [unified status assignment proposal](../../proposed/architecture/2026-10-24-task-status-assignment.md)
-specifies three-state assignment and migration of the legacy proposed state. It
-retains this policy as historical rationale; the runtime remains action-based
-until the proposed coordinated implementation is delivered.
-The current [server requirements](../../../../docs/spec/daynight-server.md),
-[CLI requirements](../../../../docs/spec/daynight-project-task.md),
-[Web requirements](../../../../docs/spec/daynight-web.md) and
-[handbook](../../../../packages/daynight/src/commands/skill/skills/using-daynight/references/handbook.md)
-own their complete observable contracts.
+The body reserves reading space among panels, shrinkable context and independently
+bounded errors. The [compact header decision](../simplification/2026-10-24-compact-task-detail-header.md)
+owns full-title bounded native scrolling. This allocation preserves tabs, materials
+and actions when long titles and errors coexist, across narrow screens. The
+current menu/confirmation behavior is specified in the Web and status documents.
 
 ## Alternatives
 
@@ -97,17 +61,14 @@ and bounded errors covers their combined height while preserving full text.
 
 ## Consequences
 
-Withdrawing approval changes the task's own proposal/ready eligibility. It does
-not satisfy prerequisites, cascade state changes to successors, release an
-executing task or reopen completed work. Existing status, dependency and timing
-rules therefore remain valid. Proposed work requires a new explicit approval;
-withdrawal supplies no execution or delivery authority.
+The original narrow withdrawal avoided reopening active/completed work and
+introduced no migration. Its preservation of materials, successor independence,
+exact decision versions and uncertain-result handling remains valuable. Task
+approval and withdrawal are removed by the successor; they no longer restrict
+status setting or add execution barriers. Status still grants no delivery rights
+and cannot stop a process or transfer ownership.
 
-The original forward-only policy remains the historical reason generic status
-writes disappeared. Further backward transitions, bulk mutations, execution
-cancellation and ownership transfer need their own state and permission
-decisions. They cannot be inferred from unapprove. Runtime verification stays
-with source-bound CLI, PostgreSQL and production-browser receipts, including
-refusals, exact-version races, confirmation interaction and uncertain outcomes;
-the frontend-only fixture demonstrates appearance and interaction without
-proving persistence or concurrent service behavior.
+Production acceptance proves actual service persistence, version races, refusal
+and uncertain outcomes separately from frontend-only appearance and interaction.
+Bulk mutations, execution cancellation and ownership transfer remain independent
+state/permission decisions with their own observable guarantees.

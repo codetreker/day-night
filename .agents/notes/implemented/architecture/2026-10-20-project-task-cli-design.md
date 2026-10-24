@@ -90,12 +90,11 @@ meaningful distinctions. The service keeps its raw registered address and its
 existing API, schema, duplicate-project allowance and transaction policies.
 
 The adopted task composition uses the shared command schema and server runtime.
-Description values declare `allowEmpty`, list status values declare four fixed
+Description values declare `allowEmpty`, list and setter status values declare three fixed
 `choices`, and dependency options declare `repeatable`. Generic update no longer
-declares status. The [approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md)
-owns proposed creation and dedicated approve, claim and complete commands;
-the [withdrawal decision](../feature/2026-10-23-task-unapprove.md) adds unapprove
-under the same command schema and exact-version rules. Repeatable values form an ordered
+declares status. The [status assignment decision](2026-10-24-task-status-assignment.md)
+owns todo creation and the dedicated set-status command, shared exact versions,
+same-state +0 and actual-change +1. Repeatable values form an ordered
 array from the first occurrence, retaining duplicate IDs for server validation.
 Text options accept inline assignment split at the first equals sign, preserving
 leading dashes and later equals signs. Separated dash-prefixed values remain

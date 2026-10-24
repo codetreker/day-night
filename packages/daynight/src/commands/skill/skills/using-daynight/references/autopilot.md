@@ -26,8 +26,14 @@ possible. Do not select another task because CI, review, or merge is pending.
 
 ## Select one related task
 
-When there is no current task, identify the actual runtime in the environment
-where task commands and implementation will execute:
+When the user explicitly supplies a task or fixed Goal queue, inspect its next
+unfinished task by ID and use the manual execution path regardless of
+`allowAgents` or platform compatibility. Preserve readiness, stage inputs, and
+the existing execution scope; a fixed queue does not authorize unrelated discovery.
+Existing scoped authorization covers its ready successors without per-task reauthorization.
+
+Otherwise, when there is no current task, identify the actual runtime in the
+environment where task commands and implementation will execute:
 
 ```bash
 node -p "process.platform"
@@ -35,73 +41,61 @@ node -p "process.platform"
 
 Map `win32` to `windows`, `darwin` to `macos`, and `linux` to `linux`.
 A Linux runtime in WSL is `linux`, regardless of its outer Windows host.
-Use this result as `<actual-platform>` in the commands below. Unsupported or
-unknown runtime platforms leave selection waiting with the concrete reason;
-do not claim a task. Do not substitute a configured platform, remote host OS,
-or requested task platform for the observed runtime.
-
-Query platform-compatible candidates:
+Unsupported or unknown runtime platforms leave selection waiting with the concrete
+reason. Do not substitute a configured platform, remote host OS, or requested task
+platform for the observed runtime. Query platform-compatible candidates:
 
 ```bash
 daynight task ready --allow-agents true --compatible-platform <actual-platform> --json
 ```
 
-Pick exactly one approved ready `todo` task with `allowAgents=true` and
-`requiredPlatform` either null or equal to the actual platform, most relevant to the confirmed Goal and
-authorized work. Compare concrete actions, scope, deliverables, solution,
-acceptance criteria, and actual dependencies; creation order does not establish
-relevance. Read full details and actual task-specific and shared inputs for
-plausible candidates before choosing. Inspect complete `dependsOn` and the
-`externalDependsOn` subset. External prerequisites still block readiness, and
-cross-chain classification does not authorize executing them or expand the
-confirmed scope. Readiness checks all prerequisites, not stage artifact
-completeness or execution authorization. Pass the selected ID, automatic-selection
-mode and actual platform to `run-task`. Immediately before claim, reread the full
-task with `daynight task show <task-id> --json` and recheck `todo`, ready,
-`allowAgents=true`, and `requiredPlatform` either null or equal to the same actual
-platform. A changed or incompatible requirement prevents claim and requires a
-new selection decision; a changed execution environment requires fresh runtime
-identification and candidate queries. `run-task` claims the version observed for
-that decision before starting, using the exact version from this full-task recheck
-with `--if-version`. A prior compatible candidate page is not permission to use
-the ordinary claim path after eligibility changes.
-Autopilot never auto-approves proposed work. Goal registration, completed
-discussions, and permission to execute do not authorize task approval for delivery.
-An explicit user request to start a Goal discussion or direct its next discussion
-uses the Goal protocol's scoped approval and manual claim path, not automatic
-approval or backlog selection. Autopilot cannot supply user confirmation of
-requirements or solution.
+Pick exactly one ready `todo` task with `allowAgents=true` and `requiredPlatform`
+either null or equal to the actual platform, most relevant to the confirmed Goal
+and authorized work. Compare actions, scope, deliverables, solution, acceptance
+criteria and actual dependencies; creation order does not establish relevance.
+Read full details and actual task-specific and shared inputs for plausible
+candidates. Inspect complete `dependsOn` and its `externalDependsOn` subset.
+External prerequisites still block readiness, and cross-chain classification does
+not authorize executing them or expand the confirmed scope. Readiness checks all
+prerequisites, not stage artifact completeness or execution authorization.
 
-Ready returns at most 10 candidates by default, or the requested bounded
-`--limit`; it is not a complete backlog. If this page is empty or no candidate
-matches, obtain the additional context actually needed through selected reads,
-the graph, or `daynight task list --allow-agents true --compatible-platform <actual-platform> --json`
-as described in the handbook. Both ready and supplemental list queries retain
-the actual-platform filter before pagination; do not filter a bounded unfiltered
-page locally. Distinguish
-completed scope, work awaiting explicit approval, prerequisite-blocked work, other
-ongoing work, and insufficient
-candidates. Do not take unrelated work to stay busy or report completion from an
-empty or unrelated bounded page.
+Pass the selected ID, automatic-selection mode and actual platform to `run-task`.
+Immediately before setting in_progress, reread the full task with
+`daynight task show <task-id> --json` and recheck `todo`, ready, `allowAgents=true`,
+and `requiredPlatform` either null or equal to the same actual platform. A changed
+or incompatible requirement prevents starting and requires a new selection decision;
+a changed execution environment requires fresh runtime identification and candidate
+queries. Run-task enters in_progress using the version observed for that decision
+before starting, using the exact version from this full-task recheck with
+`--if-version`. An earlier compatible page does not authorize bypassing changed
+eligibility. Autopilot cannot supply user confirmation of requirements or solution;
+an explicit discussion-start request uses the Goal protocol's scoped manual path.
+
+Ready returns at most 10 candidates by default or the requested bounded `--limit`;
+it is not a complete backlog. Supplement an empty or unmatched page only with
+needed selected reads, the graph, or
+`daynight task list --allow-agents true --compatible-platform <actual-platform> --json`.
+Both ready and supplemental list queries retain the actual-platform filter before
+pagination and permission=true; do not filter a bounded unfiltered page locally.
+Distinguish completed scope, missing execution authorization, prerequisite blockers,
+other ongoing work and insufficient candidates. Do not take unrelated work to stay
+busy or report completion from an empty or unrelated bounded page.
 
 Autopilot permission alone covers execution of existing tasks, not creation of
-new ones. An explicit user or applicable repository instruction requiring
-Daynight tracking or review supplies standing creation permission within the
-confirmed scope. If the confirmed Goal requires missing tracked work, use explicit creation
-permission already granted for that scope or obtain it, then use
-[create-task](create-task.md). Goal permission covers its discussion stages and
-confirmed in-scope breakdown at the Goal protocol's user-confirmation gates.
-Do not create architecture placeholders or delivery tasks before their gate.
-Delivery registration follows explicit user solution confirmation, and leaves
-proposed tasks pending separate explicit approval. Complete the solution
-discussion only after the accepted solution and actual breakdown are verified;
-its completion does not start delivery.
+new ones. Explicit user or repository tracking/review requirements supply standing
+creation permission within the confirmed scope. Use existing creation permission
+or obtain it before [create-task](create-task.md). Goal permission covers discussion
+stages and the confirmed breakdown at user-confirmation gates; do not precreate
+architecture placeholders or delivery tasks. Delivery registration leaves todo
+without execution; complete solution discussion only after accepted material and
+the real breakdown are verified. Existing explicit execution scope continues to
+cover its ready successors without another per-task authorization.
 
-Automatic selection never enables `allowAgents` on a task. If the user explicitly
-selects a task for execution, its manual claim path remains available regardless
-of the flag or platform compatibility; preserve all approval, prerequisite and
-authorization checks. An automatically selected ID passed to run-task remains
-automatic selection and does not acquire this manual exception.
+Automatic selection never enables `allowAgents`. An explicitly selected task or
+fixed Goal queue's manual execution path remains available regardless of the flag
+or platform compatibility; preserve prerequisite, stage-input and authorization
+checks. An automatically selected ID passed to run-task remains automatic
+selection and does not acquire this manual exception.
 
 ## Advance serially and accept the scope
 
@@ -111,12 +105,11 @@ separate task. Ordinary CI, review, and merge waits keep that target. After
 task within the same authorized scope. For Goal discussions, stop at each user
 confirmation gate; completing requirements and starting solution discussion
 requires the user's explicit confirmation and direction under the Goal protocol.
-Solution confirmation permits proposed delivery registration, not delivery
-execution. Later delivery selection requires an approved ready todo with complete
-inputs, explicit autopilot activation, and execution authorization. Discussion
-completion satisfies a dependency; it never approves delivery tasks. Explicit
-scoped user approval may cover stated delivery tasks; Goal registration and
-discussion confirmation do not.
+Solution confirmation permits todo delivery registration. Later delivery selection
+requires a ready todo with complete inputs, explicit autopilot activation, and
+execution authorization. Discussion completion satisfies a dependency and grants
+no delivery execution permission. Existing scoped execution authorization
+continues to apply to its stated ready successors.
 
 If `run-task` returns a wait requiring external intervention, preserve its
 current-task checkpoint and report the blocker and required next action. An

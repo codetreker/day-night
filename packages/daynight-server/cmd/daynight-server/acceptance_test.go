@@ -16,12 +16,13 @@ import (
 )
 
 func TestBuiltBinaryAcceptance(t *testing.T) {
-	acceptanceCase(t, "proposed_read_projection", []string{"V1", "V5", "V6", "V7"}, acceptanceProposedReads)
+	acceptanceCase(t, "three_state_read_projection", []string{"V1", "V5", "V6", "V7"}, acceptanceStatusReads)
 	acceptanceCase(t, "workflow_restart_persistence", []string{"V1", "V4", "V5", "V6", "V10", "TP-V1", "TP-V3"}, acceptanceWorkflow)
 	acceptanceCase(t, "refusals_scopes_filters_and_cursors", []string{"V2", "V4", "V5", "V6", "V10"}, acceptanceRefusals)
 	acceptanceCase(t, "concurrent_reverse_dependencies", []string{"V3"}, acceptanceReverseDependencies)
-	acceptanceCase(t, "concurrent_lifecycle_same_version", []string{"V4", "V5"}, acceptanceLifecycleRace)
-	acceptanceCase(t, "concurrent_dependency_update_and_claim", []string{"V3", "V4", "V5"}, acceptanceDependencyClaimRace)
+	acceptanceCase(t, "concurrent_status_same_version", []string{"V4", "V5"}, acceptanceStatusRace)
+	acceptanceCase(t, "concurrent_dependency_update_and_status", []string{"V3", "V4", "V5"}, acceptanceDependencyStatusRace)
+	acceptanceCase(t, "concurrent_reopen_and_successor_status", []string{"V3", "V4", "V5"}, acceptanceReopenStatusRace)
 	acceptanceCase(t, "concurrent_same_version", []string{"V5", "TP-V4"}, acceptanceVersionRace)
 	acceptanceCase(t, "partial_write_http_failure_rolls_back", []string{"V2", "V7", "V10", "TP-V4"}, acceptancePartialFailure)
 	acceptanceCase(t, "canceled_request_and_independent_project", []string{"V3", "V7", "V10", "TP-V4"}, acceptanceCancellation)
@@ -55,43 +56,36 @@ func acceptanceWorkflow(t *testing.T, scenario *acceptanceScenario) {
 	if !reflect.DeepEqual(target.Properties, references) || first.Properties.PullRequests == nil || len(first.Properties.PullRequests) != 0 {
 		t.Fatal("created properties changed caller strings or default list")
 	}
-	if first.Description != "" || first.Status != "proposed" || first.Ready || first.DependsOn == nil || first.BlockedBy == nil || target.Ready || !slices.Equal(target.DependsOn, dependencies) || !slices.Equal(target.BlockedBy, dependencies) {
+	if first.Description != "" || first.Status != "todo" || !first.Ready || first.DependsOn == nil || first.BlockedBy == nil || target.Ready || !slices.Equal(target.DependsOn, dependencies) || !slices.Equal(target.BlockedBy, dependencies) {
 		t.Fatal("created task defaults or dependency projection are invalid")
 	}
 	noChange := process.update(t, target, map[string]any{"title": target.Title, "dependsOn": dependencies, "properties": references})
 	if !reflect.DeepEqual(noChange, target) {
 		t.Fatal("semantic no-op changed task version or update time")
 	}
-	acceptanceWrongActions(t, process, target, "unapprove", "claim", "complete")
-	target = process.action(t, target, "approve")
-	acceptanceWrongActions(t, process, target, "approve", "complete")
-	refusal := process.request(context.Background(), http.MethodPost, acceptanceTaskPath(target)+"/claim", map[string]any{"version": target.Version}, "blocked-start")
+	if same := process.setStatus(t, target, "todo"); !reflect.DeepEqual(same, target) {
+		t.Fatal("same-status request changed the task")
+	}
+	refusal := process.request(context.Background(), http.MethodPut, acceptanceTaskPath(target)+"/status", map[string]any{"version": target.Version, "status": "in_progress"}, "blocked-start")
 	fault := acceptanceError(t, refusal, http.StatusConflict, "dependency_unsatisfied")
 	if fault.Details == nil || !slices.Equal(fault.Details.TaskIDs, dependencies) {
-		t.Fatal("blocked transition omitted sorted task IDs")
+		t.Fatal("blocked status update omitted sorted task IDs")
 	}
-	first = process.action(t, first, "approve")
-	first = process.action(t, first, "claim")
-	acceptanceWrongActions(t, process, first, "approve", "unapprove", "claim")
-	first = process.action(t, first, "complete")
-	acceptanceWrongActions(t, process, first, "approve", "unapprove", "claim", "complete")
-	second = process.action(t, second, "approve")
-	second = process.action(t, second, "claim")
-	second = process.action(t, second, "complete")
+	first = process.setStatus(t, first, "in_progress")
+	first = process.setStatus(t, first, "done")
+	second = process.setStatus(t, second, "done")
 	ready := process.readTask(t, target)
 	if !ready.Ready || len(ready.BlockedBy) != 0 || ready.Version != target.Version || !ready.UpdatedAt.Equal(target.UpdatedAt) {
 		t.Fatal("prerequisite completion mutated downstream metadata or left it blocked")
 	}
 	target = process.update(t, ready, map[string]any{"description": "acceptance-secret-description", "properties": references})
-	target = process.action(t, target, "claim")
-	if target.Version != 4 || target.Status != "in_progress" || target.Ready {
-		t.Fatal("claim did not advance the approved task once")
+	target = process.setStatus(t, target, "in_progress")
+	if target.Version != 3 || target.Status != "in_progress" || target.Ready {
+		t.Fatal("status update did not advance the task once")
 	}
-	acceptanceWrongActions(t, process, target, "approve", "unapprove", "claim")
-	target = process.action(t, target, "complete")
-	acceptanceWrongActions(t, process, target, "approve", "unapprove", "claim", "complete")
+	target = process.setStatus(t, target, "done")
 	target = process.update(t, target, map[string]any{"description": ""})
-	if target.Description != "" || target.Version != 6 {
+	if target.Description != "" || target.Version != 5 {
 		t.Fatal("description clear or completion version differs from the contract")
 	}
 	readProject := acceptanceDecode[api.Project](t, process.request(context.Background(), http.MethodGet, "/api/v1/projects/"+project.ID, nil, "project-read"), http.StatusOK)
@@ -117,21 +111,11 @@ func acceptanceWorkflow(t *testing.T, scenario *acceptanceScenario) {
 		t.Fatal("persisted completed tasks were not returned by their filtered list")
 	}
 	process.logs.safe(t, "acceptance-secret")
-	if !process.logs.matches(map[string]any{"request_id": "blocked-start", "type": "operation_error", "cause": "dependency_unsatisfied", "component": "task", "phase": "claim", "error_code": "dependency_unsatisfied"}) {
+	if !process.logs.matches(map[string]any{"request_id": "blocked-start", "type": "operation_error", "cause": "dependency_unsatisfied", "component": "task", "phase": "set_status", "error_code": "dependency_unsatisfied"}) {
 		t.Fatal("business refusal log cannot be correlated with its HTTP error")
 	}
 	restarted.signal(t)
 	restarted.stopped(t, 0)
-}
-
-func acceptanceWrongActions(t *testing.T, process *acceptanceProcess, task api.Task, actions ...string) {
-	t.Helper()
-	for _, action := range actions {
-		acceptanceError(t, process.request(context.Background(), http.MethodPost, acceptanceTaskPath(task)+"/"+action, map[string]any{"version": task.Version}, "invalid-"+action), http.StatusConflict, "invalid_transition")
-		if !reflect.DeepEqual(process.readTask(t, task), task) {
-			t.Fatal("invalid predecessor changed task fields, version or timestamp")
-		}
-	}
 }
 
 func acceptanceRefusals(t *testing.T, scenario *acceptanceScenario) {
@@ -162,23 +146,22 @@ func acceptanceRefusals(t *testing.T, scenario *acceptanceScenario) {
 		acceptanceError(t, process.request(context.Background(), http.MethodPatch, acceptanceTaskPath(first), map[string]any{"version": first.Version, "status": status, "title": "Must not persist"}, "status-bypass"), http.StatusBadRequest, "invalid_input")
 		acceptanceError(t, process.request(context.Background(), http.MethodPost, acceptanceTasksPath(project.ID), map[string]any{"title": "Must not create", "status": status}, "creation-bypass"), http.StatusBadRequest, "invalid_input")
 	}
-	for _, action := range []string{"approve", "unapprove", "claim", "complete"} {
-		path := acceptanceTaskPath(first) + "/" + action
-		for _, version := range []any{nil, 0, -1, 1.5, "1", json.RawMessage("9223372036854775808")} {
-			acceptanceError(t, process.request(context.Background(), http.MethodPost, path, map[string]any{"version": version}, "invalid-action-version"), http.StatusBadRequest, "invalid_input")
-		}
-		for _, input := range []map[string]any{{}, {"version": first.Version, "status": "todo"}} {
-			acceptanceError(t, process.request(context.Background(), http.MethodPost, path, input, "invalid-action-body"), http.StatusBadRequest, "invalid_input")
-		}
-		wrongMethod := process.request(context.Background(), http.MethodPatch, path, map[string]any{"version": first.Version}, "")
-		acceptanceError(t, wrongMethod, http.StatusMethodNotAllowed, "method_not_allowed")
-		if wrongMethod.header.Get("Allow") != "POST" {
-			t.Fatal("lifecycle route omitted its exact POST Allow contract")
-		}
-		acceptanceError(t, process.request(context.Background(), http.MethodPost, acceptanceTasksPath(other.ID)+"/"+first.ID+"/"+action, map[string]any{"version": first.Version}, ""), http.StatusNotFound, "not_found")
+	statusPath := acceptanceTaskPath(first) + "/status"
+	for _, version := range []any{nil, 0, -1, 1.5, "1", json.RawMessage("9223372036854775808")} {
+		acceptanceError(t, process.request(context.Background(), http.MethodPut, statusPath, map[string]any{"version": version, "status": "in_progress"}, "invalid-status-version"), http.StatusBadRequest, "invalid_input")
 	}
+	for _, input := range []map[string]any{{}, {"version": first.Version}, {"version": first.Version, "status": nil}, {"version": first.Version, "status": "proposed"}, {"version": first.Version, "status": "TODO"}, {"version": first.Version, "status": "todo", "title": "Must not save"}} {
+		acceptanceError(t, process.request(context.Background(), http.MethodPut, statusPath, input, "invalid-status-body"), http.StatusBadRequest, "invalid_input")
+	}
+	wrongMethod := process.request(context.Background(), http.MethodPatch, statusPath, map[string]any{"version": first.Version, "status": "todo"}, "")
+	acceptanceError(t, wrongMethod, http.StatusMethodNotAllowed, "method_not_allowed")
+	if wrongMethod.header.Get("Allow") != "PUT" {
+		t.Fatal("status route omitted its exact PUT Allow contract")
+	}
+	acceptanceError(t, process.request(context.Background(), http.MethodPut, acceptanceTasksPath(other.ID)+"/"+first.ID+"/status", map[string]any{"version": first.Version, "status": "todo"}, ""), http.StatusNotFound, "not_found")
+	acceptanceError(t, process.request(context.Background(), http.MethodGet, acceptanceTasksPath(project.ID)+"?status=proposed", nil, ""), http.StatusBadRequest, "invalid_input")
 	if !reflect.DeepEqual(process.readTask(t, first), first) {
-		t.Fatal("invalid lifecycle or status bypass input changed task state")
+		t.Fatal("invalid status or metadata bypass input changed task state")
 	}
 
 	method := process.request(context.Background(), http.MethodDelete, acceptanceTaskPath(first), nil, "")
@@ -186,9 +169,6 @@ func acceptanceRefusals(t *testing.T, scenario *acceptanceScenario) {
 	if method.header.Get("Allow") != "GET, HEAD, PATCH" {
 		t.Fatal("unsupported method omitted its exact Allow contract")
 	}
-	first = process.action(t, first, "approve")
-	second = process.action(t, second, "approve")
-	third = process.action(t, third, "approve")
 	first = process.update(t, first, map[string]any{"title": "Changed"})
 	acceptanceError(t, process.request(context.Background(), http.MethodPatch, acceptanceTaskPath(first), map[string]any{"version": 1, "title": first.Title}, ""), http.StatusConflict, "version_conflict")
 	if !reflect.DeepEqual(process.readTask(t, first), first) {
@@ -196,7 +176,6 @@ func acceptanceRefusals(t *testing.T, scenario *acceptanceScenario) {
 	}
 	fixture.exec(t, "UPDATE tasks SET created_at='2026-01-01T00:00:00Z' WHERE project_id=$1", project.ID)
 	readySecond := process.task(t, project, "Another ready task")
-	readySecond = process.action(t, readySecond, "approve")
 	fixture.exec(t, "UPDATE tasks SET created_at='2026-01-01T00:00:00Z' WHERE id=$1", readySecond.ID)
 	expected := []string{first.ID, readySecond.ID}
 	slices.Sort(expected)
@@ -291,48 +270,82 @@ func acceptanceReverseDependencies(t *testing.T, scenario *acceptanceScenario) {
 	process.stopped(t, 0)
 }
 
-func acceptanceLifecycleRace(t *testing.T, scenario *acceptanceScenario) {
+func acceptanceStatusRace(t *testing.T, scenario *acceptanceScenario) {
 	fixture := newAcceptanceFixture(t, scenario)
 	process := fixture.launch(t, nil).started(t)
-	project := process.project(t, "Lifecycle race")
+	project := process.project(t, "Status race")
 	task := process.task(t, project, "Concurrent work")
-	for _, step := range []struct{ action, status string }{{"approve", "todo"}, {"unapprove", "proposed"}, {"approve", "todo"}, {"claim", "in_progress"}, {"complete", "done"}} {
+	for _, status := range []string{"in_progress", "todo", "done", "in_progress", "done", "todo"} {
 		responses := acceptanceCompete(t, fixture, process, project,
 			func() acceptanceResponse {
-				return process.request(context.Background(), http.MethodPost, acceptanceTaskPath(task)+"/"+step.action, map[string]any{"version": task.Version}, step.action+"-first")
+				return process.request(context.Background(), http.MethodPut, acceptanceTaskPath(task)+"/status", map[string]any{"version": task.Version, "status": status}, status+"-first")
 			},
 			func() acceptanceResponse {
-				return process.request(context.Background(), http.MethodPost, acceptanceTaskPath(task)+"/"+step.action, map[string]any{"version": task.Version}, step.action+"-second")
+				return process.request(context.Background(), http.MethodPut, acceptanceTaskPath(task)+"/status", map[string]any{"version": task.Version, "status": status}, status+"-second")
 			},
 		)
 		acceptanceOneWinner(t, responses, "version_conflict")
 		after := process.readTask(t, task)
-		acceptanceTaskTimingTransition(t, task, after, step.action)
+		acceptanceTaskTimingTransition(t, task, after, status)
 		preserved := after
 		preserved.StartedAt, preserved.CompletedAt = task.StartedAt, task.CompletedAt
 		preserved.Status, preserved.Ready, preserved.Version, preserved.UpdatedAt = task.Status, task.Ready, task.Version, task.UpdatedAt
-		if after.Status != step.status || after.Version != task.Version+1 || !after.UpdatedAt.After(task.UpdatedAt) || !reflect.DeepEqual(preserved, task) {
-			t.Fatal("concurrent lifecycle actions did not persist exactly one transition")
+		if after.Status != status || after.Version != task.Version+1 || !after.UpdatedAt.After(task.UpdatedAt) || !reflect.DeepEqual(preserved, task) {
+			t.Fatal("concurrent status writes did not persist exactly one change")
 		}
 		task = after
+	}
+	confirmations := acceptanceCompete(t, fixture, process, project,
+		func() acceptanceResponse {
+			return process.request(context.Background(), http.MethodPut, acceptanceTaskPath(task)+"/status", map[string]any{"version": task.Version, "status": task.Status}, "same-status-first")
+		},
+		func() acceptanceResponse {
+			return process.request(context.Background(), http.MethodPut, acceptanceTaskPath(task)+"/status", map[string]any{"version": task.Version, "status": task.Status}, "same-status-second")
+		},
+	)
+	for _, response := range confirmations {
+		if confirmed := acceptanceDecode[api.Task](t, response, http.StatusOK); !reflect.DeepEqual(confirmed, task) {
+			t.Fatal("concurrent same-status confirmations changed the task")
+		}
+	}
+	for _, source := range []string{"todo", "in_progress", "done"} {
+		for _, target := range []string{"todo", "in_progress", "done"} {
+			created := process.task(t, project, source+" to "+target)
+			created = process.update(t, created, map[string]any{"description": "Reviewed status candidate"})
+			before := process.setStatus(t, created, source)
+			after := process.setStatus(t, before, target)
+			if after.Status != target || after.Version != before.Version+boolIncrement(source != target) {
+				t.Fatal("status pair returned the wrong version or target")
+			}
+			acceptanceError(t, process.request(context.Background(), http.MethodPut, acceptanceTaskPath(after)+"/status", map[string]any{"version": after.Version - 1, "status": target}, "stale-same-state"), http.StatusConflict, "version_conflict")
+			if !reflect.DeepEqual(process.readTask(t, after), after) {
+				t.Fatal("stale same-status request changed the task")
+			}
+		}
 	}
 	process.signal(t)
 	process.stopped(t, 0)
 }
 
-func acceptanceDependencyClaimRace(t *testing.T, scenario *acceptanceScenario) {
+func boolIncrement(value bool) int64 {
+	if value {
+		return 1
+	}
+	return 0
+}
+
+func acceptanceDependencyStatusRace(t *testing.T, scenario *acceptanceScenario) {
 	fixture := newAcceptanceFixture(t, scenario)
 	process := fixture.launch(t, nil).started(t)
-	project := process.project(t, "Dependency edit and claim")
+	project := process.project(t, "Dependency edit and status")
 	prerequisite := process.task(t, project, "Unfinished prerequisite")
-	task := process.task(t, project, "Approved work")
-	task = process.action(t, task, "approve")
+	task := process.task(t, project, "Ready work")
 	responses := acceptanceCompete(t, fixture, process, project,
 		func() acceptanceResponse {
 			return process.request(context.Background(), http.MethodPatch, acceptanceTaskPath(task), map[string]any{"version": task.Version, "dependsOn": []string{prerequisite.ID}}, "dependency-edit")
 		},
 		func() acceptanceResponse {
-			return process.request(context.Background(), http.MethodPost, acceptanceTaskPath(task)+"/claim", map[string]any{"version": task.Version}, "dependency-claim")
+			return process.request(context.Background(), http.MethodPut, acceptanceTaskPath(task)+"/status", map[string]any{"version": task.Version, "status": "in_progress"}, "dependency-status")
 		},
 	)
 	acceptanceOneWinner(t, responses, "version_conflict")
@@ -341,7 +354,44 @@ func acceptanceDependencyClaimRace(t *testing.T, scenario *acceptanceScenario) {
 		after.Status == "in_progress" && (len(after.DependsOn) != 0 || len(after.BlockedBy) != 0) ||
 		after.Status == "todo" && (!slices.Equal(after.DependsOn, []string{prerequisite.ID}) || !slices.Equal(after.BlockedBy, []string{prerequisite.ID})) ||
 		after.Status != "todo" && after.Status != "in_progress" || after.Ready {
-		t.Fatal("concurrent dependency editing and claim violated state or prerequisite invariants")
+		t.Fatal("concurrent dependency editing and status write violated prerequisite invariants")
+	}
+	process.signal(t)
+	process.stopped(t, 0)
+}
+
+func acceptanceReopenStatusRace(t *testing.T, scenario *acceptanceScenario) {
+	fixture := newAcceptanceFixture(t, scenario)
+	process := fixture.launch(t, nil).started(t)
+	project := process.project(t, "Reopen and successor status")
+	for _, external := range []bool{false, true} {
+		for _, status := range []string{"in_progress", "done"} {
+			predecessor := process.setStatus(t, process.task(t, project, "Completed prerequisite"), "done")
+			successor := process.task(t, project, "Ready successor", predecessor.ID)
+			if external {
+				successor = process.update(t, successor, map[string]any{"externalDependsOn": []string{predecessor.ID}})
+			}
+			responses := acceptanceCompete(t, fixture, process, project,
+				func() acceptanceResponse {
+					return process.request(context.Background(), http.MethodPut, acceptanceTaskPath(predecessor)+"/status", map[string]any{"version": predecessor.Version, "status": "todo"}, "reopen-prerequisite")
+				},
+				func() acceptanceResponse {
+					return process.request(context.Background(), http.MethodPut, acceptanceTaskPath(successor)+"/status", map[string]any{"version": successor.Version, "status": status}, "successor-status")
+				},
+			)
+			acceptanceOneWinner(t, responses, "dependency_unsatisfied")
+			afterPredecessor, afterSuccessor := process.readTask(t, predecessor), process.readTask(t, successor)
+			if afterPredecessor.Status == "todo" {
+				if afterPredecessor.Version != predecessor.Version+1 || afterSuccessor.Status != "todo" || afterSuccessor.Version != successor.Version || afterSuccessor.Ready || !slices.Equal(afterSuccessor.BlockedBy, []string{predecessor.ID}) {
+					t.Fatal("reopen winner changed successor data or left it ready")
+				}
+			} else if afterPredecessor.Status != "done" || !reflect.DeepEqual(afterPredecessor, predecessor) || afterSuccessor.Status != status || afterSuccessor.Version != successor.Version+1 || len(afterSuccessor.BlockedBy) != 0 {
+				t.Fatal("successor winner lost its completed prerequisite")
+			}
+			if external != slices.Equal(afterSuccessor.ExternalDependsOn, []string{predecessor.ID}) {
+				t.Fatal("status competition changed edge classification")
+			}
+		}
 	}
 	process.signal(t)
 	process.stopped(t, 0)
@@ -604,7 +654,7 @@ func acceptanceConcurrentStartup(t *testing.T, scenario *acceptanceScenario) {
 	first = first.started(t)
 	second = second.started(t)
 	var versions []int64
-	if err := fixture.admin.QueryRow(ctx, "SELECT array_agg(version ORDER BY version) FROM schema_migrations").Scan(&versions); err != nil || !slices.Equal(versions, []int64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13}) {
+	if err := fixture.admin.QueryRow(ctx, "SELECT array_agg(version ORDER BY version) FROM schema_migrations").Scan(&versions); err != nil || !slices.Equal(versions, []int64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}) {
 		t.Fatal("concurrent processes did not share exactly one migration ledger")
 	}
 	project := first.project(t, "Shared process state")
@@ -618,33 +668,29 @@ func acceptanceConcurrentStartup(t *testing.T, scenario *acceptanceScenario) {
 	second.stopped(t, 0)
 }
 
-func acceptanceProposedReads(t *testing.T, scenario *acceptanceScenario) {
+func acceptanceStatusReads(t *testing.T, scenario *acceptanceScenario) {
 	fixture := newAcceptanceFixture(t, scenario)
 	process := fixture.launch(t, nil).started(t)
-	project := process.project(t, "Proposed read projection")
+	project := process.project(t, "Three-state read projection")
 	pending := process.task(t, project, "Pending prerequisite")
-	pending = process.action(t, pending, "approve")
-	done := process.task(t, project, "Completed prerequisite")
-	done = process.action(t, done, "approve")
-	done = process.action(t, done, "claim")
-	done = process.action(t, done, "complete")
-	proposed := api.Task{ID: "00000000-0000-4000-8000-000000000001", ProjectID: project.ID}
-	proposedBlocked := api.Task{ID: "00000000-0000-4000-8000-000000000002", ProjectID: project.ID}
+	done := process.setStatus(t, process.task(t, project, "Completed prerequisite"), "done")
+	ready := api.Task{ID: "00000000-0000-4000-8000-000000000001", ProjectID: project.ID}
+	blocked := api.Task{ID: "00000000-0000-4000-8000-000000000002", ProjectID: project.ID}
 	fixture.exec(t, `INSERT INTO tasks (id, project_id, title, description, status, version)
-		VALUES ($1, $3, 'Proposed', 'Complete proposed description', 'proposed', 17),
-		($2, $3, 'Proposed with prerequisite', '', 'proposed', 19)`, proposed.ID, proposedBlocked.ID, project.ID)
+		VALUES ($1, $3, 'Ready', 'Complete task description', 'todo', 17),
+		($2, $3, 'Blocked', '', 'todo', 19)`, ready.ID, blocked.ID, project.ID)
 	fixture.exec(t, `INSERT INTO task_dependencies (project_id, task_id, depends_on_task_id)
-		VALUES ($1, $2, $4), ($1, $3, $5)`, project.ID, proposed.ID, proposedBlocked.ID, done.ID, pending.ID)
-	proposed = process.readTask(t, proposed)
-	proposedBlocked = process.readTask(t, proposedBlocked)
-	if proposed.Status != "proposed" || proposed.Ready || proposed.Version != 17 || proposed.Description != "Complete proposed description" ||
-		len(proposed.BlockedBy) != 0 || proposedBlocked.Status != "proposed" || proposedBlocked.Ready || proposedBlocked.Version != 19 ||
-		!slices.Equal(proposedBlocked.BlockedBy, []string{pending.ID}) {
-		t.Fatal("migrated proposed rows did not retain detail/readiness projection")
+		VALUES ($1, $2, $4), ($1, $3, $5)`, project.ID, ready.ID, blocked.ID, done.ID, pending.ID)
+	ready = process.readTask(t, ready)
+	blocked = process.readTask(t, blocked)
+	if ready.Status != "todo" || !ready.Ready || ready.Version != 17 || ready.Description != "Complete task description" ||
+		len(ready.BlockedBy) != 0 || blocked.Status != "todo" || blocked.Ready || blocked.Version != 19 ||
+		!slices.Equal(blocked.BlockedBy, []string{pending.ID}) {
+		t.Fatal("todo rows did not retain detail/readiness projection")
 	}
-	dependent := process.task(t, project, "Waiting for proposal", proposed.ID)
-	if dependent.Status != "proposed" || dependent.Ready || !slices.Equal(dependent.BlockedBy, []string{proposed.ID}) {
-		t.Fatal("proposed prerequisite did not block the proposed creation path")
+	dependent := process.task(t, project, "Waiting for prerequisite", ready.ID)
+	if dependent.Status != "todo" || dependent.Ready || !slices.Equal(dependent.BlockedBy, []string{ready.ID}) {
+		t.Fatal("unfinished prerequisite did not block task creation")
 	}
 	var ids []string
 	path := acceptanceTasksPath(project.ID) + "?limit=2"
@@ -652,8 +698,8 @@ func acceptanceProposedReads(t *testing.T, scenario *acceptanceScenario) {
 		page := acceptanceDecode[api.TaskPage](t, process.request(context.Background(), http.MethodGet, path, nil, ""), http.StatusOK)
 		for _, task := range page.Items {
 			ids = append(ids, task.ID)
-			if task.ID == proposed.ID && (task.Status != "proposed" || task.Ready || task.Version != 17 || task.Description != proposed.Description) {
-				t.Fatal("paginated proposed task lost its detail projection")
+			if task.ID == ready.ID && (task.Status != "todo" || !task.Ready || task.Version != 17 || task.Description != ready.Description) {
+				t.Fatal("paginated task lost its detail projection")
 			}
 		}
 		if page.NextCursor == nil {
@@ -661,39 +707,47 @@ func acceptanceProposedReads(t *testing.T, scenario *acceptanceScenario) {
 		}
 		path = acceptanceTasksPath(project.ID) + "?limit=2&cursor=" + url.QueryEscape(*page.NextCursor)
 	}
-	wantIDs := []string{pending.ID, done.ID, proposed.ID, proposedBlocked.ID, dependent.ID}
+	wantIDs := []string{pending.ID, done.ID, ready.ID, blocked.ID, dependent.ID}
 	slices.Sort(ids)
 	slices.Sort(wantIDs)
 	if !slices.Equal(ids, wantIDs) {
-		t.Fatal("paginated inventory omitted or repeated a proposed row")
+		t.Fatal("paginated inventory omitted or repeated a row")
 	}
-	ready := acceptanceDecode[api.TaskPage](t, process.request(context.Background(), http.MethodGet, acceptanceTasksPath(project.ID)+"?ready=true", nil, ""), http.StatusOK)
-	if len(ready.Items) != 1 || ready.Items[0].ID != pending.ID {
-		t.Fatal("proposed row appeared in the ready inventory")
+	readyPage := acceptanceDecode[api.TaskPage](t, process.request(context.Background(), http.MethodGet, acceptanceTasksPath(project.ID)+"?ready=true", nil, ""), http.StatusOK)
+	readyIDs := make([]string, 0, len(readyPage.Items))
+	for _, task := range readyPage.Items {
+		readyIDs = append(readyIDs, task.ID)
+	}
+	wantReadyIDs := []string{pending.ID, ready.ID}
+	slices.Sort(readyIDs)
+	slices.Sort(wantReadyIDs)
+	if !slices.Equal(readyIDs, wantReadyIDs) {
+		t.Fatal("ready inventory did not use all todo prerequisites")
 	}
 	graph := acceptanceDecode[api.TaskGraph](t, process.request(context.Background(), http.MethodGet, "/api/v1/projects/"+project.ID+"/task-graph", nil, ""), http.StatusOK)
-	if graph.Summary != (api.TaskGraphSummary{Total: 5, Proposed: 3, Todo: 1, Done: 1, Ready: 1, Blocked: 0}) || len(graph.Tasks) != 5 {
-		t.Fatal("built process did not project the complete four-state summary")
+	if graph.Summary != (api.TaskGraphSummary{Total: 5, Todo: 4, Done: 1, Ready: 2, Blocked: 2}) || len(graph.Tasks) != 5 {
+		t.Fatal("built process did not project the complete three-state summary")
 	}
 	for _, task := range graph.Tasks {
-		if task.ID == proposed.ID && (task.Status != "proposed" || task.Ready || len(task.BlockedBy) != 0) ||
-			task.ID == proposedBlocked.ID && (task.Status != "proposed" || task.Ready || !slices.Equal(task.BlockedBy, proposedBlocked.BlockedBy)) {
-			t.Fatal("built graph changed proposed readiness or prerequisite projection")
+		if task.ID == ready.ID && (task.Status != "todo" || !task.Ready || len(task.BlockedBy) != 0) ||
+			task.ID == blocked.ID && (task.Status != "todo" || task.Ready || !slices.Equal(task.BlockedBy, blocked.BlockedBy)) {
+			t.Fatal("built graph changed readiness or prerequisite projection")
 		}
 	}
-	proposals := acceptanceDecode[api.TaskPage](t, process.request(context.Background(), http.MethodGet, acceptanceTasksPath(project.ID)+"?status=proposed", nil, ""), http.StatusOK)
-	if len(proposals.Items) != 3 {
-		t.Fatal("proposed filter omitted proposed tasks or included another state")
+	todos := acceptanceDecode[api.TaskPage](t, process.request(context.Background(), http.MethodGet, acceptanceTasksPath(project.ID)+"?status=todo", nil, ""), http.StatusOK)
+	if len(todos.Items) != 4 {
+		t.Fatal("todo filter omitted tasks or included another state")
 	}
-	acceptanceError(t, process.request(context.Background(), http.MethodPatch, acceptanceTaskPath(pending), map[string]any{"version": pending.Version, "status": "proposed"}, ""), http.StatusBadRequest, "invalid_input")
+	acceptanceError(t, process.request(context.Background(), http.MethodGet, acceptanceTasksPath(project.ID)+"?status=proposed", nil, ""), http.StatusBadRequest, "invalid_input")
+	acceptanceError(t, process.request(context.Background(), http.MethodPut, acceptanceTaskPath(pending)+"/status", map[string]any{"version": pending.Version, "status": "proposed"}, ""), http.StatusBadRequest, "invalid_input")
 	if after := process.readTask(t, pending); !reflect.DeepEqual(after, pending) {
-		t.Fatal("rejected proposed status write changed the existing creation result")
+		t.Fatal("rejected old status changed the task")
 	}
 	process.signal(t)
 	process.stopped(t, 0)
 	restarted := fixture.launch(t, nil).started(t)
-	if !reflect.DeepEqual(restarted.readTask(t, proposed), proposed) || !reflect.DeepEqual(restarted.readTask(t, proposedBlocked), proposedBlocked) {
-		t.Fatal("proposed detail projection changed across migration recheck and restart")
+	if !reflect.DeepEqual(restarted.readTask(t, ready), ready) || !reflect.DeepEqual(restarted.readTask(t, blocked), blocked) {
+		t.Fatal("detail projection changed across migration recheck and restart")
 	}
 	restarted.signal(t)
 	restarted.stopped(t, 0)

@@ -4,7 +4,7 @@ import { OperationError } from "./operation.js";
 import { validateServerToken, validateTokenTransport } from "../config/server-token.js";
 import type { Operation } from "./operation.js";
 import { canonicalId, parsePage, parseProject, parseServerError, parseTask, parseTaskGraph, parseTaskAttachment, ProtocolError, validateAttachmentPath } from "./parse.js";
-import type { AttachmentConsumer, CreateProjectInput, CreateTaskInput, ErrorDetails, Project, PutTaskAttachmentInput, ReadyTaskFilters, ServerError, Task, TaskActionInput, TaskAttachment, TaskFilters, TaskGraph, UpdateTaskInput } from "./types.js";
+import type { AttachmentConsumer, CreateProjectInput, CreateTaskInput, ErrorDetails, Project, PutTaskAttachmentInput, ReadyTaskFilters, ServerError, Task, SetTaskStatusInput, TaskAttachment, TaskFilters, TaskGraph, UpdateTaskInput } from "./types.js";
 
 type Context = { readonly operation: string; readonly projectId?: string; readonly taskId?: string };
 export type ApiPhase = "prepare" | "request" | "response" | "protocol" | "pagination";
@@ -58,10 +58,7 @@ export type ApiClient = {
   listTasks(projectId: string, filters?: TaskFilters): Promise<readonly Task[]>;
   listReadyTasks(projectId: string, limit: number, filters?: ReadyTaskFilters): Promise<readonly Task[]>;
   updateTask(projectId: string, taskId: string, input: UpdateTaskInput): Promise<Task>;
-  approveTask(projectId: string, taskId: string, input: TaskActionInput): Promise<Task>;
-  unapproveTask(projectId: string, taskId: string, input: TaskActionInput): Promise<Task>;
-  claimTask(projectId: string, taskId: string, input: TaskActionInput): Promise<Task>;
-  completeTask(projectId: string, taskId: string, input: TaskActionInput): Promise<Task>;
+  setTaskStatus(projectId: string, taskId: string, input: SetTaskStatusInput): Promise<Task>;
   getTaskGraph(projectId: string): Promise<TaskGraph>;
   putTaskAttachment(projectId: string, taskId: string, path: string, input: PutTaskAttachmentInput): Promise<TaskAttachment>;
   listTaskAttachments(projectId: string, taskId: string): Promise<readonly TaskAttachment[]>;
@@ -308,11 +305,6 @@ export const createApiClient = (options: {
     }
   };
 
-  const taskAction = (action: "approve" | "unapprove" | "claim" | "complete", projectId: string, taskId: string, input: TaskActionInput): Promise<Task> => {
-    const project = resourceId(projectId), task = resourceId(taskId);
-    return exchange({ operation: `task.${action}`, projectId: project, taskId: task }, `/projects/${encodeURIComponent(project)}/tasks/${encodeURIComponent(task)}/${action}`, "POST", { kind: "json", parse: (value) => parseTask(value, project, task) }, [200], { kind: "json", value: { version: input.version } });
-  };
-
   return {
     createProject: (input) => request({ operation: "project.create" }, "/projects", "POST", (value) => parseProject(value), { name: input.name, repoUrl: input.repoUrl }),
     getProject: (projectId) => {
@@ -337,6 +329,7 @@ export const createApiClient = (options: {
     },
     listTasks: (projectId, filters = {}) => {
       const project = resourceId(projectId);
+      if (filters.status !== undefined && filters.status !== "todo" && filters.status !== "in_progress" && filters.status !== "done") throw new Error("Task status must be todo, in_progress or done.");
       const query = { ...(filters.status === undefined ? {} : { status: filters.status }), ...(filters.ready === undefined ? {} : { ready: String(filters.ready) }), ...(filters.allowAgents === undefined ? {} : { allowAgents: String(filters.allowAgents) }), ...(filters.compatiblePlatform === undefined ? {} : { compatiblePlatform: filters.compatiblePlatform }) };
       return list({ operation: "task.list", projectId: project }, `/projects/${encodeURIComponent(project)}/tasks`, (value) => {
         const task = parseTask(value, project);
@@ -372,10 +365,16 @@ export const createApiClient = (options: {
         ...(input.properties === undefined ? {} : { properties: input.properties }),
       });
     },
-    approveTask: (projectId, taskId, input) => taskAction("approve", projectId, taskId, input),
-    unapproveTask: (projectId, taskId, input) => taskAction("unapprove", projectId, taskId, input),
-    claimTask: (projectId, taskId, input) => taskAction("claim", projectId, taskId, input),
-    completeTask: (projectId, taskId, input) => taskAction("complete", projectId, taskId, input),
+    setTaskStatus: (projectId, taskId, input) => {
+      const project = resourceId(projectId), task = resourceId(taskId);
+      if (input.status !== "todo" && input.status !== "in_progress" && input.status !== "done") throw new Error("Task status must be todo, in_progress or done.");
+      if (typeof input.version !== "bigint" || input.version < 1n || input.version > 9_223_372_036_854_775_807n) throw new Error("Task version must be a positive int64.");
+      return exchange({ operation: "task.set-status", projectId: project, taskId: task }, `/projects/${encodeURIComponent(project)}/tasks/${encodeURIComponent(task)}/status`, "PUT", { kind: "json", parse: (value) => {
+        const result = parseTask(value, project, task);
+        if (result.status !== input.status || (result.version !== input.version && result.version !== input.version + 1n)) throw new ProtocolError("Task does not match the requested status or version.");
+        return result;
+      } }, [200], { kind: "json", value: { version: input.version, status: input.status } }, true);
+    },
     putTaskAttachment: (projectId, taskId, path, input) => {
       const project = resourceId(projectId), task = resourceId(taskId), attachmentPath = validateAttachmentPath(path);
       return exchange({ operation: "task.attachment.put", projectId: project, taskId: task }, `${attachmentPrefix(project, task)}/files/${encodeAttachmentPath(attachmentPath)}`, "PUT", { kind: "json", parse: (value) => parseTaskAttachment(value, attachmentPath) }, [200, 201], { kind: "bytes", value: input.body, contentType: input.contentType }, true);

@@ -34,10 +34,10 @@ func TestResourceServicesRejectAbsentPrincipals(t *testing.T) {
 				return err
 			},
 			func() error { _, err := tasks.Graph(ctx, principal, id); return err },
-			func() error { _, err := tasks.Approve(ctx, principal, id, id, 1); return err },
-			func() error { _, err := tasks.Unapprove(ctx, principal, id, id, 1); return err },
-			func() error { _, err := tasks.Claim(ctx, principal, id, id, 1); return err },
-			func() error { _, err := tasks.Complete(ctx, principal, id, id, 1); return err },
+			func() error {
+				_, err := tasks.SetStatus(ctx, principal, id, id, SetTaskStatus{Version: 1, Status: core.TaskTodo})
+				return err
+			},
 			func() error { _, err := attachments.List(ctx, principal, id, id, PageRequest{Limit: 1}); return err },
 			func() error {
 				_, _, err := attachments.Put(ctx, principal, id, id, "file", "text/plain", strings.NewReader("content"))
@@ -108,12 +108,14 @@ func TestAllResourcesRequireCurrentProjectMembership(t *testing.T) {
 		}
 	}
 	actions := func(principal core.Principal) []func() error {
-		return []func() error{
-			func() error { _, err := tasks.Approve(ctx, principal, project.ID, task.ID, task.Version); return err },
-			func() error { _, err := tasks.Unapprove(ctx, principal, project.ID, task.ID, task.Version); return err },
-			func() error { _, err := tasks.Claim(ctx, principal, project.ID, task.ID, task.Version); return err },
-			func() error { _, err := tasks.Complete(ctx, principal, project.ID, task.ID, task.Version); return err },
+		calls := make([]func() error, 0, 3)
+		for _, status := range []core.TaskStatus{core.TaskTodo, core.TaskInProgress, core.TaskDone} {
+			calls = append(calls, func() error {
+				_, err := tasks.SetStatus(ctx, principal, project.ID, task.ID, SetTaskStatus{Version: task.Version, Status: status})
+				return err
+			})
 		}
+		return calls
 	}
 	for _, principal := range []core.Principal{outsider, {}} {
 		before := probe.count()
@@ -263,7 +265,7 @@ func TestRevokedPATCannotAuthenticateForAnotherResourceRequest(t *testing.T) {
 }
 
 func TestTaskWriteChecksMembershipAfterAcquiringProjectLock(t *testing.T) {
-	const writerCount = 6
+	const writerCount = 5
 	f := newMembershipFixture(t)
 	config := f.database.Pool.Config()
 	// The lock holder and observer need connections while every writer is blocked.
@@ -279,8 +281,8 @@ func TestTaskWriteChecksMembershipAfterAcquiringProjectLock(t *testing.T) {
 	f.join(t, admin, member, project.ID)
 	tasks := NewTasks(database)
 	task := createTask(t, tasks, admin, project.ID, "Unchanged")
-	todo := approveTask(t, tasks, admin, createTask(t, tasks, admin, project.ID, "Unclaimed"))
-	active := claimTask(t, tasks, admin, approveTask(t, tasks, admin, createTask(t, tasks, admin, project.ID, "Incomplete")))
+	todo := createTask(t, tasks, admin, project.ID, "Unstarted")
+	active := startTask(t, tasks, admin, createTask(t, tasks, admin, project.ID, "Incomplete"))
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	results := make(chan taskResult, writerCount)
@@ -297,11 +299,11 @@ func TestTaskWriteChecksMembershipAfterAcquiringProjectLock(t *testing.T) {
 			results <- taskResult{task: updated, err: err}
 		}()
 		for _, action := range []struct {
-			apply func(context.Context, core.Principal, string, string, int64) (core.Task, error)
-			task  core.Task
-		}{{tasks.Approve, task}, {tasks.Unapprove, todo}, {tasks.Claim, todo}, {tasks.Complete, active}} {
+			task   core.Task
+			status core.TaskStatus
+		}{{task, core.TaskTodo}, {todo, core.TaskInProgress}, {active, core.TaskDone}} {
 			go func() {
-				updated, err := action.apply(ctx, member, project.ID, action.task.ID, action.task.Version)
+				updated, err := tasks.SetStatus(ctx, member, project.ID, action.task.ID, SetTaskStatus{Version: action.task.Version, Status: action.status})
 				results <- taskResult{task: updated, err: err}
 			}()
 		}
@@ -322,22 +324,20 @@ func TestTaskWriteChecksMembershipAfterAcquiringProjectLock(t *testing.T) {
 	}
 }
 
-func TestMemberCanPerformTaskLifecycleActions(t *testing.T) {
+func TestMemberCanSetEveryTaskStatus(t *testing.T) {
 	f := newMembershipFixture(t)
 	admin, member := f.user(t), f.user(t)
-	project := f.project(t, admin, "Member lifecycle authority")
+	project := f.project(t, admin, "Member task status authority")
 	f.join(t, admin, member, project.ID)
 	tasks := NewTasks(f.database)
 	task := createTask(t, tasks, member, project.ID, "Member-owned work")
-	if task.Status != core.TaskProposed {
+	if task.Status != core.TaskTodo {
 		t.Fatalf("new task status: %s", task.Status)
 	}
-	task = approveTask(t, tasks, member, task)
-	task = unapproveTask(t, tasks, member, task)
-	task = approveTask(t, tasks, member, task)
-	task = claimTask(t, tasks, member, task)
-	task = completeTask(t, tasks, member, task)
-	if task.Status != core.TaskDone || task.Version != 6 {
-		t.Fatalf("member lifecycle: %#v", task)
+	for _, status := range []core.TaskStatus{core.TaskInProgress, core.TaskDone, core.TaskTodo, core.TaskDone} {
+		task = setStatusTask(t, tasks, member, task, status)
+	}
+	if task.Status != core.TaskDone || task.Version != 5 {
+		t.Fatalf("member status changes: %#v", task)
 	}
 }

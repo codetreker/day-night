@@ -25,7 +25,7 @@ The complete `dependsOn` set continues to own scheduling, blocking, readiness,
 cycle detection and capacity. A required `externalDependsOn` subset communicates
 the classification in full task and graph resources. Partial API updates retain
 the nature of surviving edges when only references change. All candidates,
-metadata writes, approve, unapprove, claim, complete and store replacement writes
+metadata writes, status assignment and store replacement writes
 carry both sets under the existing project transaction. New unspecified edges
 are ordinary. An explicitly supplied external subset replaces classification
 without changing omitted references; both fields together replace both sets.

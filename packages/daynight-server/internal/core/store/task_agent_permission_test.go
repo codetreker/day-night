@@ -14,7 +14,7 @@ import (
 // Pre-permission rows receive true through migration; project it explicitly while comparing all historical fields.
 func snapshotTaskBeforePermission(t *testing.T, database *Store, projectID, id string) core.Task {
 	t.Helper()
-	task, err := scanTask(database.Pool.QueryRow(context.Background(), `SELECT
+	task, err := scanHistoricalTask(database.Pool.QueryRow(context.Background(), `SELECT
   t.id::text,t.project_id::text,t.title,t.description,t.status,t.version,
   t.created_at,t.updated_at,t.started_at,t.completed_at,true,NULL::text,t.properties,`+
 		taskDependsOn+`,ARRAY[]::text[],`+taskBlockedBy+`,`+taskReady+` FROM tasks t WHERE t.project_id=$1 AND t.id=$2`, projectID, id))
@@ -34,7 +34,7 @@ func TestTaskAgentPermissionMigrationPreservesHistoryAndDefaults(t *testing.T) {
 	project := queryProject(t, database, 1)
 	stamp := time.Date(2026, 1, 2, 3, 4, 5, 123456000, time.UTC)
 	var before []core.Task
-	for index, status := range []core.TaskStatus{core.TaskProposed, core.TaskTodo, core.TaskInProgress, core.TaskDone} {
+	for index, status := range []core.TaskStatus{core.TaskStatus("proposed"), core.TaskTodo, core.TaskInProgress, core.TaskDone} {
 		id := queryID(index + 10)
 		var started, completed *time.Time
 		if status == core.TaskInProgress || status == core.TaskDone {
@@ -52,17 +52,17 @@ func TestTaskAgentPermissionMigrationPreservesHistoryAndDefaults(t *testing.T) {
 	for index := range 4 {
 		before = append(before, snapshotTaskBeforePermission(t, database, project.ID, queryID(index+10)))
 	}
-	if err := migrate(ctx, pool, schemaMigrations); err != nil {
+	if err := migrate(ctx, pool, schemaMigrations[:12]); err != nil {
 		t.Fatal(err)
 	}
 	for _, original := range before {
-		if after := snapshotTask(t, database, project.ID, original.ID); !after.AllowAgents || !reflect.DeepEqual(original, after) {
+		if after := snapshotHistoricalTask(t, database, project.ID, original.ID); !after.AllowAgents || !reflect.DeepEqual(original, after) {
 			t.Fatalf("permission migration changed historical resource: before %#v, after %#v", original, after)
 		}
 	}
 	mustQueryExec(t, database, `INSERT INTO tasks(id,project_id,title) VALUES($1,$2,'New SQL task')`, queryID(20), project.ID)
-	created := snapshotTask(t, database, project.ID, queryID(20))
-	if created.AllowAgents || created.Status != core.TaskProposed || created.Version != 1 || !created.CreatedAt.Equal(created.UpdatedAt) {
+	created := snapshotHistoricalTask(t, database, project.ID, queryID(20))
+	if created.AllowAgents || created.Status != core.TaskStatus("proposed") || created.Version != 1 || !created.CreatedAt.Equal(created.UpdatedAt) {
 		t.Fatalf("new SQL defaults: %#v", created)
 	}
 	_, err := pool.Exec(ctx, `UPDATE tasks SET allow_agents=NULL WHERE id=$1`, created.ID)
@@ -74,14 +74,14 @@ func TestTaskAgentPermissionMigrationPreservesHistoryAndDefaults(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT applied_at FROM schema_migrations WHERE version=11`).Scan(&applied); err != nil {
 		t.Fatal(err)
 	}
-	if err := migrate(ctx, pool, schemaMigrations); err != nil {
+	if err := migrate(ctx, pool, schemaMigrations[:12]); err != nil {
 		t.Fatal(err)
 	}
-	if err := pool.QueryRow(ctx, `SELECT applied_at FROM schema_migrations WHERE version=11`).Scan(&repeated); err != nil || !applied.Equal(repeated) || !reflect.DeepEqual(snapshotTask(t, database, project.ID, created.ID), created) {
+	if err := pool.QueryRow(ctx, `SELECT applied_at FROM schema_migrations WHERE version=11`).Scan(&repeated); err != nil || !applied.Equal(repeated) || !reflect.DeepEqual(snapshotHistoricalTask(t, database, project.ID, created.ID), created) {
 		t.Fatalf("permission migration rerun changed ledger or new resource: %v", err)
 	}
 	for _, original := range before {
-		if after := snapshotTask(t, database, project.ID, original.ID); !reflect.DeepEqual(original, after) {
+		if after := snapshotHistoricalTask(t, database, project.ID, original.ID); !reflect.DeepEqual(original, after) {
 			t.Fatalf("migration rerun changed history: %#v", after)
 		}
 	}

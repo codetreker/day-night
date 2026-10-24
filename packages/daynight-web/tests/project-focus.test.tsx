@@ -43,7 +43,7 @@ const graph = (tasks = [task(rootId, '原任务链'), task(selectedId, '所选�
   project: { settings: { version: 1n, executionWarningMinutes: 60 }, id: projectId, name: '核心项目', repoUrl: '', createdAt: timestamp, updatedAt: timestamp },
   tasks,
   summary: {
-    total: tasks.length, proposed: tasks.filter((task) => task.status === "proposed").length, todo: tasks.filter((item) => item.status === 'todo').length, done: tasks.filter((item) => item.status === 'done').length, inProgress: tasks.filter((item) => item.status === 'in_progress').length,
+    total: tasks.length, todo: tasks.filter((item) => item.status === 'todo').length, done: tasks.filter((item) => item.status === 'done').length, inProgress: tasks.filter((item) => item.status === 'in_progress').length,
     ready: tasks.filter((item) => item.ready).length, blocked: tasks.filter((item) => item.status === 'todo' && !item.ready).length,
   },
 });
@@ -176,7 +176,7 @@ describe('project dialog focus restoration', () => {
     expect(trigger.isConnected).toBe(false);
     expectModalReleased();
     expect(screen.getByText('所选任务已不在新的任务图中，详情已关闭。')).toBeVisible();
-    expect(within(screen.getByRole('region', { name: '项目任务统计' })).getAllByText('0', { selector: '.stat-number' })).toHaveLength(7);
+    expect(within(screen.getByRole('region', { name: '项目任务统计' })).getAllByText('0', { selector: '.stat-number' })).toHaveLength(6);
     expect(screen.queryByRole('region', { name: '任务依赖链' })).toBeNull();
   });
 

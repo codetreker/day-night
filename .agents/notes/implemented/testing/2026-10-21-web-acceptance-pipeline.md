@@ -74,6 +74,12 @@ relevant after that successful full acceptance.
 
 ## Decision
 
+The [status assignment decision](../architecture/2026-10-24-task-status-assignment.md) owns the current three-state
+protocol. Status journeys use exact registered PUT status writes; current
+inventory is 33 native and 28 container results. The rollout counts below retain
+their original delivery context; repeatable current commands and mappings belong
+to the Web README.
+
 One acceptance runner owns the fixed dependencies of the complete web job,
 without shards. `scripts/acceptance/runner.mts` exports `runAcceptance`,
 `runContainerCallback` and `recoverAcceptance` without starting work or registering
@@ -145,14 +151,15 @@ Phase ownership and the original thirty-one-scenario inventory were unchanged
 by progressive graph delivery. Authentication added six functional scenarios per
 target and [Markdown description](../architecture/2026-10-22-task-description-markdown.md)
 added one, producing the earlier forty-five-result inventory. The
-[approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md) adds three
-approval scenarios per target. The later
-[withdrawal decision](../feature/2026-10-23-task-unapprove.md) adds one functional
-scenario per target. Current inventory is twenty-four functional per target and
+[approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md) added three
+approval scenarios per target. The historical
+[withdrawal decision](../feature/2026-10-23-task-unapprove.md) added one functional
+scenario per target. At that delivery the inventory was twenty-four functional per target and
 five native capacity/limit scenarios: twenty-nine native and twenty-four container,
 fifty-three in total. Normal UniAuth session/PAT bootstrap
 uses private run-owned credentials; graph/read-only policies apply after bootstrap,
-and approval journeys admit only their registered task POST operations.
+and the original approval journeys admitted only their registered task POST operations.
+Current status journeys use the exact PUT allowlist described by the successor.
 Capacity retains twenty visibility/H records and 160 feedback observations, eight
 per sample, including full upstream/hidden-count checks and independent smooth-route,
 actual paint and native-arrow checks. The 50/100 overview, explicit twenty-neighbor

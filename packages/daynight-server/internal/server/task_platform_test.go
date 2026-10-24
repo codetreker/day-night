@@ -48,10 +48,9 @@ func TestTaskHTTPPlatformStrictInputsAndNullableResources(t *testing.T) {
 	if task.RequiredPlatform == nil || *task.RequiredPlatform != "windows" {
 		t.Fatal("omitted platform cleared requirement")
 	}
-	task = transitionHTTPTask(t, handler, task, "approve")
-	task = transitionHTTPTask(t, handler, task, "claim")
+	task = setHTTPTask(t, handler, task, "in_progress")
 	if task.RequiredPlatform == nil || *task.RequiredPlatform != "windows" {
-		t.Fatal("manual claim discarded requirement")
+		t.Fatal("manual start discarded requirement")
 	}
 	if got := updateHTTPTask(t, handler, task, map[string]any{"requiredPlatform": "windows"}); !reflect.DeepEqual(got, task) {
 		t.Fatal("active same-value update changed resource")
@@ -67,7 +66,7 @@ func TestTaskHTTPPlatformStrictInputsAndNullableResources(t *testing.T) {
 			t.Fatalf("resource lost platform: %s %s", path, read.Body)
 		}
 	}
-	task = transitionHTTPTask(t, handler, task, "complete")
+	task = setHTTPTask(t, handler, task, "done")
 	cleared := updateHTTPTask(t, handler, task, map[string]any{"requiredPlatform": nil})
 	if cleared.RequiredPlatform != nil || !cleared.AllowAgents || !reflect.DeepEqual(cleared.StartedAt, task.StartedAt) || !reflect.DeepEqual(cleared.CompletedAt, task.CompletedAt) {
 		t.Fatal("clearing platform changed history")
@@ -81,7 +80,6 @@ func TestTaskHTTPPlatformFilteringAndCursorScopes(t *testing.T) {
 	for _, platform := range []any{"windows", "macos", "linux", nil, "linux"} {
 		task := decodeResponse[api.Task](t, projectRequest(handler, http.MethodPost, taskCollection(project.ID), jsonBody(t, map[string]any{"title": "Platform candidate", "requiredPlatform": platform})), http.StatusCreated)
 		task = updateHTTPTask(t, handler, task, map[string]any{"allowAgents": true})
-		task = transitionHTTPTask(t, handler, task, "approve")
 		if platform == nil || platform == "linux" {
 			want = append(want, task.ID)
 		}
@@ -116,5 +114,29 @@ func TestTaskHTTPPlatformFilteringAndCursorScopes(t *testing.T) {
 	}
 	for _, query := range []string{"compatiblePlatform=", "compatiblePlatform=null", "compatiblePlatform=darwin", "compatiblePlatform=Linux", "compatiblePlatform=true", "compatiblePlatform=linux&compatiblePlatform=macos", "CompatiblePlatform=linux"} {
 		assertProjectError(t, projectRequest(handler, http.MethodGet, collection+"?"+query, ""), http.StatusBadRequest, "invalid_input")
+	}
+}
+
+func TestTaskHTTPStatusPreservesRequiredPlatformForEveryPair(t *testing.T) {
+	handler := projectTestHandler(t, projectTestStore(t), io.Discard)
+	project := taskProject(t, handler)
+	for _, platform := range []any{nil, "windows", "linux", "macos"} {
+		for _, from := range []string{"todo", "in_progress", "done"} {
+			for _, to := range []string{"todo", "in_progress", "done"} {
+				task := decodeResponse[api.Task](t, projectRequest(handler, http.MethodPost, taskCollection(project.ID), jsonBody(t, map[string]any{"title": "Status keeps platform", "requiredPlatform": platform})), http.StatusCreated)
+				task = setHTTPTask(t, handler, task, from)
+				after := setHTTPTask(t, handler, task, to)
+				delta := int64(1)
+				if from == to {
+					delta = 0
+				}
+				if !reflect.DeepEqual(after.RequiredPlatform, task.RequiredPlatform) || after.Version != task.Version+delta {
+					t.Fatalf("status %s to %s changed platform %v: before %+v, after %+v", from, to, platform, task, after)
+				}
+				if delta == 0 && !reflect.DeepEqual(after, task) {
+					t.Fatal("same status changed platform or other persisted data")
+				}
+			}
+		}
 	}
 }

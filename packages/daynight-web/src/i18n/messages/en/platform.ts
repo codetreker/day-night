@@ -4,7 +4,7 @@ export const platform: PlatformMessages = {
   title: "Execution platform", any: "Any platform", names: { windows: "Windows", linux: "Linux", macos: "macOS" },
   save: "Save platform",
   help: "Workers must run on the required platform. Any platform removes the requirement. Select an option, then save it.",
-  locked: "This task is already claimed. The execution platform is locked until execution ends or is released.",
+  locked: "This task is in progress. The execution platform cannot change while it remains in progress.",
   pending: "Saving the execution platform. You can close these details while the request completes.",
   confirmed: "Execution platform updated.",
   conflict: "The task changed. Review its current platform before saving another change.",

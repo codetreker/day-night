@@ -14,7 +14,7 @@ const otherDependencyId = "abcdefab-4444-4222-8333-123456789abc";
 const time = "2026-10-20T00:00:00.123456789Z";
 const project: Project = { id: projectId, name: "Project", repoUrl: "git@git.example:Org/Repo.git", settings: { version: 1n, executionWarningMinutes: 60 }, createdAt: time, updatedAt: time };
 const task: Task = { id: taskId, projectId, title: "Task title", description: "Description", properties: { pullRequests: [] }, status: "todo", allowAgents: false, requiredPlatform: null, version: 9_007_199_254_740_993n, ready: true, dependsOn: [], externalDependsOn: [], blockedBy: [], startedAt: null, completedAt: null, createdAt: time, updatedAt: time };
-const graph: TaskGraph = { observedAt: time, project, summary: { total: 1, proposed: 0, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 }, tasks: [{ id: taskId, titlePreview: `Task title${"T".repeat(150)}`, titleTruncated: true, allowAgents: false, requiredPlatform: null, status: "todo", ready: true, dependsOn: [], externalDependsOn: [], blockedBy: [], startedAt: null, completedAt: null, createdAt: time, updatedAt: time }] };
+const graph: TaskGraph = { observedAt: time, project, summary: { total: 1, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 }, tasks: [{ id: taskId, titlePreview: `Task title${"T".repeat(150)}`, titleTruncated: true, allowAgents: false, requiredPlatform: null, status: "todo", ready: true, dependsOn: [], externalDependsOn: [], blockedBy: [], startedAt: null, completedAt: null, createdAt: time, updatedAt: time }] };
 const operations: Operation[] = [];
 afterEach(() => { operations.splice(0).forEach((operation) => operation.dispose()); });
 const fixture = (operation = createOperation()) => {
@@ -24,7 +24,7 @@ const fixture = (operation = createOperation()) => {
     getProject: vi.fn<ApiClient["getProject"]>().mockResolvedValue(project),
     createTask: vi.fn<ApiClient["createTask"]>().mockResolvedValue(task), getTask: vi.fn<ApiClient["getTask"]>().mockResolvedValue(task),
     listTasks: vi.fn<ApiClient["listTasks"]>().mockResolvedValue([task]), listReadyTasks: vi.fn<ApiClient["listReadyTasks"]>().mockResolvedValue([task]), updateTask: vi.fn<ApiClient["updateTask"]>().mockResolvedValue(task),
-    approveTask: vi.fn<ApiClient["approveTask"]>().mockResolvedValue(task), unapproveTask: vi.fn<ApiClient["unapproveTask"]>().mockResolvedValue(task), claimTask: vi.fn<ApiClient["claimTask"]>().mockResolvedValue(task), completeTask: vi.fn<ApiClient["completeTask"]>().mockResolvedValue(task),
+    setTaskStatus: vi.fn<ApiClient["setTaskStatus"]>().mockResolvedValue(task),
     getTaskGraph: vi.fn<ApiClient["getTaskGraph"]>().mockResolvedValue(graph),
     putTaskAttachment: vi.fn<ApiClient["putTaskAttachment"]>(), listTaskAttachments: vi.fn<ApiClient["listTaskAttachments"]>(),
     readTaskAttachment: vi.fn<ApiClient["readTaskAttachment"]>(), removeTaskAttachment: vi.fn<ApiClient["removeTaskAttachment"]>(),
@@ -44,7 +44,7 @@ const fixture = (operation = createOperation()) => {
 };
 
 describe("task parameter boundaries", () => {
-  it.each([[], ["--help"], ...["create", "list", "ready", "show", "update", "approve", "unapprove", "claim", "complete", "graph"].map((name) => [name, "--help"])].map((args) => ({ args })))("renders help without business dependencies: $args", async ({ args }) => {
+  it.each([[], ["--help"], ...["create", "list", "ready", "show", "update", "set-status", "graph"].map((name) => [name, "--help"])].map((args) => ({ args })))("renders help without business dependencies: $args", async ({ args }) => {
     const f = fixture();
     await runTaskCommand(args, f.context, f.dependencies);
     expect(f.context.stdout).toHaveBeenCalledOnce();
@@ -71,7 +71,8 @@ describe("task parameter boundaries", () => {
     ["create", "--title", "Title", "--external-depends-on", dependencyId, "--external-depends-on", dependencyId.toUpperCase()],
     ["update", taskId, "--depends-on", dependencyId, "--external-depends-on", dependencyId.toUpperCase()],
     ["update", taskId, "--external-depends-on", dependencyId, "--clear-dependencies"],
-    ["list", "--status", "blocked"], ["update", taskId, "--status", "proposed"], ["list", "--project", "invalid"], ["show", "invalid"], ["show", taskId, "--project", "invalid"],
+    ["list", "--status", "blocked"], ["list", "--status", "proposed"], ["set-status", taskId, "proposed"], ["set-status", taskId], ["set-status", "invalid", "todo"],
+    ...["0", "1.5", "9223372036854775808"].map((version) => ["set-status", taskId, "todo", "--if-version", version]), ["update", taskId, "--status", "proposed"], ["list", "--project", "invalid"], ["show", "invalid"], ["show", taskId, "--project", "invalid"],
     ["update", taskId], ["update", taskId, "--if-version", "1"], ["update", taskId, "--status", "done", "--if-version", "0"],
     ["update", taskId, "--title", "\u2003"], ["update", taskId, "--status", "done", "--if-version", "9223372036854775808"],
     ["update", taskId, "--status", "done", "--if-version", "1.5"], ["update", taskId, "--depends-on", dependencyId, "--clear-dependencies"],
@@ -102,42 +103,40 @@ describe("task parameter boundaries", () => {
     await expect(runTaskCommand(["update", taskId, "--status", "todo"], f.context, f.dependencies)).rejects.toMatchObject({ message: expect.stringContaining('option "--status"'), helpCommand: "daynight task update --help" });
     expect(f.dependencies.runServerCommand).not.toHaveBeenCalled();
     await runTaskCommand(["update", "--help"], f.context, f.dependencies);
-    expect(f.context.stdout.mock.calls[0]![0]).toContain("Use daynight task approve, unapprove, claim, or complete to change status.");
+    expect(f.context.stdout.mock.calls[0]![0]).toContain("Use daynight task set-status to change status.");
   });
 
-  it.each(["approve", "unapprove", "claim", "complete"] as const)("uses the observed version for %s and prints the full confirmed result", async (action) => {
+  it.each(["todo", "in_progress", "done"] as const)("uses the observed version to set %s and prints the full confirmed result", async (status) => {
     const f = fixture();
-    const method = f.api[`${action}Task`];
-    const result = { ...task, description: "Full action result", version: task.version + 1n };
-    method.mockResolvedValue(result);
-    await runTaskCommand([action, taskId.toUpperCase()], f.context, f.dependencies);
+    const result = { ...task, status, description: "Full status result", version: task.version + 1n };
+    f.api.setTaskStatus.mockResolvedValue(result);
+    await runTaskCommand(["set-status", taskId.toUpperCase(), status], f.context, f.dependencies);
     expect(f.dependencies.resolveProject).toHaveBeenCalledExactlyOnceWith({ serverUrl: "http://localhost:8787", operation: f.operation, api: f.api, workingDirectory: path.resolve("caller") });
     expect(f.api.getTask).toHaveBeenCalledExactlyOnceWith(projectId, taskId);
-    expect(method).toHaveBeenCalledExactlyOnceWith(projectId, taskId, { version: task.version });
-    expect(f.api.getTask.mock.invocationCallOrder[0]!).toBeLessThan(method.mock.invocationCallOrder[0]!);
+    expect(f.api.setTaskStatus).toHaveBeenCalledExactlyOnceWith(projectId, taskId, { version: task.version, status });
+    expect(f.api.getTask.mock.invocationCallOrder[0]!).toBeLessThan(f.api.setTaskStatus.mock.invocationCallOrder[0]!);
     expect(f.api.updateTask).not.toHaveBeenCalled();
-    expect(f.context.stdout.mock.calls[0]![0]).toBe(`Task ${{ approve: "approved", unapprove: "unapproved", claim: "claimed", complete: "completed" }[action]}.\n${renderTask(result)}`);
+    expect(f.context.stdout.mock.calls[0]![0]).toBe(`Task status set.\n${renderTask(result)}`);
   });
 
-  it.each(["approve", "unapprove", "claim", "complete"] as const)("submits the explicit full-int64 version for %s without reading or retrying conflicts", async (action) => {
+  it.each(["todo", "in_progress", "done"] as const)("submits the explicit full-int64 version for %s without reading or retrying conflicts", async (status) => {
     const f = fixture();
     const failure = new Error("Version conflict");
-    const method = f.api[`${action}Task`];
-    method.mockRejectedValue(failure);
-    await expect(runTaskCommand([action, taskId, "--if-version", "9223372036854775807", "--project", projectId], f.context, f.dependencies)).rejects.toBe(failure);
+    f.api.setTaskStatus.mockRejectedValue(failure);
+    await expect(runTaskCommand(["set-status", taskId, status, "--if-version", "9223372036854775807", "--project", projectId], f.context, f.dependencies)).rejects.toBe(failure);
     expect(f.api.getTask).not.toHaveBeenCalled();
-    expect(method).toHaveBeenCalledExactlyOnceWith(projectId, taskId, { version: 9_223_372_036_854_775_807n });
+    expect(f.api.setTaskStatus).toHaveBeenCalledExactlyOnceWith(projectId, taskId, { version: 9_223_372_036_854_775_807n, status });
     expect(f.dependencies.resolveProject).not.toHaveBeenCalled();
     expect(f.context.workingDirectory).not.toHaveBeenCalled();
     expect(f.context.stdout).not.toHaveBeenCalled();
   });
 
-  it.each(["approve", "unapprove", "claim", "complete"] as const)("stops %s before dispatch when cancelled after reading the version", async (action) => {
+  it("stops a status change before dispatch when cancelled after reading the version", async () => {
     const cancellation = new AbortController();
     const f = fixture(createOperation({ signal: cancellation.signal }));
     f.api.getTask.mockImplementation(async () => { cancellation.abort(); return task; });
-    await expect(runTaskCommand([action, taskId, "--project", projectId], f.context, f.dependencies)).rejects.toThrow("Operation cancelled");
-    expect(f.api[`${action}Task`]).not.toHaveBeenCalled();
+    await expect(runTaskCommand(["set-status", taskId, "done", "--project", projectId], f.context, f.dependencies)).rejects.toThrow("Operation cancelled");
+    expect(f.api.setTaskStatus).not.toHaveBeenCalled();
     expect(f.context.stdout).not.toHaveBeenCalled();
   });
 
@@ -391,7 +390,7 @@ describe("task output contracts", () => {
     const f = fixture();
     await runTaskCommand(["graph", "--project", projectId], f.context, f.dependencies);
     const output = f.context.stdout.mock.calls[0]![0];
-    for (const field of [`Project: ${projectId}`, "Name: Project", `Repository: ${project.repoUrl}`, "Summary:", "Total: 1", "Proposed: 0", "Todo: 1", "In progress: 0", "Done: 0", "Ready: 1", "Blocked: 0", `ID: ${taskId}`, "Title preview: Task title", "Title truncated: true", "Depends on: none", "External dependencies (0): none", "Blocked by: none"]) expect(output).toContain(field);
+    for (const field of [`Project: ${projectId}`, "Name: Project", `Repository: ${project.repoUrl}`, "Summary:", "Total: 1", "Todo: 1", "In progress: 0", "Done: 0", "Ready: 1", "Blocked: 0", `ID: ${taskId}`, "Title preview: Task title", "Title truncated: true", "Depends on: none", "External dependencies (0): none", "Blocked by: none"]) expect(output).toContain(field);
   });
 
   it("keeps terminal control characters visible and preserves raw JSON strings", async () => {
@@ -408,7 +407,7 @@ describe("task output contracts", () => {
 
   it("renders an empty task list and empty graph explicitly", async () => {
     const f = fixture(); f.api.listTasks.mockResolvedValue([]);
-    f.api.getTaskGraph.mockResolvedValue({ observedAt: time, project, tasks: [], summary: { total: 0, proposed: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 } });
+    f.api.getTaskGraph.mockResolvedValue({ observedAt: time, project, tasks: [], summary: { total: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 } });
     await runTaskCommand(["list", "--project", projectId], f.context, f.dependencies);
     expect(f.context.stdout).toHaveBeenLastCalledWith("No tasks.\n");
     await runTaskCommand(["graph", "--project", projectId], f.context, f.dependencies);

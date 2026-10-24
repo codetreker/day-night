@@ -58,7 +58,7 @@ export const buildGraphIndex = (graph: TaskGraph): GraphIndex => {
   for (const task of graph.tasks) {
     if (typeof task !== "object" || task === null || typeof task.id !== "string" || task.id === "" || nodes.has(task.id) ||
       !Array.isArray(task.dependsOn) || !Array.isArray(task.externalDependsOn) || !Array.isArray(task.blockedBy) ||
-      (task.status !== "proposed" && task.status !== "todo" && task.status !== "in_progress" && task.status !== "done") || typeof task.ready !== "boolean") {
+      (task.status !== "todo" && task.status !== "in_progress" && task.status !== "done") || typeof task.ready !== "boolean") {
       return rejectGraph();
     }
     edgeCount += task.dependsOn.length;
@@ -78,7 +78,7 @@ export const buildGraphIndex = (graph: TaskGraph): GraphIndex => {
   }
 
   const actual: { -readonly [Key in keyof TaskGraphSummary]: number } = {
-    total: nodes.size, proposed: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0,
+    total: nodes.size, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0,
   };
   for (const task of nodes.values()) {
     const blocked = new Set<string>();
@@ -96,8 +96,7 @@ export const buildGraphIndex = (graph: TaskGraph): GraphIndex => {
     if (blocked.size !== task.blockedBy.length || task.blockedBy.some((id) => !blocked.has(id)) ||
       task.ready !== (task.status === "todo" && blocked.size === 0) ||
       ((task.status === "in_progress" || task.status === "done") && blocked.size !== 0)) return rejectGraph();
-    if (task.status === "proposed") actual.proposed++;
-    else if (task.status === "todo") {
+    if (task.status === "todo") {
       actual.todo++;
       if (task.ready) actual.ready++;
       else actual.blocked++;
@@ -128,14 +127,12 @@ export const buildGraphIndex = (graph: TaskGraph): GraphIndex => {
     let representative: string | undefined;
     let done = 0;
     let inProgress = false;
-    let todo = false;
     for (let position = 0; position < members.length; position++) {
       const id = members[position]!;
       if (ordinaryIndegrees.get(id) === 0 && (representative === undefined || order.get(id)! < order.get(representative)!)) representative = id;
       const status = nodes.get(id)!.status;
       if (status === "done") done++;
       else if (status === "in_progress") inProgress = true;
-      else if (status === "todo") todo = true;
       for (const neighbor of ordinaryNeighbors.get(id)!) {
         if (memberIds.has(neighbor)) continue;
         memberIds.add(neighbor);
@@ -143,7 +140,7 @@ export const buildGraphIndex = (graph: TaskGraph): GraphIndex => {
       }
     }
     if (representative === undefined) return rejectGraph();
-    const status = done === members.length ? "done" : done > 0 || inProgress ? "in_progress" : todo ? "todo" : "proposed";
+    const status = done === members.length ? "done" : done > 0 || inProgress ? "in_progress" : "todo";
     for (const id of memberIds) componentByTask.set(id, representative);
     discovered.set(representative, { memberIds, progress: { total: members.length, done, status } });
   }

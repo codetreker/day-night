@@ -52,7 +52,7 @@ const graph = (items = seeds, id = projectId): TaskGraph => {
   });
   return { observedAt: "2026-10-20T12:00:00Z",
     project: { settings: { version: 1n, executionWarningMinutes: 60 }, id, name: id === projectId ? "核心项目" : "另一个项目", repoUrl: "git@github.com:example/project.git", createdAt: time, updatedAt: time }, tasks,
-    summary: { total: tasks.length, proposed: tasks.filter((task) => task.status === "proposed").length, todo: tasks.filter((task) => task.status === "todo").length,
+    summary: { total: tasks.length, todo: tasks.filter((task) => task.status === "todo").length,
       done: tasks.filter((task) => task.status === "done").length, inProgress: tasks.filter((task) => task.status === "in_progress").length,
       ready: tasks.filter((task) => task.ready).length, blocked: tasks.filter((task) => task.status === "todo" && !task.ready).length },
   };
@@ -80,7 +80,7 @@ describe("project dashboard", () => {
   beforeEach(() => { window.localStorage.setItem(`daynight:completed-chains:${projectId}`, "true"); });
   beforeEach(() => { rememberRoot(A); });
 
-  it("loads a complete graph into seven accurate unique-task statistics and expands the newest root on a first visit", async () => {
+  it("loads a complete graph into six accurate unique-task statistics and expands the newest root on a first visit", async () => {
     window.localStorage.clear();
     const pending = deferred<TaskGraph>();
     graphRequest.mockReturnValueOnce(pending.promise);
@@ -89,7 +89,7 @@ describe("project dashboard", () => {
     expect(screen.queryByRole("region", { name: "项目任务统计" })).toBeNull();
     await act(async () => { pending.resolve(graph()); });
     expect(screen.getByRole("heading", { name: "核心项目" })).toBeTruthy();
-    expect(["任务总数", "已完成", "待审批", "待处理", "进行中", "可开始", "被阻塞"].map(number)).toEqual(["4", "1", "0", "3", "0", "2", "1"]);
+    expect(["任务总数", "已完成", "待处理", "进行中", "可开始", "被阻塞"].map(number)).toEqual(["4", "1", "3", "0", "2", "1"]);
     expect(screen.getByText("完成比例 25%")).toBeTruthy();
     expect(screen.getAllByText("待处理的子集")).toHaveLength(2);
     expect(screen.getByTestId(`chain-${C}`)).toBeTruthy();
@@ -197,7 +197,7 @@ describe("project dashboard", () => {
     graphRequest.mockResolvedValue(graph([]));
     render(<ProjectPage projectId={projectId} />);
     await screen.findByRole("heading", { name: "还没有任务" });
-    expect(["任务总数", "已完成", "待审批", "待处理", "进行中", "可开始", "被阻塞"].map(number)).toEqual(["0", "0", "0", "0", "0", "0", "0"]);
+    expect(["任务总数", "已完成", "待处理", "进行中", "可开始", "被阻塞"].map(number)).toEqual(["0", "0", "0", "0", "0", "0"]);
     expect(screen.getByText("完成比例 0%")).toBeTruthy();
   });
 

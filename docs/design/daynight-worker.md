@@ -6,7 +6,7 @@
 
 `daynight worker run` 是一个前台常驻 CLI：通过 REST 领取多仓库中允许 Agent 执行的任务，使用系统管理的稳定 worktree 与专用 Herdr 执行，持久化状态并完成恢复和清理。Agent 负责完整交付循环，worker 负责归属、资源和完成核验。
 
-设计初始源码基线为 `e533b8610ec38522fd5387e4715b573734bd16c2`。交付核对基线为 `2d7fdd1e4e178db17e46da5d3b6c0e4050edf730`：主线具有命令组合、严格 YAML、REST client、任务/属性、项目写事务和 review 的 Git/SQLite 基础；鉴权与显式 approve/claim/complete 生命周期已交付，worker 仍待实现。任务的服务端起止时间及图时钟遵循已交付的[执行时间契约](https://github.com/codetreker/daynight/blob/2d7fdd1e4e178db17e46da5d3b6c0e4050edf730/docs/spec/daynight-task-timing.md)，worker DTO 与生命周期扩展须保留该契约。
+设计初始源码基线为 `e533b8610ec38522fd5387e4715b573734bd16c2`。交付核对基线为 `2d7fdd1e4e178db17e46da5d3b6c0e4050edf730`：主线具有命令组合、严格 YAML、REST client、任务/属性、项目写事务和 review 的 Git/SQLite 基础；当时鉴权与显式动作生命周期已交付；当前状态由[三状态架构](daynight-task-status.md)拥有，worker 仍待实现。任务的服务端起止时间及图时钟遵循已交付的[执行时间契约](https://github.com/codetreker/daynight/blob/2d7fdd1e4e178db17e46da5d3b6c0e4050edf730/docs/spec/daynight-task-timing.md)，worker DTO 与生命周期扩展须保留该契约。
 
 | 当前基础 | 复用点 |
 |---|---|
@@ -96,9 +96,9 @@ requiredPlatform: null | windows | linux | macos
 
 Web 在任务详情标题下的同一状态行中，左侧显示状态、ready 与可选平台信息，右侧显示单一“自动执行” / “Automatic execution”标签与开关组合。组合控件同时表达服务端已确认的许可状态并提供操作入口；详情仅保留此组合控件，自动执行状态不另设 badge 或下方 Overview 开关。列表中的自动执行状态标记保持其原有用途。实际任务标题直接用于详情顶栏并保留有界的完整文本键盘阅读，长标题与窄屏不覆盖状态或开关；平台等左侧信息仅在左组内换行，右侧控件保持右对齐并与第一行状态顶部对齐。错误、未知结果、锁定和等待人工输入的反馈紧邻该控件保留。成功反馈由详情中观察到的 pending→confirmed 转换触发，以不参与布局的浮动气泡展示 3 秒；持久 mutation 状态继续归属任务会话，关闭重开不重播已确认结果。
 
-每次开启或关闭都打开对应确认框；确认按钮直接提交目标值及打开确认框时观察到的精确 version。取消、Escape 或关闭不提交，开关保持服务端已确认值；请求成功后安装完整返回 task 并刷新图。修改与 approve/unapprove 共用单 task 写入控制，提交或结果不确定期间阻止重复写入；确认拒绝保留原值，版本冲突读取最新状态并要求重新决定，断连/5xx/协议错误先核对实际结果，不自动重发。任务切换、关闭详情和后台刷新保持请求归属，已提交操作不依赖弹框仍然挂载。
+每次开启或关闭都打开对应确认框；确认按钮直接提交目标值及打开确认框时观察到的精确 version。取消、Escape 或关闭不提交，开关保持服务端已确认值；请求成功后安装完整返回 task 并刷新图。修改与 status 共用单 task 写入控制，提交或结果不确定期间阻止重复写入；确认拒绝保留原值，版本冲突读取最新状态并要求重新决定，断连/5xx/协议错误先核对实际结果，不自动重发。任务切换、关闭详情和后台刷新保持请求归属，已提交操作不依赖弹框仍然挂载。
 
-开启框说明 worker 可在任务获批、依赖完成并符合运行条件时自动领取；关闭框说明 worker 将不再自动领取。自动执行许可、审批和 ready 分别保有原义：`approve`、`unapprove`、手工 claim/complete 与普通元数据修改均保留许可。实际切换在 `in_progress` 拒绝；权限和版本检查先于同值判定，精确版本同值 PATCH 返回原 task，不增加版本或更新时间。关闭许可不隐式停止执行或移交资源。
+开启框说明 worker 可在任务处于 todo、依赖完成并符合运行条件时自动领取；关闭框说明 worker 将不再自动领取。自动执行许可与 ready 独立，手工 set-status 与普通元数据修改均保留许可。实际切换在 `in_progress` 拒绝；权限和版本检查先于同值判定，精确版本同值 PATCH 返回原 task，不增加版本或更新时间。关闭许可不隐式停止执行或移交资源。
 
 确认表示明确操作意图，不能从 session/PAT 类型推断物理人工。CLI/skill 禁止自动 worker 自行启用许可，操作沿用现有项目成员写权限。Web 的双向确认、状态展示和失败交互遵循本节的布局与操作规则，具体组件与工作空间请求归属由[看板设计](daynight-web.md#自动执行许可与确认)拥有。CLI update/list/ready 的 `--allow-agents true|false` 映射到该普通更新或查询字段；随包自动候选同时使用 true 与实际平台兼容筛选，领取前从最新完整详情重验许可、ready 和平台；明确由用户指定的单任务执行仍可普通 claim，自动选出的 ID 不属于人工例外。
 
@@ -135,20 +135,20 @@ GET /api/v1/projects/{project}/tasks?ready=true&allowAgents=true&compatiblePlatf
 
 ### 操作与事务
 
-保留手工 `/claim`；自动领取走 `/worker-claim`，共用 task-service 事务逻辑，不按凭据类型猜测调用模式。
+手工执行采用当前 `PUT .../status`；计划中的自动领取走 `/worker-claim`。未来暴露 active claim 前须把归属/fencing 接入同一 task-service 事务，使普通 setter 不能绕过 claim-bound 完成或释放。当前状态接口不接受 claimId，不按凭据类型猜测模式。
 
 | 操作 | 必要输入与行为 |
 |---|---|
 | 普通 task PATCH | version 与可选 allowAgents/requiredPlatform；许可为布尔值，平台可设置/清除。`in_progress` 拒绝实际切换；精确版本同值更新不改版本或时间。|
 | `POST .../worker-claim` | version、预先落库的 claimId、worker/机器/平台/agent、worktreeId；成功原子写 in_progress 与唯一 active claim。|
 | `PATCH .../worker-claim` | version、claimId 及会话/阶段摘要；仅当前 owner 可更新，不能更换身份、自动执行许可、平台或 status。|
-| `POST .../complete` | 现有生命周期完成接口；active worker claim 必须另提供匹配 claimId 并满足 owner 校验。普通人工任务保留原行为。|
+| 计划中的 claim-bound 完成 | 复用状态服务的 done 目标与计时/版本规则；active claim 须匹配 claimId 和 owner，公开协议与普通 setter 的互斥接入必须同批交付。普通人工任务沿用 PUT status。|
 | `POST .../worker-claim/release` | version、claimId、明确停止确认；仅当前执行用户或项目管理员，可将已停止执行释放回 todo，保留自动执行许可/平台和原 worktree 关联。|
 | `POST .../worker-claim/transfer` | version、旧 claimId、新 claim/目标用户与 worker/机器/平台、原 worktreeId、停止及连续性确认；原子切换归属，保持 in_progress。|
 
 Claim 在项目写锁内依次检查成员权限、version、todo/依赖、allowAgents/平台、无其他 active claim；成功只增加一次版本。会话更新、完成、release/transfer 同时检查当前 claim。一般 metadata 更新不能绕过这些入口。
 
-Release 是 worker 专用的受控重入例外，不恢复通用 status PATCH。释放后 ready 且 allowAgents=true 的任务可以再次竞争；原工作区绑定仍保留，其他机器没有延续资料时不得重新开始。自动执行许可/平台编辑与新 claim 的竞争仍受 version/锁定规则约束。
+Release 是 worker 专用的归属释放，不恢复通用 status PATCH；普通 setter 不能替代停止确认或归属释放。释放后 ready 且 allowAgents=true 的任务可以再次竞争；原工作区绑定仍保留，其他机器没有延续资料时不得重新开始。自动执行许可/平台编辑与新 claim 的竞争仍受 version/锁定规则约束。
 
 沿用现有错误 envelope：输入或只读字段为 `400 invalid_input`，认证/所有者权限为既有 401/403，非成员/不存在为 404；旧版本为 `409 version_conflict`，资格或生命周期不符为 `409 invalid_transition`，旧 claim 为 `409 claim_conflict`。错误不转成空候选或成功。
 

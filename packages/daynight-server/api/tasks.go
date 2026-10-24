@@ -35,8 +35,9 @@ type UpdateTaskRequest struct {
 	DependsOn         *[]string            `json:"dependsOn,omitempty"`
 }
 
-type TaskTransitionRequest struct {
-	Version int64 `json:"version"`
+type TaskStatusUpdateRequest struct {
+	Version int64  `json:"version"`
+	Status  string `json:"status"`
 }
 
 type Task struct {

@@ -7,7 +7,7 @@
 
 ## 现有结构与职责
 
-[生命周期服务](../../packages/daynight-server/internal/service/task_lifecycle.go)提供 approve、unapprove、claim、complete，普通任务更新没有状态字段。
+[状态服务](../../packages/daynight-server/internal/service/task_lifecycle.go)提供统一 SetStatus，普通任务更新没有状态字段。
 [项目写事务](../../packages/daynight-server/internal/core/store/project_tx.go)通过项目行锁串行化写入，再在同一事务修改任务、版本和依赖；
 `updated_at` 随普通编辑变化，不能作为执行起点。
 [图读取服务](../../packages/daynight-server/internal/service/task_graph.go)在只读快照中读取项目、任务与统计，并在数据读取后采样数据库 `observedAt`。
@@ -20,7 +20,7 @@ Web 的 [useTaskGraph](../../packages/daynight-web/src/features/projects/useTask
 
 ```mermaid
 flowchart LR
-  Action[claim / complete] --> Tx[项目锁与事务]
+  Action[set-status] --> Tx[项目锁与事务]
   Tx --> Timing[任务起止时间]
   Admin[项目设置页] --> Settings[管理员设置写入]
   Settings --> Tx
@@ -39,15 +39,17 @@ core 与 API 使用可空时间字段，JSON 明确输出 `startedAt`、`complet
 
 任务写入根据数据库旧状态与目标状态维护计时，而非依赖调用者传入时间：
 
-| 写入 | 起点 | 终点 |
+| 实际写入 | 起点 | 终点 |
 |---|---|---|
-| 真正进入 `in_progress` | `statement_timestamp()` | 清空 |
-| 真正进入 `done` | 保留 | `statement_timestamp()` |
-| 普通编辑或同状态低层写入 | 保留 | 保留 |
-| 低层离开已完成且目标不是 `in_progress` | 清空旧尝试 | 清空 |
+| todo/done → in_progress | 锁后 `statement_timestamp()` | null |
+| in_progress/done → todo | null | null |
+| in_progress → done | 保留真实可空起点 | 锁后 `statement_timestamp()` |
+| todo → done | null | 锁后 `statement_timestamp()` |
+| 普通编辑或同状态 | 保留 | 保留 |
 
-最后一项定义存储数据规则，不新增公开转换。当前 approve、unapprove、claim、complete 继续拒绝不符合前驱状态的请求；todo→proposed 的撤回保留已有起止事实。
-旧 `in_progress` 记录没有可恢复起点；之后 complete 记录真实终点，起点与耗时仍未知。
+同状态在版本检查后无修改；过期同状态仍冲突。历史 proposed→todo 迁移保留执行时间，
+不调用运行时重置规则。缺失历史起点不补造，后续完成可仅有真实终点，耗时未知。
+[状态架构](daynight-task-status.md)拥有任意转换和计时之间的完整约束。
 
 状态、时间、版本与依赖写入共用既有事务。时间表达式使用项目锁获取后的 SQL statement 时间，
 不能使用事务开始时间：事务可能等待项目锁，过早时间会把等待阶段错误计入执行。

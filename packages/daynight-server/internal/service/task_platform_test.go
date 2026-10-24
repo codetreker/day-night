@@ -11,13 +11,13 @@ import (
 
 func platformChange(value *core.TaskPlatform) **core.TaskPlatform { return &value }
 
-func TestTaskPlatformUpdatesPreserveLifecycleAndLockExecution(t *testing.T) {
+func TestTaskPlatformUpdatesPreserveStatusAndLockExecution(t *testing.T) {
 	tasks, _, project, _, principal := taskService(t)
 	ctx := context.Background()
-	prerequisite := completeTask(t, tasks, principal, claimTask(t, tasks, principal, approveTask(t, tasks, principal, createTask(t, tasks, principal, project.ID, "Completed prerequisite"))))
+	prerequisite := finishTask(t, tasks, principal, startTask(t, tasks, principal, createTask(t, tasks, principal, project.ID, "Completed prerequisite")))
 	for _, platform := range []*core.TaskPlatform{nil, pointer(core.PlatformWindows), pointer(core.PlatformLinux), pointer(core.PlatformMacOS)} {
-		task, err := tasks.Create(ctx, principal, project.ID, CreateTask{Title: "Platform lifecycle", RequiredPlatform: platform, DependsOn: []string{prerequisite.ID}, ExternalDependsOn: []string{prerequisite.ID}})
-		if err != nil || !equalOptional(task.RequiredPlatform, platform) || task.Status != core.TaskProposed || task.AllowAgents || task.Ready {
+		task, err := tasks.Create(ctx, principal, project.ID, CreateTask{Title: "Platform status", RequiredPlatform: platform, DependsOn: []string{prerequisite.ID}, ExternalDependsOn: []string{prerequisite.ID}})
+		if err != nil || !equalOptional(task.RequiredPlatform, platform) || task.Status != core.TaskTodo || task.AllowAgents || !task.Ready {
 			t.Fatalf("platform creation: %#v, %v", task, err)
 		}
 		task = updateTask(t, tasks, principal, task, UpdateTask{Description: pointer("Preserved metadata"), AllowAgents: pointer(true), Properties: core.TaskPropertiesPatch{PullRequests: pointer([]core.PullRequestProperty{{URL: "https://example.com/pr/1", Title: "Evidence"}})}})
@@ -29,11 +29,9 @@ func TestTaskPlatformUpdatesPreserveLifecycleAndLockExecution(t *testing.T) {
 		}
 		_, err = tasks.Update(ctx, principal, project.ID, task.ID, UpdateTask{Version: task.Version - 1, RequiredPlatform: platformChange(platform)})
 		requireFault(t, err, "version_conflict")
-		task = approveTask(t, tasks, principal, task)
-		task = unapproveTask(t, tasks, principal, task)
-		task = claimTask(t, tasks, principal, approveTask(t, tasks, principal, task))
+		task = startTask(t, tasks, principal, task)
 		if !equalOptional(task.RequiredPlatform, platform) || !task.AllowAgents || task.StartedAt == nil {
-			t.Fatal("manual lifecycle lost platform, permission or timing")
+			t.Fatal("manual status update lost platform, permission or timing")
 		}
 		if got := updateTask(t, tasks, principal, task, UpdateTask{RequiredPlatform: platformChange(platform)}); !reflect.DeepEqual(got, task) {
 			t.Fatal("active same platform changed resource")
@@ -46,7 +44,7 @@ func TestTaskPlatformUpdatesPreserveLifecycleAndLockExecution(t *testing.T) {
 		requireFault(t, err, "invalid_transition")
 		assertTaskUnchanged(t, tasks, principal, task)
 		task = updateTask(t, tasks, principal, task, UpdateTask{Description: pointer("Running metadata")})
-		task = completeTask(t, tasks, principal, task)
+		task = finishTask(t, tasks, principal, task)
 		after := updateTask(t, tasks, principal, task, UpdateTask{RequiredPlatform: platformChange(changed)})
 		preserved := after
 		preserved.RequiredPlatform, preserved.Version, preserved.UpdatedAt = task.RequiredPlatform, task.Version, task.UpdatedAt
@@ -72,7 +70,7 @@ func TestTaskPlatformCandidateMatrixAndGraph(t *testing.T) {
 	var inventory []core.Task
 	for _, required := range []*core.TaskPlatform{nil, pointer(core.PlatformWindows), pointer(core.PlatformLinux), pointer(core.PlatformMacOS)} {
 		for _, allowed := range []bool{false, true} {
-			for _, state := range []string{"proposed", "blocked", "ready", "in_progress", "done"} {
+			for _, state := range []string{"blocked", "ready", "in_progress", "done"} {
 				input := CreateTask{Title: "Platform candidate", RequiredPlatform: required}
 				if state == "blocked" {
 					input.DependsOn = []string{prerequisite.ID}
@@ -82,14 +80,11 @@ func TestTaskPlatformCandidateMatrixAndGraph(t *testing.T) {
 					t.Fatal(err)
 				}
 				task = updateTask(t, tasks, principal, task, UpdateTask{AllowAgents: &allowed})
-				if state != "proposed" {
-					task = approveTask(t, tasks, principal, task)
-				}
 				if state == "in_progress" || state == "done" {
-					task = claimTask(t, tasks, principal, task)
+					task = startTask(t, tasks, principal, task)
 				}
 				if state == "done" {
-					task = completeTask(t, tasks, principal, task)
+					task = finishTask(t, tasks, principal, task)
 				}
 				inventory = append(inventory, task)
 			}
@@ -103,7 +98,7 @@ func TestTaskPlatformCandidateMatrixAndGraph(t *testing.T) {
 					t.Fatal(err)
 				}
 				var want []string
-				if !allowed && !ready {
+				if !allowed && ready {
 					want = append(want, prerequisite.ID)
 				}
 				for _, task := range inventory {
@@ -144,7 +139,6 @@ func TestTaskPlatformFilterPrecedesLimitAndBindsCursor(t *testing.T) {
 			t.Fatal(err)
 		}
 		task = updateTask(t, tasks, principal, task, UpdateTask{AllowAgents: pointer(true)})
-		task = approveTask(t, tasks, principal, task)
 		if core.PlatformCompatible(required, core.PlatformLinux) {
 			want = append(want, task.ID)
 		}
@@ -175,15 +169,15 @@ func TestTaskPlatformFilterPrecedesLimitAndBindsCursor(t *testing.T) {
 	}
 }
 
-func TestTaskPlatformAndManualClaimRaceHasOneMutationWinner(t *testing.T) {
+func TestTaskPlatformAndManualStartRaceHasOneMutationWinner(t *testing.T) {
 	tasks, database, project, _, principal := taskService(t)
-	before := approveTask(t, tasks, principal, createTask(t, tasks, principal, project.ID, "Platform race"))
+	before := createTask(t, tasks, principal, project.ID, "Platform race")
 	results := competeTaskWrites(t, database, project.ID,
 		func(ctx context.Context) (core.Task, error) {
 			return tasks.Update(ctx, principal, project.ID, before.ID, UpdateTask{Version: before.Version, RequiredPlatform: platformChange(pointer(core.PlatformWindows))})
 		},
 		func(ctx context.Context) (core.Task, error) {
-			return tasks.Claim(ctx, principal, project.ID, before.ID, before.Version)
+			return tasks.SetStatus(ctx, principal, project.ID, before.ID, SetTaskStatus{Version: before.Version, Status: core.TaskInProgress})
 		})
 	assertOneTaskWinner(t, results, "version_conflict")
 	after, err := tasks.Get(context.Background(), principal, project.ID, before.ID)
@@ -192,9 +186,52 @@ func TestTaskPlatformAndManualClaimRaceHasOneMutationWinner(t *testing.T) {
 	}
 	if after.Status == core.TaskInProgress {
 		if after.RequiredPlatform != nil || after.StartedAt == nil {
-			t.Fatal("manual claim changed platform or omitted timing")
+			t.Fatal("manual start changed platform or omitted timing")
 		}
 	} else if after.Status != core.TaskTodo || !equalOptional(after.RequiredPlatform, pointer(core.PlatformWindows)) || after.StartedAt != nil {
-		t.Fatalf("platform winner changed lifecycle: %#v", after)
+		t.Fatalf("platform winner changed status: %#v", after)
+	}
+}
+
+func TestTaskPlatformSurvivesEveryStatusAssignment(t *testing.T) {
+	tasks, _, project, _, principal := taskService(t)
+	ctx := context.Background()
+	prerequisite := finishTask(t, tasks, principal, createTask(t, tasks, principal, project.ID, "Completed prerequisite"))
+	for _, platform := range []*core.TaskPlatform{nil, pointer(core.PlatformWindows), pointer(core.PlatformLinux), pointer(core.PlatformMacOS)} {
+		for _, from := range []core.TaskStatus{core.TaskTodo, core.TaskInProgress, core.TaskDone} {
+			for _, to := range []core.TaskStatus{core.TaskTodo, core.TaskInProgress, core.TaskDone} {
+				name := "any"
+				if platform != nil {
+					name = string(*platform)
+				}
+				t.Run(name+"_"+string(from)+"_to_"+string(to), func(t *testing.T) {
+					task, err := tasks.Create(ctx, principal, project.ID, CreateTask{Title: "Preserved platform", Description: "Preserved materials", RequiredPlatform: platform, DependsOn: []string{prerequisite.ID}, ExternalDependsOn: []string{prerequisite.ID}, Properties: core.TaskProperties{PullRequests: []core.PullRequestProperty{{URL: "https://example.com/pr/1", Title: "Evidence"}}}})
+					if err != nil {
+						t.Fatal(err)
+					}
+					task = updateTask(t, tasks, principal, task, UpdateTask{AllowAgents: pointer(true)})
+					task = setStatusTask(t, tasks, principal, task, from)
+					after := setStatusTask(t, tasks, principal, task, to)
+					expectedVersion := task.Version
+					if from != to {
+						expectedVersion++
+					}
+					if after.Version != expectedVersion || after.Status != to || !equalOptional(after.RequiredPlatform, platform) {
+						t.Fatalf("platform or status/version changed incorrectly: before %#v after %#v", task, after)
+					}
+					if from == to {
+						if !reflect.DeepEqual(after, task) {
+							t.Fatal("same-status request changed platform or materials")
+						}
+					} else {
+						preserved := after
+						preserved.Status, preserved.Version, preserved.UpdatedAt, preserved.StartedAt, preserved.CompletedAt, preserved.Ready = task.Status, task.Version, task.UpdatedAt, task.StartedAt, task.CompletedAt, task.Ready
+						if !reflect.DeepEqual(preserved, task) {
+							t.Fatalf("status update changed platform or materials: before %#v after %#v", task, after)
+						}
+					}
+				})
+			}
+		}
 	}
 }

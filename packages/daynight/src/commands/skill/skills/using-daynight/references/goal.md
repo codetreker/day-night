@@ -24,11 +24,10 @@ standing creation permission within the confirmed scope. It grants no unrelated
 work, implementation, external communication, deployment, merge, or mainline push
 permission.
 
-A request to start a Goal discussion authorizes creating, approving, and claiming
+A request to start a Goal discussion authorizes creating and starting
 that discussion task so it becomes `in_progress`. A registration-only request
-creates only the current discussion task in `proposed` and returns without
-approval or execution. A generic run request, Goal registration, or autopilot
-activation does not supply discussion-start or delivery approval authorization.
+creates only the current discussion task in `todo` and returns without execution. A generic run request, Goal registration, or autopilot
+activation does not supply discussion-start or delivery execution authorization.
 
 ## Start requirements discussion
 
@@ -40,9 +39,9 @@ questions, and observable completion conditions. Its primary Markdown's Solution
 and Acceptance criteria describe this discussion and its user-confirmation gate;
 finished requirements and prototypes are outputs, not prerequisites to starting.
 
-Each task starts in `proposed`. For an explicit discussion-start request, read its
-current materials and exact version, use `task approve`, confirm todo, then use
-`task claim` with the version observed for that decision and confirm `in_progress`.
+Each task starts in `todo`. For an explicit discussion-start request, read its
+current materials and exact version, use `task set-status <task-id> in_progress`
+with the version observed for that decision and confirm `in_progress`.
 All direct prerequisites must be done. Preserve real external blockers rather
 than removing dependencies to make a discussion ready. An already in-progress
 task is resumed after checking its actual work and context.
@@ -70,15 +69,15 @@ a review result, or elapsed time does not satisfy this gate.
 Record the user's confirmation with the accepted material in the owning task and
 verify it is readable. A material revision after confirmation requires renewed
 user confirmation before advancement. When the discussion's acceptance is met,
-reread the task, use `task complete` with its observed version, and confirm done.
+reread the task, use `task set-status <task-id> done` with its observed version, and confirm done.
 Do not create the solution discussion until that completion is confirmed; reconcile
 an uncertain completion before another mutation.
 
 Then create or reuse the solution discussion task, with a purpose-specific title
 such as `Architecture discussion: <outcome>`, and an ordinary prerequisite on the
 completed requirements task. The user's direction to start this discussion
-provides its scoped approval and execution authorization. Prepare its stage brief,
-read its current version, approve and claim through the same lifecycle, and
+provides its scoped execution authorization. Prepare its stage brief,
+read its current version, set in_progress through the same lifecycle, and
 confirm `in_progress`. This user-directed transition does not require autopilot
 and does not authorize selection of another unrelated task.
 
@@ -105,8 +104,8 @@ After explicit user confirmation of the current solution, record that confirmati
 with the accepted material and register the delivery breakdown below. Complete
 the solution discussion only after the accepted solution and actual registered delivery tasks,
 their required materials, and their dependencies are read back
-and verified. Use `task complete` with the observed version and confirm done.
-Completion satisfies dependencies but never approves delivery tasks. Completing
+and verified. Use `task set-status <task-id> done` with the observed version and confirm done.
+Completion satisfies dependencies and grants no delivery execution permission. Completing
 either discussion does not establish whole-Goal completion.
 
 ## Register the confirmed delivery breakdown
@@ -118,8 +117,8 @@ and real input references. Include independently scoped acceptance work when it
 has its own outcome; do not turn agent-generated execution steps into tasks.
 The combined scope must cover the confirmed Goal, rather than a vague placeholder.
 
-Create new delivery tasks in `proposed`. Solution confirmation authorizes the
-confirmed breakdown's registration, not approval, implementation, autopilot,
+Create new delivery tasks in `todo`. Solution confirmation authorizes the
+confirmed breakdown's registration, not implementation, autopilot,
 automatic-execution permission, publishing, deployment, or merge. Apply any
 separate explicit authorization only within its stated scope. New tasks have
 `allowAgents=false`; automated workflows must not enable it themselves.
@@ -158,7 +157,7 @@ a matching title or lost response does not establish success or failure. If the
 identity cannot be established uniquely, preserve the failure and information
 needed to reconcile it rather than creating a duplicate chain.
 
-Bind metadata updates, approve, unapprove, claim, and complete to the exact version
+Bind metadata updates and status changes to the exact version
 observed for that decision. Attachment bytes have independent concurrency and
 must be verified separately; task versions cannot prove the reviewed content is
 unchanged. Generic updates cannot write status. A version conflict requires a
@@ -166,15 +165,20 @@ new decision. Readiness and `in_progress` provide no ownership lock or lease.
 
 ## Advance and accept the whole Goal
 
+Automatic delivery discovery requires actual-runtime platform compatibility.
+Use autopilot's platform-filtered queries and preserve automatic-selection context
+for run-task's full-task recheck before setting in_progress. A user-specified fixed
+Goal queue keeps its manual path and existing execution scope across ready successors;
+it does not enable automatic discovery permission or bypass stage confirmation.
+
 A user-directed requirements-to-solution transition follows the confirmation
 protocol above. Ordinary `run-task` otherwise returns after its specified task
 completes or needs external intervention. Neither discussion completion nor
 breakdown registration activates autopilot or starts delivery. Only explicitly
-active autopilot selects later delivery work, and only with the existing approval,
-`allowAgents`, readiness, actual-runtime platform compatibility, input, and
-execution requirements. Use autopilot's platform-filtered queries and preserve
-automatic-selection context for run-task's full-task recheck before claim.
-CI, review, and merge waits stay with the current delivery task.
+active autopilot selects later delivery work, and only with the existing readiness, input, and execution requirements. Automatic discovery
+requires `allowAgents=true`; an explicitly selected task or fixed Goal queue
+uses the manual execution path regardless of that flag. CI, review, and merge
+waits stay with the current delivery task.
 
 Delivery tasks follow normal run-task completion: accepted outcomes, required
 review, all necessary authorized PR merges, and readable evidence. To report the

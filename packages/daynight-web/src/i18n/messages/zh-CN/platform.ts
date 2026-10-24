@@ -4,7 +4,7 @@ export const platform: PlatformMessages = {
   title: "执行平台", any: "不限平台", names: { windows: "Windows", linux: "Linux", macos: "macOS" },
   save: "保存平台",
   help: "Worker 必须在指定平台运行；不限平台会清除要求。选择选项后保存。",
-  locked: "任务已被领取，执行结束或解除领取前无法修改执行平台。",
+  locked: "任务正在进行中，保持此状态时无法修改执行平台。",
   pending: "正在保存执行平台。可以关闭详情，结果会保留。",
   confirmed: "执行平台已更新。",
   conflict: "任务已发生变化，请检查当前平台后重新保存修改。",

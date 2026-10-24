@@ -11,11 +11,11 @@ import (
 	"github.com/codetreker/daynight/packages/daynight-server/internal/core"
 )
 
-func TestExternalDependenciesSurviveMetadataAndLifecycle(t *testing.T) {
+func TestExternalDependenciesSurviveMetadataAndStatus(t *testing.T) {
 	tasks, database, project, _, principal := taskService(t)
 	ctx := context.Background()
 	prerequisite := createTask(t, tasks, principal, project.ID, "Prerequisite")
-	prerequisite = completeTask(t, tasks, principal, claimTask(t, tasks, principal, approveTask(t, tasks, principal, prerequisite)))
+	prerequisite = finishTask(t, tasks, principal, startTask(t, tasks, principal, prerequisite))
 	target := createTask(t, tasks, principal, project.ID, "Target", prerequisite.ID)
 	target = updateTask(t, tasks, principal, target, UpdateTask{AllowAgents: pointer(true)})
 	if _, err := database.Pool.Exec(ctx, `UPDATE task_dependencies SET external=true WHERE project_id=$1 AND task_id=$2`, project.ID, target.ID); err != nil {
@@ -38,10 +38,10 @@ func TestExternalDependenciesSurviveMetadataAndLifecycle(t *testing.T) {
 	}
 	_, err = tasks.Update(ctx, principal, project.ID, target.ID, UpdateTask{Version: target.Version - 1, DependsOn: &target.DependsOn})
 	requireFault(t, err, "version_conflict")
-	for _, action := range []func(*testing.T, *Tasks, core.Principal, core.Task) core.Task{approveTask, unapproveTask, approveTask, claimTask} {
-		target = action(t, tasks, principal, target)
+	for _, status := range []core.TaskStatus{core.TaskDone, core.TaskTodo, core.TaskInProgress} {
+		target = setStatusTask(t, tasks, principal, target, status)
 		if !target.AllowAgents || !slices.Equal(target.ExternalDependsOn, []string{prerequisite.ID}) {
-			t.Fatalf("lifecycle lost classification: %#v", target)
+			t.Fatalf("status update lost classification: %#v", target)
 		}
 	}
 	started := target.StartedAt
@@ -49,7 +49,7 @@ func TestExternalDependenciesSurviveMetadataAndLifecycle(t *testing.T) {
 	if started == nil || !reflect.DeepEqual(target.StartedAt, started) || target.CompletedAt != nil {
 		t.Fatal("active metadata edit changed the execution interval")
 	}
-	target = completeTask(t, tasks, principal, target)
+	target = finishTask(t, tasks, principal, target)
 	if !target.AllowAgents || !slices.Equal(target.ExternalDependsOn, []string{prerequisite.ID}) || !reflect.DeepEqual(target.StartedAt, started) || target.CompletedAt == nil {
 		t.Fatalf("completion lost classification or timing: %#v", target)
 	}
@@ -77,22 +77,22 @@ func TestExternalDependenciesReplacementRetainsSurvivorsAndScheduling(t *testing
 	if !slices.Equal(target.ExternalDependsOn, []string{b.ID}) {
 		t.Fatalf("replacement lost surviving flag or classified a new edge: %#v", target)
 	}
-	target = approveTask(t, tasks, principal, target)
-	_, err := tasks.Claim(ctx, principal, project.ID, target.ID, target.Version)
+
+	_, err := tasks.SetStatus(ctx, principal, project.ID, target.ID, SetTaskStatus{Version: target.Version, Status: core.TaskInProgress})
 	requireFault(t, err, "dependency_unsatisfied")
 	assertTaskUnchanged(t, tasks, principal, target)
 	_, err = tasks.Update(ctx, principal, project.ID, b.ID, UpdateTask{Version: b.Version, DependsOn: pointer([]string{target.ID})})
 	requireFault(t, err, "dependency_cycle")
 	assertTaskUnchanged(t, tasks, principal, b)
 	for _, predecessor := range []core.Task{b, c} {
-		completeTask(t, tasks, principal, claimTask(t, tasks, principal, approveTask(t, tasks, principal, predecessor)))
+		finishTask(t, tasks, principal, startTask(t, tasks, principal, predecessor))
 	}
 	ready := true
 	page, err := tasks.List(ctx, principal, project.ID, TaskListRequest{PageRequest: PageRequest{Limit: 10}, Ready: &ready})
-	if err != nil || len(page.Items) != 1 || page.Items[0].ID != target.ID || !slices.Equal(page.Items[0].ExternalDependsOn, []string{b.ID}) {
+	if err != nil || len(page.Items) != 2 || page.Items[1].ID != target.ID || !slices.Equal(page.Items[1].ExternalDependsOn, []string{b.ID}) {
 		t.Fatalf("ready read omitted external prerequisite: %#v, %v", page, err)
 	}
-	target = updateTask(t, tasks, principal, page.Items[0], UpdateTask{DependsOn: pointer([]string{})})
+	target = updateTask(t, tasks, principal, page.Items[1], UpdateTask{DependsOn: pointer([]string{})})
 	if len(target.ExternalDependsOn) != 0 || target.ExternalDependsOn == nil || len(target.DependsOn) != 0 {
 		t.Fatalf("removed edges retained external markers: %#v", target)
 	}

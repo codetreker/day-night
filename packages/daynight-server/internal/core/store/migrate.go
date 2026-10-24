@@ -50,12 +50,30 @@ var externalDependenciesSQL string
 //go:embed migrations/013_task_required_platform.sql
 var taskRequiredPlatformSQL string
 
+//go:embed migrations/014_task_status_assignment.sql
+var taskStatusAssignmentSQL string
+
 type migration struct {
 	version int64
 	sql     string
 }
 
-var schemaMigrations = []migration{{version: 1, sql: projectsSQL}, {version: 2, sql: tasksSQL}, {version: 3, sql: taskPropertiesSQL}, {version: 4, sql: taskAttachmentsSQL}, {version: 5, sql: identitySQL}, {version: 6, sql: projectMembershipSQL}, {version: 7, sql: taskProposedSQL}, {version: 8, sql: taskProposedDefaultSQL}, {version: 9, sql: taskTimingSQL}, {version: 10, sql: projectSettingsSQL}, {version: 11, sql: taskAgentPermissionSQL}, {version: 12, sql: externalDependenciesSQL}, {version: 13, sql: taskRequiredPlatformSQL}}
+var schemaMigrations = []migration{
+	{version: 1, sql: projectsSQL},
+	{version: 2, sql: tasksSQL},
+	{version: 3, sql: taskPropertiesSQL},
+	{version: 4, sql: taskAttachmentsSQL},
+	{version: 5, sql: identitySQL},
+	{version: 6, sql: projectMembershipSQL},
+	{version: 7, sql: taskProposedSQL},
+	{version: 8, sql: taskProposedDefaultSQL},
+	{version: 9, sql: taskTimingSQL},
+	{version: 10, sql: projectSettingsSQL},
+	{version: 11, sql: taskAgentPermissionSQL},
+	{version: 12, sql: externalDependenciesSQL},
+	{version: 13, sql: taskRequiredPlatformSQL},
+	{version: 14, sql: taskStatusAssignmentSQL},
+}
 
 const migrationLock int64 = 0x4441594e49474854
 

@@ -68,10 +68,10 @@ Principal 形状为 `{UserID, CredentialID, Kind}`，Kind 只有 session/PAT。�
 
 读取在原 repeatable-read 快照中检查成员再读取资源；写入取得现有项目行锁后重查
 成员/角色/观察版本与领域约束。列表以 membership JOIN 在原 SQL cursor/LIMIT 前
-筛选。Tasks.Approve/Unapprove/Claim/Complete(ctx, principal, projectID, taskID, version)
-沿用同一项目锁，并在取锁后检查当前成员，再校验观察版本、前态与依赖。admin 和
+筛选。Tasks.SetStatus(ctx, principal, projectID, taskID, input)
+沿用同一项目锁，并在取锁后检查当前成员，再校验观察版本、目标状态与依赖。admin 和
 member 都可执行这些资源操作；管理员角色额外管理成员、邀请与项目提醒设置。创建默认
-proposed，通用元数据更新不接收 status，没有旧状态写入旁路。任务版本、int64、
+todo，通用元数据更新不接收 status，没有旧状态写入旁路。任务版本、int64、
 图容量和现有分页合同保持。
 
 ## 登录方式发现
@@ -170,7 +170,7 @@ HTTP 认证逐请求读取当前会话/PAT 并产生 Principal。资源服务在
 | POST /api/v1/auth/logout | 主站会话注销，验证 Origin。 |
 | GET/POST /api/v1/me/tokens、DELETE .../{tokenId} | 主站会话管理自己的 PAT。 |
 | 现有 project/task/graph/property/attachment API | session 或 PAT；业务 service 检查当前项目成员。 |
-| POST .../tasks/{taskId}/approve、.../unapprove、.../claim、.../complete | session/PAT；成员写权限，正 int64 version；POST 和 405 路径均经过 Require、Cookie Origin 规则及 no-store。 |
+| PUT .../tasks/{taskId}/status | session/PAT；成员写权限，正 int64 version 与三状态目标；PUT 和 405 路径均经过 Require、Cookie Origin 规则及 no-store。 |
 | GET .../projects/{id}/members | 任一成员读取最小资料和角色/version。 |
 | PATCH .../projects/{id}/settings | admin，锁后复核角色与精确设置 version，返回完整 Project。 |
 | PATCH/DELETE .../members/{userId} | admin，携带观察到的成员 version。 |
