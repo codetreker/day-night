@@ -12,120 +12,50 @@ clients also need to bind each action to the content they actually reviewed.
 
 ## Decision
 
-Creation and the database default produce proposed. Dedicated versioned POST
-operations approve proposed to todo, unapprove todo to proposed, claim todo to
-in_progress, and complete in_progress to done. The limited withdrawal and its
-shared confirmation are owned by the later
-[withdrawal decision](2026-10-23-task-unapprove.md). Approval and withdrawal
-accept unfinished prerequisites; claim and
-completion require all direct prerequisites done. Every action checks the
-observed version before predecessor state, then dependency rules, inside the
-existing project-lock transaction. Success increments version and updatedAt
-once; stale versions, invalid transitions and unmet dependencies preserve all
-data. Repeated actions fail rather than returning success or retrying.
+The original approval delivery replaced generic state editing with proposed
+creation and predecessor-constrained approve/claim/complete actions. Its later
+[withdrawal extension](2026-10-23-task-unapprove.md) added todo-to-proposed only.
+Approval allowed unfinished prerequisites; starting and completion required all
+direct predecessors done. Observed positive int64 version was checked before
+source state, under the project lock, so a stale client could not approve content
+it had not reviewed. Existing todo/in-progress/done rows were treated as accepted
+and retained their states, versions and timestamps; the default-only migration
+affected new creation. Metadata PATCH excluded status and preserved omission,
+dependency and property semantics. This record preserves that historical decision.
 
-Generic PATCH contains metadata, dependencies and predefined properties only;
-status is rejected even beside otherwise valid fields. Proposed tasks can edit
-metadata with unfinished prerequisites. Arbitrary backward state writes remain
-removed; the todo-only withdrawal does not restore a reopening policy or an
-unreachable dependent-reopening check. The
-existing same-project DAG, full-candidate validation, snapshot reads and int64
-wire representation remain. A new default-only migration preserves existing
-todo/in-progress/done records, versions and timestamps as already accepted work.
+The adopted [three-state status assignment](../architecture/2026-10-24-task-status-assignment.md)
+supersedes the approval model, its public actions, four-state readers and workflow
+approval barrier. Current tasks default to todo, and one status-only resource
+supports all nine pairs with exact +0/+1, dependency protection and timing. The
+old proposed state is migrated to todo; it is rejected by runtime clients and
+the database. Task registration does not start execution. Existing execution and
+delivery authorization remain independent of status and automatic selection.
 
-The CLI exposes task approve, unapprove, claim and complete with an optional exact
-if-version. Explicit versions skip the pre-read; omission performs one immediate
-read before submission. Decisions based on earlier content must supply its
-observed version. Status filtering accepts all four states; generic update has
-no status option. Metadata, PR and attachment writes never advance lifecycle.
+The original browser work established durable mechanisms still reused by status
+and allowAgents: full-detail exact-version confirmation, bigint numeric transport,
+graph projections without versions, one project/task session independent of a
+mounted dialog, identity-generation isolation and mounted same-task attachment
+reading. Confirmation froze action, resource and reviewed version; known changes
+invalidated it, while unchanged receipts and optional GETs did not starve writes.
+The session distinguished current read activity from required freshness, coalesced
+automatic receipts behind active GETs and retained explicit retry priority.
+Derived readiness could require a fresh read without changing task revision.
 
-The Web detail dialog places Approve / 批准任务 for proposed and Unapprove /
-撤回审批 for todo beside the actual task title in its common header, available on
-both tabs. The [compact-header decision](../simplification/2026-10-24-compact-task-detail-header.md)
-owns the bounded title scrolling and persistent header controls.
-Both open action-specific confirmation; only explicit confirmation submits,
-while Cancel and Escape send no mutation. Confirmation retains the reviewed
-action, identity, source status and version and is invalidated by a known change.
-The topmost dialog owns focus and underlying inert state. Each action uses the
-reviewed full task's positive int64 version, preserving numeric digits through
-lossless decoding, bigint storage and JSON-number serialization. Graph nodes
-remain version-free. App-lifetime project/task sessions prevent repeat pending
-submissions across close/reopen. Background reads of the same active task retain
-any loaded detail and mounted attachment panels, regardless of operation phase.
-Approving one task can refresh another currently displayed task without discarding
-its attachment draft or upload. loadedRevision records the successful GET's
-starting receipt, never the latest receipt or an approval POST. Receipt-only
-polls do not invalidate an observed exact CAS version: unchanged task descriptors
-permit opening confirmation even while an optional GET runs. Known disagreement in status,
-update time, readiness, title preview or unordered prerequisite/blocker IDs
-requires a fresh read, including dependency changes without a task-version change.
-Reads started after that observation are authoritative; descriptors changed during
-an active read must match its result or keep the next read required. Explicit
-retry, current read errors and unresolved outcomes also block either approval action. This
-separates network activity from required freshness without starving the action
-when reads take longer than the polling interval. Automatic reads coalesce the
-newest receipt behind an active GET; explicit retries keep priority. Read failures
-remain visible outside the panels. The
-[quiet-detail decision](../bug-fix/2026-10-23-quiet-task-detail-refresh.md)
-separates the visible retained-data explanation from ordinary network progress,
-keeping unchanged background reads geometrically stable without changing required
-freshness or action eligibility. A 404 clears task content, panels and the
-approval actions; unknown-outcome feedback retains the original write error and
-GET failure, with GET-only state checks and retry. Cold, different-task
-and identity opens retain their loading/isolation boundaries. Confirmed target
-states remain authoritative while the graph refreshes; a failed graph refresh
-retains that detail and an explicit stale-snapshot refresh action. Conflicts reread current content and
-require another click. Unknown outcomes retain their error and require current
-state reconciliation before another submission. Old reads and late results
-cannot restore an earlier source state or populate another task. Existing language, attachment,
-fullscreen, viewport and focus ownership is retained. The
-[Markdown description reader](../architecture/2026-10-22-task-description-markdown.md)
-shares one TaskDetailReading attachment controller between description navigation
-and the attachment panel. Same-task retained reads keep that composition mounted;
-404 and identity changes remove private content under the same session rules.
+Confirmed details remained authoritative during graph refresh; errors retained
+request context. Conflict required reread and a new decision. Uncertain results
+required GET-only reconciliation, and 404 removed private materials while keeping
+unknown-result feedback. Late reads could neither roll back a confirmed revision
+nor populate another identity/resource. The [quiet refresh decision](../bug-fix/2026-10-23-quiet-task-detail-refresh.md)
+and [compact header decision](../simplification/2026-10-24-compact-task-detail-header.md)
+own retained-read geometry and bounded keyboard-readable titles. Those ownership
+rules survive the replacement of approval controls with the status menu.
 
-Packaged using-daynight creates proposed tasks and verifies current stage-owned
-artifacts and real shared inputs before reporting complete registration. The
-[original Goal protocol](../process/2026-10-22-goal-workflow-design.md) registered two
-starting tasks from stage briefs; complete requirements, prototypes and architecture
-remained outputs of their respective stages. Its
-[user-confirmed successor](../process/2026-10-24-user-confirmed-goal-discussions.md)
-now creates requirements discussion first, solution discussion after confirmed
-requirements and a user-requested transition, and delivery tasks after solution
-confirmation. An explicit request to begin or advance a discussion authorizes
-approval and claim for that discussion task only. Ordinary creation permission,
-execution requests, run-task, stage completion and autopilot alone do not imply
-approval permission. Explicit user approval
-of the task or stated scope permits a versioned approve, or the user can approve
-directly through CLI/Web. Ready todo work is claimed at its reviewed version;
-in-progress work can resume after checking actual work and authorization. Claim
-is a transition, not an assignee lock or lease. Completion uses the observed
-version only after acceptance and all required authorized delivery PR merges for
-actual delivery work. Discussion completion follows user-confirmed Daynight
-materials and its phase acceptance. An open delivery PR retained for user review
-remains in-progress. Approval grants no
-implementation, publication, deployment, external communication or merge right.
-
-The original [service baseline](../architecture/2026-10-19-daynight-server-task-design.md)
-exposed three editable states through a general update operation; dependency
-checks protected its arbitrary transitions. The [reader preparation](2026-10-22-proposed-task-readers.md)
-made every consumer accept proposed before writes could produce it. The
-[dashboard baseline](../architecture/2026-10-20-task-dashboard-mvp-design.md)
-kept task fields read-only, and the [public modes decision](../architecture/2026-10-21-using-daynight-modes.md)
-separated registration, execution and scheduling permissions. This lifecycle
-supersedes their state-write and approval boundaries while retaining their
-transaction, projection and workflow rationale. Current behavior belongs in the
-[server requirements](../../../../docs/spec/daynight-server.md),
-[CLI requirements](../../../../docs/spec/daynight-project-task.md),
-[Web requirements](../../../../docs/spec/daynight-web.md) and
-[skill requirements](../../../../docs/spec/daynight-agent-skill.md).
-The [production-component browsing fixture](../../../../packages/daynight-web/tests/mockups/browsing.html)
-owns the current approval visual and frontend-only interaction scenarios.
-
-The [unified status assignment proposal](../../proposed/architecture/2026-10-24-task-status-assignment.md)
-designs three-state assignment, removal of task approval and migration of the
-legacy proposed state while preserving dependency and version invariants. It is a proposed replacement; the action-based runtime described
-here remains implemented until that coordinated cutover.
+The original workflow separated task acceptance from execution and PR delivery.
+Its stage-brief and shared-input rationale remains useful, but task approval is
+removed by the successor. User-confirmed Goal discussions are owned by the
+[stage decision](../process/2026-10-24-user-confirmed-goal-discussions.md); complete
+behavior belongs to current server, CLI, Web and skill requirements. Status is
+not an assignee lock, lease, process cancellation or permission to merge.
 
 ## Alternatives
 
@@ -144,41 +74,19 @@ Project/task sessions retain operation identity independently of dialog lifetime
 
 ## Consequences
 
-The original lifecycle deliberately excluded backward transitions. The later
-[withdrawal decision](2026-10-23-task-unapprove.md) adds only todo to proposed;
-it does not restore generic status updates. Rejection, reset of executing or
-completed work, release, assignee ownership, audit actors, bulk actions and Web
-claim/complete require separate transition and permission decisions. They are
-not inferred from approval or its withdrawal. Lifecycle delivery itself did not change the then-current
-identity or membership composition. The
-[authentication activation](../architecture/2026-10-22-authentication-activation.md)
-now mounts every lifecycle POST and 405 path under the existing authentication,
-Origin and resource-member checks. Approve/Unapprove/Claim/Complete accept an explicit
-Principal and check membership after the project lock. Both member and admin
-can perform these resource operations; admin adds only membership/invite
-management, with no lifecycle-specific role.
+The bounded original actions avoided reopening policy while approval was part of
+the product. That restriction is intentionally superseded; ownership, release,
+transfer, bulk changes and immutable attempt history remain separate designs.
+Authentication continues to use current project members after acquiring the
+project lock, with identical member/admin task-write rights and exact Cookie
+Origin/no-store handling. The successor preserves those boundaries.
 
-The HTTP generic-status contract and CLI status update option are removed,
-with no legacy branch or compatibility fallback. Stored task identities and
-preexisting values remain unchanged. Web approval requires an exact full-detail
-read and coordinated refresh; graph projections alone cannot authorize writes.
-The original approval delivery added task-approval, task-approval-conflicts and
-task-approval-recovery, three functional scenarios per production target. The
-[Markdown description decision](../architecture/2026-10-22-task-description-markdown.md)
-adds another scenario, making seventeen functional scenarios per target before
-authentication integration. Its six auth scenarios bring the current inventory
-to twenty-three functional per target, twenty-eight native including five
-capacity/limit cases, and fifty-one results across both targets.
-Current acceptance admits only registered project/task POST approve or unapprove
-requests and exact expected counts, separately from fixture-scoped attachment
-writes. The original counts above describe that delivery, while current inventory
-belongs to the production acceptance documentation. Existing browser
-identity, one-worker, no-retry, performance, coverage and cleanup gates remain.
-
-The [cross-layer acceptance decision](../testing/2026-10-22-task-lifecycle-cross-layer-acceptance.md)
-owns the packed-CLI/production-browser lifecycle journey, genuine historical
-migration/restart and actual installed-process races. Installed-resource metadata,
-contained-reference and bounded instruction-contract checks assess the shipped
-artifact, alongside independent workflow scenarios; they do not execute an Agent
-or establish arbitrary model compliance. Actual CLI, PostgreSQL and production
-browser receipts retain separate runtime and cleanup provenance.
+The original production delivery added three approval scenarios per target;
+those historical counts do not describe today's inventory. Current status,
+recovery and transition journeys, permitted browser mutations and fixed inventory
+are owned by the production acceptance documentation. The [cross-layer decision](../testing/2026-10-22-task-lifecycle-cross-layer-acceptance.md)
+retains the distinction between real PostgreSQL upgrade/restart, installed-process
+races, production browser journeys and deterministic or offline fixtures.
+Instruction-contract checks verify the published files and workflow consistency,
+without claiming arbitrary Agent compliance. Each runtime receipt remains bound
+to its actual source and artifact.

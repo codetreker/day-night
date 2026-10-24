@@ -21,22 +21,22 @@ func TestTaskPropertiesCandidateFailureAndPartialWriteRollback(t *testing.T) {
 	ctx := context.Background()
 	prerequisite := createTask(t, tasks, principal, project.ID, "Prerequisite")
 	old := createTask(t, tasks, principal, project.ID, "Old")
-	old = approveTask(t, tasks, principal, old)
-	old = claimTask(t, tasks, principal, old)
-	old = completeTask(t, tasks, principal, old)
+
+	old = startTask(t, tasks, principal, old)
+	old = finishTask(t, tasks, principal, old)
 	target, err := tasks.Create(ctx, principal, project.ID, CreateTask{Title: "Original", DependsOn: []string{old.ID}, Properties: core.TaskProperties{PullRequests: []core.PullRequestProperty{{URL: "old\x00", Title: "Old"}}}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	target = approveTask(t, tasks, principal, target)
-	target = claimTask(t, tasks, principal, target)
+
+	target = startTask(t, tasks, principal, target)
 	properties := propertyPatch(core.PullRequestProperty{URL: "changed\x00", Title: "Changed"})
 	_, err = tasks.Update(ctx, principal, project.ID, target.ID, UpdateTask{Version: target.Version, Title: pointer("Changed"), DependsOn: pointer([]string{prerequisite.ID}), Properties: properties})
 	requireFault(t, err, "dependency_unsatisfied")
 	assertTaskUnchanged(t, tasks, principal, target)
-	prerequisite = approveTask(t, tasks, principal, prerequisite)
-	prerequisite = claimTask(t, tasks, principal, prerequisite)
-	prerequisite = completeTask(t, tasks, principal, prerequisite)
+
+	prerequisite = startTask(t, tasks, principal, prerequisite)
+	prerequisite = finishTask(t, tasks, principal, prerequisite)
 	for _, fragment := range []string{"UPDATE tasks SET", "INSERT INTO task_dependencies"} {
 		t.Run("cancel after "+fragment, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())

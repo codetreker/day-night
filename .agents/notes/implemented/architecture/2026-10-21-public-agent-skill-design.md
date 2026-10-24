@@ -48,10 +48,11 @@ CI/review/merge waits prevented candidates from becoming an implicit batch.
 The replacement mode decision assigns that selection to explicitly requested
 autopilot and assigns designated-task completion to run-task. Observed versions and
 readiness without ownership remain required. The later
-[approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md) replaces direct
-status updates with proposed registration, explicit approval and versioned
-claim/complete; its packaged workflow preserves the original execution and
-delivery permission boundaries.
+[status assignment decision](2026-10-24-task-status-assignment.md) replaces the
+historical approval actions with todo registration and versioned set-status.
+Registration does not execute work; existing scope covers ready successors, while
+automatic discovery requires permission and explicit queues retain the manual path.
+Execution and delivery permission boundaries remain independent of state.
 
 Development and PR-delivered design/documentation tasks remain in progress while
 necessary PRs are open. All required PRs must be platform-confirmed merged and

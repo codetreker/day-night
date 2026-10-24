@@ -13,15 +13,12 @@ needed to use them correctly.
 | `project create` | Register a repository as a project or find its existing project. |
 | `project list` | Find projects on the configured service. |
 | `project show` | Inspect a project's details. |
-| `task create` | Register a proposed task with its metadata and dependencies. |
-| `task ready` | Read a bounded candidate page of approved todo tasks with completed prerequisites. |
+| `task create` | Register a todo task with its metadata and dependencies. |
+| `task ready` | Read a bounded candidate page of todo tasks with completed prerequisites. |
 | `task list` | Read every matching page; defaults to unfinished tasks. |
 | `task show` | Read one task's complete details and exact version. |
 | `task update` | Change metadata, automatic-execution permission, platform requirements, dependencies, or PR references; status is not writable. |
-| `task approve` | Change proposed to todo using an observed version and explicit approval authorization. |
-| `task unapprove` | Withdraw approval of todo work, returning it to proposed using an observed version. |
-| `task claim` | Change ready todo to in_progress using an observed version. |
-| `task complete` | Change in_progress to done after acceptance and required authorized delivery. |
+| `task set-status` | Set todo, in_progress, or done using an observed exact version. |
 | `task graph` | Inspect the project's dependency graph and summary. |
 | `task attachment put` | Upload or replace one attachment file. |
 | `task attachment list` | Read a task's attachment inventory and metadata. |
@@ -48,12 +45,11 @@ service. An explicit project overrides discovery for that invocation. Resolve
 missing or ambiguous matches rather than guessing an ID or creating a project
 to make a query succeed.
 
-**Read scope.** Ready is a candidate page of approved todo tasks, ordered by
-creation rather than relevance. An empty page does not rule out proposed,
-in-progress or dependency-blocked work. List traverses every matching page but
+**Read scope.** Ready is a candidate page of todo tasks, ordered by
+creation rather than relevance. An empty page does not rule out in-progress or dependency-blocked work. List traverses every matching page but
 excludes `done` by default; include completed tasks explicitly when checking the
 full backlog or prior registrations. Its grouping is in-progress, ready todo,
-blocked todo, proposed, then done when included; this does not rank relevance.
+blocked todo, then done when included; this does not rank relevance.
 Human lists are summaries; JSON lists omit only `description` and preserve every
 other task field. Use show when a description is needed; ready, details and write
 results retain full tasks. Graph provides compact dependency context without
@@ -61,41 +57,38 @@ full descriptions, PR properties, or versions. Read the selected task's details
 before acting. A graph-limit error still permits bounded candidate and
 individual task reads.
 
-**Lifecycle and approval.** Creation starts in `proposed`. Explicit approval
-moves proposed to todo; unapprove returns only unstarted todo work to proposed;
-claim moves ready todo to in_progress; complete moves in_progress to done.
-Approval and withdrawal allow unfinished prerequisites. Claim and completion
-require every direct prerequisite to be done. Proposed is never ready, even
-with no prerequisites. Withdrawal preserves task materials, dependencies,
-execution timestamps and attachments; it does not change successor states.
-Repeated actions and wrong predecessor states fail. There is no reopening of
-in-progress or done work, execution release, or direct todo-to-done transition.
-Metadata, attachments and PR references cannot approve, withdraw approval or
-claim work. Approve or unapprove only when the user explicitly authorizes that
-action for the task or stated scope; creation, execution requests, `run-task`
-and autopilot alone grant none. The Goal protocol treats an explicit request
-to start a requirements or solution discussion as scoped authorization to approve
-and claim that discussion task. Its user-confirmed transitions do not authorize
-approval or execution of delivery tasks. In the Web, the title-row entry opens a confirmation;
-only deliberate confirmation is the user's approval or withdrawal instruction.
-Cancel and Escape submit no action. Task approval itself grants no implementation,
-publication, deployment or merge permission.
+**Task status.** Creation starts in `todo` with no task approval stage and does
+not start execution. `task set-status <task-id> <status> --if-version <version>`
+sets any of `todo`, `in_progress`, or `done`. The service checks the exact version
+before a same-status no-op; it preserves all fields for a current-version no-op
+and refuses stale versions. A real change increments the version once. Generic
+metadata updates cannot write status. Status, materials, and readiness grant no
+implementation, publication, deployment, or merge permission.
+
+Entering in_progress or done requires every direct prerequisite done. Reopening
+done to todo or in_progress is refused when a direct successor is in_progress or
+done; successors are never changed automatically. Entering in_progress starts a
+new execution interval and clears completion; returning to todo clears both
+endpoints. In_progress to done retains the nullable start and records completion.
+Todo to done records only completion, with unknown duration. Same-status and
+metadata updates preserve timing. State changes provide no process ownership,
+release, transfer, stop, or lease semantics. The Web confirms every status choice,
+including the current status; cancel and Escape submit no request.
 
 **Automatic execution permission.** Tasks expose the required boolean
-`allowAgents`, independent of status approval and dependency readiness. New tasks
+`allowAgents`, independent of status and dependency readiness. New tasks
 start false; public creation cannot set it. Existing tasks receive true through
 the database migration. Use `task update <task-id> --allow-agents true|false --if-version <version>` only
 for an explicitly authorized permission change.
 Omission preserves the current value, including explicit false. Actual changes
 are locked during in_progress; exact-version same-value requests keep the
-version and timestamps, while stale versions still conflict. Approve, unapprove,
-claim, complete and other metadata updates preserve the flag.
+version and timestamps, while stale versions still conflict. Status changes and other metadata updates preserve the flag.
 
 `task list` and `task ready` accept `--allow-agents true|false`. The server
 combines that condition with other filters before pagination and the ready limit;
 an unfiltered ready page may contain tasks without automatic-execution permission.
 Automatic selection requires true and automated workflows must not enable it
-themselves. An explicitly user-selected task may still use manual claim regardless
+themselves. An explicitly user-selected task may still use manual execution regardless
 of the flag. Permission does not grant execution, publication or merge authority.
 A lost permission PATCH response is an unconfirmed write: read actual task state
 before reconsidering the operation, without resubmitting automatically.
@@ -109,7 +102,9 @@ setting and clearing in one command is invalid. Omitting both update options
 preserves the requirement. Existing and new tasks without a requirement are
 unrestricted. Actual changes are locked during in_progress; an exact-version
 same-value request keeps version and timestamps, while stale versions conflict.
-Manual claim remains available independently of platform compatibility.
+Explicitly user-selected tasks and fixed queues retain their manual execution
+path independently of platform compatibility. Automatic selections keep their
+actual-platform context and recheck full-task eligibility before set-status.
 
 `task list` and `task ready` accept `--compatible-platform <platform>`. The
 server includes unrestricted tasks and exact matches, combining this condition
@@ -120,10 +115,10 @@ a bounded unfiltered ready page locally. A query option selects a candidate
 platform and does not establish the actual execution environment. Worker runtime
 must identify its own platform; a Linux runtime in WSL is Linux.
 
-**Task concurrency.** Bind each metadata update, approve, unapprove, claim and complete to
+**Task concurrency.** Bind each metadata update and status change to
 the exact version read for that decision using `--if-version`; the CLI's default
 pre-submit read cannot protect an earlier decision. Preserve full int64 decimal
-digits without numeric rounding. A claim is a versioned transition, not an
+digits without numeric rounding. Entering in_progress is a versioned transition, not an
 assignee lock, renewable lease or proof that existing work belongs to this
 session. On a conflict, reread and reconsider; a new action needs a fresh
 decision, not merely a newer version. Never retry a mutation automatically.
@@ -131,7 +126,7 @@ decision, not merely a newer version. Never retry a mutation automatically.
 **Dependency classification.** `dependsOn` contains every direct prerequisite;
 `externalDependsOn` is its explicit external subset. Ordinary prerequisites are
 `dependsOn` minus that subset. Both are canonical, duplicate-free UUID sets,
-not insertion order. Every prerequisite must be done before claim or completion,
+not insertion order. Every prerequisite must be done before entering in_progress or done,
 including external ones; cycle checks and project access rules use all edges.
 External means cross-chain within the same project, not a cross-project
 reference. It separates chain ownership, not blocking or authorization. Use
@@ -194,5 +189,7 @@ resource IDs rather than reporting success or blindly resending a write.
 Task registration, execution, and selection follow [create-task](create-task.md),
 [run-task](run-task.md), and [autopilot](autopilot.md), respectively. For a chain
 of independently tracked delivery stages, use [the Goal protocol](goal.md).
-Goal scope grants no implicit approval: every stage and delivery task follows the
-same proposed/approve/unapprove/claim/complete lifecycle.
+Every stage and delivery task follows the same todo/in_progress/done contract.
+A fixed Goal queue may use existing scoped execution authorization for its ready
+successors; registration and discussion confirmation grant no delivery execution
+permission.

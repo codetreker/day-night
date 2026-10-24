@@ -157,34 +157,24 @@ query 和 fragment。SSH 用户名是传输地址组成部分，可以保存；�
 
 ## 状态与依赖不变量
 
-Task 使用 `proposed`、`todo`、`in_progress`、`done`。创建显式写入 proposed，
-新迁移将数据库默认值改为 proposed；原 `007_task_proposed.sql` 的状态 CHECK 和
-全部已应用迁移保持不可变。迁移不重写既有 task、version 或时间戳，既有 todo 表示
-已经接受的工作。公开列表筛选支持四种状态。
+Task 只使用 `todo`、`in_progress`、`done`，创建与数据库默认均为 todo。
+`014_task_status_assignment.sql` 将旧 proposed 行归类为 todo，对转换行 version+1、更新 updatedAt，
+保留执行时间及所有其他事实；默认、数据、CHECK 与 ledger 同一事务。已应用历史迁移保持不变。
+[状态架构](daynight-task-status.md)拥有九种状态对、迁移和计时的完整机制与理由。
 
-服务提供独立的 approve、unapprove、claim、complete 用例，唯一转换分别为 proposed→todo、
-todo→proposed、todo→in_progress、in_progress→done。审批与撤回允许未完成前置；领取及完成要求直接前置
-全部 done。unapprove 复用项目锁、成员复核及先版本后前态的验证，仅修改尚处于 todo 的任务；
-保留资料、依赖、附件及执行时间，不级联修改后继。ready todo 的同版本撤回与领取竞争只有一方提交，
-另一方返回 version_conflict。没有通用状态 patch 或进行中/已完成任务的重开入口；任意下游重开保护仍不需要恢复。
-[生命周期决策](../../.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)保留原写入策略的历史，
-[撤回决策](../../.agents/notes/implemented/feature/2026-10-23-task-unapprove.md)拥有受限退回的理由。
+`Tasks.SetStatus` 复用 `Tasks.write`，在项目锁和成员复核后先比较精确版本，再处理同状态 no-op。
+实际进入 in_progress/done 检查全部直接前置，done 退回检查全部直接 active/done 后继；普通与外部边一致。
+反向查询仅取稳定排序的阻塞 ID，使用已有反向索引，不读取正文或级联修改。
+同状态 +0，实际改变 +1，完整 TaskWrite 保留正文、属性、许可、requiredPlatform 及两类依赖，附件保持独立。
 
-通用 Update 的输入只描述标题、描述、依赖和属性，服务参数及 HTTP DTO 都没有 status。
-所有更新都校验完整候选任务：proposed/todo 允许未完成前置，in_progress/done 只允许
-已完成前置。引用必须同 project 且已存在；自身引用、重复 ID、缺失、跨 project 和环
-均拒绝。元数据或附件写入不能暗中审批或领取。
+普通 Update DTO 没有 status，允许标题、描述、依赖、许可、平台和属性。完整候选校验保证
+in_progress/done 的全部直接前置已 done，todo 允许未完成前置。引用必须同 project 且存在；
+重复、自身引用、缺失、跨项目和环均拒绝。状态设置与元数据具有单独公开职责。
 
-读取时 blockedBy 是按 ID 排序的未完成直接前置，dependsOn 是全部直接前置，
-externalDependsOn 是同项目关系中 external=true 的排序子集；三个数组均明确返回空集合。ready
-当且仅当状态为 todo 且 blockedBy 为空。proposed 永不 ready，也不计入 todo 的 blocked
-统计。派生数组不单独持久化，不因前置变化而修改本 task 的状态、版本或更新时间。
-POST/PATCH 接收 externalDependsOn，按最终完整依赖集合验证其子集。创建省略集合为空；
-更新字段独立可选：仅给完整 ID 时保留存续边性质、新边 false，仅给外部子集时保留端点，
-同时给两者时精确替换。候选及 delete/reinsert 携带完整分类，标题、PR、allowAgents、requiredPlatform 及
-approve、unapprove、claim、complete 保留无关值。分类变化增加一次版本及 updatedAt，
-状态、执行起止保持；过期同值先冲突，正规化同值不写。执行验证继续遍历全部关系。
-完整写入组合见[外部依赖架构](daynight-external-dependencies.md)。
+blockedBy 是按 ID 排序的未完成直接前置；dependsOn 包含全部直接前置，externalDependsOn 是
+external=true 的排序子集；数组明确为空。ready 当且仅当 todo 且 blockedBy 为空。
+派生值不持久化，前置变化不修改本任务版本或更新时间；因此同版本读取可有新 ready/blockedBy。
+POST/PATCH 按最终 D/E 验证分类，完整写入始终携带分类，详见[外部依赖架构](daynight-external-dependencies.md)。
 
 ## 写事务与并发
 
@@ -195,22 +185,22 @@ approve、unapprove、claim、complete 保留无关值。分类变化增加一�
    `not_found`，管理员操作另行要求 `admin`。
 2. 在获得锁后执行新的查询，读取目标任务、现有依赖和校验所需任务状态。更新检查
    请求中的 `version`，与当前任务版本不一致则返回 `version_conflict`。
-3. 元数据更新构造完整候选依赖与字段；生命周期操作先验证当前版本，再验证前态和
-   前置状态。前态错误使用 invalid_transition，前置错误使用 dependency_unsatisfied。
+3. 元数据更新构造完整候选；状态设置先检查版本，再判断同状态。实际改变检查全部前置及受保护后继，
+   不满足时使用 dependency_unsatisfied。in_progress 实际许可或平台切换继续使用 invalid_transition。
 4. 原子写入任务、依赖集合与执行起止；存在真实变更时，将版本加 1，并更新 `updatedAt`。
 5. 提交后返回资源；失败回滚，原始错误链保留至顶层错误处理。
 
 同 project 的 task 写入由 project 行锁串行化，不同 project 可以并行。获得锁与读取
 任务不能合并为一个依赖同一旧快照的 SQL 语句：等待锁结束后，后续查询需要看到刚
-提交的 project 内写入。任务 UPDATE 依据旧/新状态维护时间：真正进入 in_progress 覆盖起点并清空终点，
-真正进入 done 记录终点，普通编辑和同状态低层写入保留两者。离开已完成状态的低层规则清除旧尝试；
-公开 service 只允许已列出的前态受限动作；unapprove 仅适用于 todo，不重开进行中或已完成任务。时间使用锁后的 `statement_timestamp()`，不使用可能早于锁等待结束的事务时间。该机制依赖 PostgreSQL 在 `READ COMMITTED` 下为每条命令
+提交的 project 内写入。任务 UPDATE 依据实际旧/新状态维护时间：进入 in_progress 产生新起点并清空终点，
+退回 todo 清空两端，in_progress→done 保留可空起点并写真实终点，todo→done 起点保持 null。
+普通编辑和同状态不改变执行时间。时间使用锁后的 `statement_timestamp()`，不使用可能早于锁等待结束的事务时间。该机制依赖 PostgreSQL 在 `READ COMMITTED` 下为每条命令
 取得新快照的语义，见[事务隔离文档](https://www.postgresql.org/docs/current/transaction-iso.html#XACT-READ-COMMITTED)
 及[行锁文档](https://www.postgresql.org/docs/current/explicit-locking.html#LOCKING-ROWS)。
 
 写锁同时覆盖“检查再写入”，所以并发添加 `A → B` 和 `B → A`，以及依赖更新与
-领取竞争，都根据取得锁后的最新结果校验。同版本领取先检查 version，使落后请求
-返回版本冲突；生命周期重复动作没有空操作成功语义。版本检查解决同一任务
+开始、完成或重开竞争，都根据取得锁后的最新结果校验。状态先检查 version，使落后请求
+返回版本冲突；当前版本同状态不写入。版本检查解决同一任务
 的过期客户端覆盖问题；project 锁解决跨任务图和状态的不变量，两者职责不同。
 
 更新 `dependsOn` 是替换完整直接前置集合。环检测使用递归可达性查询或等价的有界
@@ -219,7 +209,12 @@ approve、unapprove、claim、complete 保留无关值。分类变化增加一�
 锁内读取的数据，不依赖请求前查询或进程缓存。
 
 PATCH 的语义空操作仍检查版本及输入，返回当前资源，保持 `version` 和 `updatedAt`
-不变。许可与平台判断沿用此顺序：锁后检查成员与版本，再比较 `allowAgents`、`requiredPlatform` 的候选值；同值返回当前资源，任一实际变化在 `in_progress` 拒绝。两种编辑与 claim 并发时共享该项目锁，拒绝不留下其他字段的部分更新。普通人工 claim 不按许可或平台筛选，审批、ready 和依赖约束保持独立。任意真实字段、状态或依赖集合变化只增加一次版本；依赖顺序变化不算真实变更。
+不变。许可判断沿用此顺序：锁后检查成员与版本，再判断 `allowAgents` 是否变化；同值返回当前资源，实际变化在 `in_progress` 拒绝。许可编辑与状态设置并发时共享该项目锁；自动执行许可不改变显式执行、ready 或依赖约束。任意真实字段、状态或依赖集合变化只增加一次版本；依赖顺序变化不算真实变更。
+平台写入复用同一成员/版本顺序与项目锁：requiredPlatform 的字段存在性区分省略、设置、清除，
+精确版本同值不写，任一实际变化在 in_progress 拒绝并整体回滚组合编辑。状态、许可和平台相互保留；
+普通人工 setter 不执行自动发现资格筛选。core.TaskPlatform.Valid 与 PlatformCompatible
+拥有枚举与 null/同值兼容，不使用服务器操作系统推测远端执行环境。
+
 业务校验先生成候选变更计划，完成全部检查后才执行写入。预期拒绝保留为业务结果，
 callback 不执行写入并正常结束；只有外层事务成功后才返回业务 Fault，提交或清理失败
 优先暴露为内部失败。没有删除 API，因此锁前确认过的 project 存在性不会由合法 API
@@ -240,14 +235,11 @@ callback 不执行写入并正常结束；只有外层事务成功后才返回�
 | `GET /api/v1/projects` | 分页列出 project |
 | `GET /api/v1/projects/{projectId}` | 获取 project |
 | `PATCH /api/v1/projects/{projectId}/settings` | 管理员按观察设置版本保存分钟阈值，返回完整 Project |
-| `POST /api/v1/projects/{projectId}/tasks` | 创建 `proposed` task |
+| `POST /api/v1/projects/{projectId}/tasks` | 创建 `todo` task |
 | `GET /api/v1/projects/{projectId}/tasks` | 分页列出 task |
 | `GET /api/v1/projects/{projectId}/tasks/{taskId}` | 获取 task |
 | `PATCH /api/v1/projects/{projectId}/tasks/{taskId}` | 原子更新元数据及依赖 |
-| `POST /api/v1/projects/{projectId}/tasks/{taskId}/approve` | versioned proposed→todo |
-| `POST /api/v1/projects/{projectId}/tasks/{taskId}/unapprove` | versioned todo→proposed |
-| `POST /api/v1/projects/{projectId}/tasks/{taskId}/claim` | versioned todo→in_progress |
-| `POST /api/v1/projects/{projectId}/tasks/{taskId}/complete` | versioned in_progress→done |
+| `PUT /api/v1/projects/{projectId}/tasks/{taskId}/status` | 精确版本与目标三状态 |
 
 创建 project 的输入为 `name` 和 `repoUrl`。创建 task 的输入为 `title`、可省略的
 `description`、`dependsOn`、`externalDependsOn` 与 `properties`；省略描述表示空字符串，省略依赖和
@@ -273,9 +265,10 @@ Task PATCH 必须提交期望的 `version`，并至少提供 `title`、`descript
 }
 ```
 
-生命周期 POST 只接受正 int64 version，返回 200 和完整 task。通用 PATCH 中出现
-status 是输入错误，含其他合法字段也不写入；HTTP 与日志保留 invalid_transition
-作为独立的 409 分类。严格 request DTO 和具体服务 use case 共用原 project 锁。
+状态 PUT 严格接受正 int64 version 与三状态 status，返回 200 和完整 task。通用 PATCH 中出现
+status 是输入错误，含其他合法字段也不写入。HTTP 与日志保留 invalid_transition
+用于 in_progress 的实际许可或平台切换拒绝；前置或受保护后继拒绝使用 dependency_unsatisfied。
+严格 request DTO 和具体服务 use case 共用原 project 锁。
 
 省略可更新字段表示保持原值；`description: ""` 清空描述，`dependsOn: []` 清空
 依赖，`properties.pullRequests: []` 清空 PR 引用。`allowAgents` 使用可选布尔输入保留 omitted/false 的区别，创建严格拒绝该字段。`requiredPlatform` 使用明确的字段存在性和可空值区分省略、设置与清除：PATCH 省略保持、枚举设置、null 清除；创建省略或 null 均不限制。`core.TaskPlatform.Valid()` 验证枚举，`core.PlatformCompatible(required, actual)` 以 null/同值规则匹配，不读取服务进程的平台。PATCH 的双层指针明确区分未提供和显式 null，不把清除转换为省略。属性数组按序比较并整体替换，
@@ -326,9 +319,9 @@ service 返回可识别的领域错误；server 负责唯一的 HTTP 映射。�
 | `not_found` | `404` | 指定 project 不存在、调用者不是成员或其范围内的 task 不存在 |
 | `method_not_allowed` | `405` | 已知路径不支持该方法，`Allow` 提供允许的方法 |
 | `version_conflict` | `409` | 元数据更新或生命周期动作的期望版本过期 |
-| `invalid_transition` | `409` | 生命周期动作的当前状态不符合前态要求 |
+| `invalid_transition` | `409` | in_progress 中禁止实际切换 allowAgents 或 requiredPlatform |
 | `dependency_cycle` | `409` | 候选依赖产生环 |
-| `dependency_unsatisfied` | `409` | 状态或依赖修改违反前置完成规则 |
+| `dependency_unsatisfied` | `409` | 状态或依赖修改违反前置完成规则，或重开存在 active/done 直接后继 |
 | `internal_error` | `500` | 数据库或其他未分类服务端失败 |
 
 HTTP 只映射 service 的类型化业务错误；其他失败统一作为内部错误。读取缺失资源时，
@@ -420,10 +413,10 @@ PostgreSQL 实例及隔离数据库或 schema，验证 SQL、锁和事务行为�
 数据库测试必须位于各自的被测 package。
 
 覆盖范围包括正常资源操作、非法字段和地址、同 project 限制、自身及重复依赖、环、
-完整依赖替换、四状态转换、错误前态、PATCH status 拒绝、版本冲突、语义空更新、
+完整依赖替换、三状态九组合、同状态+0/实际改变+1、PATCH status 拒绝、版本冲突、语义空更新、
 原子起止时间、未知历史、锁等待后的实际开始、普通编辑保持计时、数据库图时间样本、失败回滚，以及一致的
 `dependsOn`/`blockedBy`/`ready`。并发测试使用协调屏障观察真实锁等待，证明并发
-反向依赖、同版本领取及依赖更新/领取竞争最终仍保持不变量，同时证明不同 project 可以并行。
+反向依赖、同版本状态及依赖更新/状态竞争、重开与后继开始/完成竞争最终仍保持不变量，同时证明不同 project 可以并行。
 
 HTTP 测试验证路由、DTO、错误映射、project 范围查找、分页筛选和 cursor 范围。
 整体验收运行实际构建的服务，通过固定到 `0978963813fc` 的真实 UniAuth gateway

@@ -694,7 +694,7 @@ func (p *acceptanceProcess) task(t *testing.T, project api.Project, title string
 	}
 	response := p.request(context.Background(), http.MethodPost, acceptanceTasksPath(project.ID), input, "")
 	task := acceptanceDecode[api.Task](t, response, http.StatusCreated)
-	if response.header.Get("Location") != acceptanceTaskPath(task) || task.ProjectID != project.ID || task.Version != 1 || task.Status != "proposed" || task.Ready {
+	if response.header.Get("Location") != acceptanceTaskPath(task) || task.ProjectID != project.ID || task.Version != 1 || task.Status != "todo" || task.Ready != (len(task.BlockedBy) == 0) {
 		t.Fatal("task create metadata or Location is invalid")
 	}
 	return task
@@ -711,36 +711,52 @@ func (p *acceptanceProcess) update(t *testing.T, task api.Task, fields map[strin
 	return acceptanceDecode[api.Task](t, p.request(context.Background(), http.MethodPatch, acceptanceTaskPath(task), fields, ""), http.StatusOK)
 }
 
-func acceptanceTaskTimingTransition(t *testing.T, before, after api.Task, action string) {
+func acceptanceTaskTimingTransition(t *testing.T, before, after api.Task, status string) {
 	t.Helper()
-	switch action {
-	case "approve", "unapprove":
+	if before.Status == status {
 		if !reflect.DeepEqual(after.StartedAt, before.StartedAt) || !reflect.DeepEqual(after.CompletedAt, before.CompletedAt) {
-			t.Fatal("approval operation changed execution timing before a task started")
+			t.Fatal("same-status confirmation changed execution timing")
 		}
-	case "claim":
+		return
+	}
+	switch status {
+	case "todo":
+		if after.StartedAt != nil || after.CompletedAt != nil {
+			t.Fatal("returning to todo did not clear the current interval")
+		}
+	case "in_progress":
 		if after.StartedAt == nil || !after.StartedAt.Equal(after.UpdatedAt) || after.CompletedAt != nil {
-			t.Fatal("claim did not atomically record its real start with no completion")
+			t.Fatal("entering in_progress did not atomically record its real start with no completion")
 		}
-	case "complete":
-		if !reflect.DeepEqual(after.StartedAt, before.StartedAt) || after.CompletedAt == nil || !after.CompletedAt.Equal(after.UpdatedAt) ||
+	case "done":
+		var expectedStart *time.Time
+		if before.Status == "in_progress" {
+			expectedStart = before.StartedAt
+		}
+		if !reflect.DeepEqual(after.StartedAt, expectedStart) || after.CompletedAt == nil || !after.CompletedAt.Equal(after.UpdatedAt) ||
 			after.StartedAt != nil && after.CompletedAt.Before(*after.StartedAt) {
-			t.Fatal("completion did not preserve its start and atomically record its real end")
+			t.Fatal("completion did not preserve its known start and atomically record its real end")
 		}
 	default:
-		t.Fatalf("unexpected lifecycle action %q", action)
+		t.Fatalf("unexpected task status %q", status)
 	}
 }
 
-func (p *acceptanceProcess) action(t *testing.T, task api.Task, action string) api.Task {
+func (p *acceptanceProcess) setStatus(t *testing.T, task api.Task, status string) api.Task {
 	t.Helper()
-	updated := acceptanceDecode[api.Task](t, p.request(context.Background(), http.MethodPost, acceptanceTaskPath(task)+"/"+action, map[string]any{"version": task.Version}, ""), http.StatusOK)
-	acceptanceTaskTimingTransition(t, task, updated, action)
+	updated := acceptanceDecode[api.Task](t, p.request(context.Background(), http.MethodPut, acceptanceTaskPath(task)+"/status", map[string]any{"version": task.Version, "status": status}, ""), http.StatusOK)
+	acceptanceTaskTimingTransition(t, task, updated, status)
 	preserved := updated
 	preserved.StartedAt, preserved.CompletedAt = task.StartedAt, task.CompletedAt
 	preserved.Status, preserved.Ready, preserved.Version, preserved.UpdatedAt = task.Status, task.Ready, task.Version, task.UpdatedAt
-	if updated.Version != task.Version+1 || !updated.UpdatedAt.After(task.UpdatedAt) || !reflect.DeepEqual(preserved, task) {
-		t.Fatal("lifecycle action did not preserve metadata or advance version and timestamp exactly once")
+	preserved.BlockedBy = task.BlockedBy
+	changed := task.Status != status
+	expectedVersion := task.Version
+	if changed {
+		expectedVersion++
+	}
+	if updated.Status != status || updated.Version != expectedVersion || changed && !updated.UpdatedAt.After(task.UpdatedAt) || !changed && !updated.UpdatedAt.Equal(task.UpdatedAt) || !reflect.DeepEqual(preserved, task) {
+		t.Fatal("status assignment changed unrelated data or returned the wrong version/timestamp branch")
 	}
 	return updated
 }

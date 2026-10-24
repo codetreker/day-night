@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { approveTask, getTask, subscribeUnauthorized, unapproveTask } from "../src/api/client";
+import { setTaskStatus, getTask, subscribeUnauthorized } from "../src/api/client";
 import { parseApiJson, stringifyApiJson } from "../src/api/json";
 import { parseTaskDetail } from "../src/api/parse";
 
@@ -8,8 +8,8 @@ const taskId = "20000000-0000-0000-0000-00000000000b";
 const otherId = "30000000-0000-0000-0000-00000000000c";
 const time = "2026-10-22T12:34:56.123456Z";
 const task = { requiredPlatform: null, allowAgents: false, startedAt: null, completedAt: null,
-  id: taskId, projectId, title: "A task", description: "", properties: { pullRequests: [] }, status: "proposed",
-  version: 1n, dependsOn: [], externalDependsOn: [], blockedBy: [], ready: false, createdAt: time, updatedAt: time,
+  id: taskId, projectId, title: "A task", description: "", properties: { pullRequests: [] }, status: "todo",
+  version: 1n, dependsOn: [], externalDependsOn: [], blockedBy: [], ready: true, createdAt: time, updatedAt: time,
 };
 const signal = () => new AbortController().signal;
 const response = (value: unknown, status = 200) => new Response(stringifyApiJson(value), {
@@ -113,86 +113,68 @@ describe("lossless task versions", () => {
     ("preserves JSON syntax failures for %s", (raw) => expect(() => parseApiJson(raw)).toThrow(SyntaxError));
 });
 
-describe.each([["approve", approveTask, "todo"], ["unapprove", unapproveTask, "proposed"]] as const)("%s transport", (action, mutate, target) => {
-  it.each([1n, 9_007_199_254_740_993n, 9_223_372_036_854_775_806n])("posts exact numeric version %s and accepts the next target version", async (version) => {
-    const approved = { ...task, version: version + 1n, status: target, ready: false, dependsOn: [otherId], blockedBy: [otherId] };
-    const fetcher = fetchResponse(response(approved));
-    const abortSignal = signal();
-    await expect(mutate(projectId.toUpperCase(), taskId.toUpperCase(), version, abortSignal)).resolves.toEqual(approved);
-    expect(fetcher).toHaveBeenCalledExactlyOnceWith(`/api/v1/projects/${projectId}/tasks/${taskId}/${action}`, {
-      method: "POST", redirect: "error", signal: abortSignal, cache: "no-store", credentials: "same-origin",
-      headers: { Accept: "application/json", "Content-Type": "application/json" }, body: `{"version":${version}}`,
-    });
+describe.each(['todo', 'in_progress', 'done'] as const)('%s status transport', (target) => {
+  it.each([1n, 9_007_199_254_740_993n, 9_223_372_036_854_775_806n])('puts exact numeric version %s and accepts either possible status version', async (version) => {
+    for (const delta of [0n, 1n]) {
+      const saved = { ...task, version: version + delta, status: target, ready: target === 'todo' };
+      const fetcher = fetchResponse(response(saved)); const abortSignal = signal();
+      await expect(setTaskStatus(projectId.toUpperCase(), taskId.toUpperCase(), target, version, abortSignal)).resolves.toEqual(saved);
+      expect(fetcher).toHaveBeenCalledExactlyOnceWith(`/api/v1/projects/${projectId}/tasks/${taskId}/status`, {
+        method: 'PUT', redirect: 'error', signal: abortSignal, cache: 'no-store', credentials: 'same-origin',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' }, body: `{"version":${version},"status":"${target}"}`,
+      });
+    }
   });
-
-  it.each(["version_conflict", "invalid_transition", "dependency_unsatisfied"])("preserves server refusal %s without retrying", async (code) => {
-    const fetcher = fetchResponse(response({ error: { code, message: "internal SQL", requestId: "approve-1" } }, 409));
-    await expect(mutate(projectId, taskId, 1n, signal())).rejects.toMatchObject({ kind: "server", status: 409, code, requestId: "approve-1" });
+  it.each(['version_conflict', 'dependency_unsatisfied', 'not_found'])('preserves server refusal %s without retrying', async (code) => {
+    const fetcher = fetchResponse(response({ error: { code, message: 'internal SQL', requestId: 'status-1' } }, 409));
+    await expect(setTaskStatus(projectId, taskId, target, 1n, signal())).rejects.toMatchObject({ kind: 'server', status: 409, code, requestId: 'status-1' });
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
-
-  it("uses the shared unauthorized notification for approval refusals", async () => {
-    const listener = vi.fn();
-    const unsubscribe = subscribeUnauthorized(listener);
+  it('uses shared unauthorized notification', async () => {
+    const listener = vi.fn(); const unsubscribe = subscribeUnauthorized(listener);
     try {
-      fetchResponse(response({ error: { code: "unauthenticated", message: "expired", requestId: "approve-auth" } }, 401));
-      await expect(mutate(projectId, taskId, 1n, signal())).rejects.toMatchObject({ kind: "server", status: 401, code: "unauthenticated" });
-      expect(listener).toHaveBeenCalledTimes(1);
+      fetchResponse(response({ error: { code: 'unauthenticated', message: 'expired', requestId: 'status-auth' } }, 401));
+      await expect(setTaskStatus(projectId, taskId, target, 1n, signal())).rejects.toMatchObject({ kind: 'server', status: 401 });
+      expect(listener).toHaveBeenCalledOnce();
     } finally { unsubscribe(); }
   });
-
-  it("allows the maximum int64 expected version to reach a service refusal without rounding", async () => {
-    const fetcher = fetchResponse(response({ error: { code: "internal_error", message: "overflow", requestId: "max-version" } }, 500));
-    await expect(mutate(projectId, taskId, 9_223_372_036_854_775_807n, signal())).rejects.toMatchObject({ kind: "server" });
-    expect(fetcher.mock.calls[0]?.[1].body).toBe('{"version":9223372036854775807}');
+  it('allows maximum int64 expected version to reach a service refusal', async () => {
+    const fetcher = fetchResponse(response({ error: { code: 'internal_error', message: 'overflow', requestId: 'max-version' } }, 500));
+    await expect(setTaskStatus(projectId, taskId, target, 9_223_372_036_854_775_807n, signal())).rejects.toMatchObject({ kind: 'server' });
+    expect(fetcher.mock.calls[0]?.[1].body).toBe(`{"version":9223372036854775807,"status":"${target}"}`);
   });
-
   it.each([
-    { ...task, status: target, version: 2n, projectId: otherId },
-    { ...task, status: target, version: 2n, id: otherId },
-    { ...task, status: target === "todo" ? "proposed" : "todo", version: 2n },
-    { ...task, status: target, version: 1n },
-    { ...task, status: target, version: 3n },
-  ])("rejects unconfirmed action responses %#", async (value) => {
-    fetchResponse(response(value));
-    await expect(mutate(projectId, taskId, 1n, signal())).rejects.toMatchObject({ kind: "protocol", status: 200 });
+    { ...task, projectId: otherId }, { ...task, id: otherId }, { ...task, status: 'proposed' },
+    { ...task, version: 3n },
+  ])('rejects mismatching response scope, status or version %#', async (fields) => {
+    fetchResponse(response(Object.assign({}, task, { status: target, version: 2n }, fields)));
+    await expect(setTaskStatus(projectId, taskId, target, 1n, signal())).rejects.toMatchObject({ kind: 'protocol', status: 200 });
   });
-
-  it("rejects unexpected successful status codes", async () => {
+  it('rejects a different three-state target and unexpected successful status', async () => {
+    fetchResponse(response({ ...task, status: target === 'done' ? 'todo' : 'done', version: 2n }));
+    await expect(setTaskStatus(projectId, taskId, target, 1n, signal())).rejects.toMatchObject({ kind: 'protocol' });
     fetchResponse(response({ ...task, status: target, version: 2n }, 201));
-    await expect(mutate(projectId, taskId, 1n, signal())).rejects.toMatchObject({ kind: "protocol", status: 201 });
+    await expect(setTaskStatus(projectId, taskId, target, 1n, signal())).rejects.toMatchObject({ kind: 'protocol', status: 201 });
   });
-
-  it("rejects invalid request scope or versions before sending a mutation", async () => {
-    const fetcher = vi.fn();
-    vi.stubGlobal("fetch", fetcher);
-    await expect(mutate("bad", taskId, 1n, signal())).rejects.toMatchObject({ kind: "protocol" });
-    await expect(mutate(projectId, "bad", 1n, signal())).rejects.toMatchObject({ kind: "protocol" });
+  it('rejects malformed scope, state and version before I/O', async () => {
+    const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher);
+    await expect(setTaskStatus('bad', taskId, target, 1n, signal())).rejects.toMatchObject({ kind: 'protocol' });
+    await expect(setTaskStatus(projectId, 'bad', target, 1n, signal())).rejects.toMatchObject({ kind: 'protocol' });
     for (const version of [0n, -1n, 9_223_372_036_854_775_808n, 9_007_199_254_740_992 as unknown as bigint]) {
-      await expect(mutate(projectId, taskId, version, signal())).rejects.toMatchObject({ kind: "protocol" });
+      await expect(setTaskStatus(projectId, taskId, target, version, signal())).rejects.toMatchObject({ kind: 'protocol' });
     }
+    await expect(setTaskStatus(projectId, taskId, 'proposed' as never, 1n, signal())).rejects.toMatchObject({ kind: 'protocol' });
     expect(fetcher).not.toHaveBeenCalled();
   });
-
-  it("preserves the original network and body errors as causes for reconciliation", async () => {
-    const failure = new TypeError("response lost");
-    const fetcher = vi.fn().mockRejectedValue(failure);
-    vi.stubGlobal("fetch", fetcher);
-    await expect(mutate(projectId, taskId, 1n, signal())).rejects.toMatchObject({ kind: "network", cause: failure });
-    const reply = response({ ...task, status: target, version: 2n });
-    vi.spyOn(reply, "text").mockRejectedValue(failure);
-    fetcher.mockResolvedValue(reply);
-    await expect(mutate(projectId, taskId, 1n, signal())).rejects.toMatchObject({ kind: "protocol", cause: failure });
+  it('retains network/body causes and never replays writes', async () => {
+    const failure = new TypeError('response lost'); const fetcher = vi.fn().mockRejectedValue(failure); vi.stubGlobal('fetch', fetcher);
+    await expect(setTaskStatus(projectId, taskId, target, 1n, signal())).rejects.toMatchObject({ kind: 'network', cause: failure });
+    const reply = response({ ...task, status: target, version: 2n }); vi.spyOn(reply, 'text').mockRejectedValue(failure); fetcher.mockResolvedValue(reply);
+    await expect(setTaskStatus(projectId, taskId, target, 1n, signal())).rejects.toMatchObject({ kind: 'protocol', cause: failure });
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
-
-  it("preserves cancellation without sending a pre-aborted request", async () => {
-    const fetcher = vi.fn();
-    vi.stubGlobal("fetch", fetcher);
-    const controller = new AbortController();
-    const reason = new Error("project changed");
-    controller.abort(reason);
-    await expect(mutate(projectId, taskId, 1n, controller.signal)).rejects.toBe(reason);
-    expect(fetcher).not.toHaveBeenCalled();
+  it('preserves cancellation before I/O', async () => {
+    const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher); const controller = new AbortController(); const reason = new Error('project changed'); controller.abort(reason);
+    await expect(setTaskStatus(projectId, taskId, target, 1n, controller.signal)).rejects.toBe(reason); expect(fetcher).not.toHaveBeenCalled();
   });
 });

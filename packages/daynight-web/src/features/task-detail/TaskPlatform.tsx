@@ -30,7 +30,7 @@ export const TaskPlatformConfirmation = ({ confirmation, ...props }: {
   const { messages: { platform: m } } = useI18n();
   const name = (value: ExecutionPlatform | null): string => value === null ? m.any : m.names[value];
   return <TaskConfirmation {...props} title={m.confirmTitle} question={m.confirmQuestion}
-    transition={m.transition({ from: name(confirmation.detail.requiredPlatform), to: name(confirmation.requiredPlatform) })}
+    content={<><p>{m.transition({ from: name(confirmation.detail.requiredPlatform), to: name(confirmation.requiredPlatform) })}</p><p>{m.explanation}</p></>}
     explanation={m.explanation} taskTitle={confirmation.detail.title} confirmLabel={m.confirm} cancelLabel={m.cancel} closeLabel={m.closeConfirmation} />;
 };
 

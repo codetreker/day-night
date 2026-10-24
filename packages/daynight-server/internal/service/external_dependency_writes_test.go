@@ -78,11 +78,11 @@ func TestExternalDependencyWriteCandidateMatrix(t *testing.T) {
 func TestExternalDependencyFlagsOnlyKeepExecutionIntervalsAndVersionOrder(t *testing.T) {
 	tasks, _, project, _, principal := taskService(t)
 	ctx := context.Background()
-	a := completeTask(t, tasks, principal, claimTask(t, tasks, principal, approveTask(t, tasks, principal, createTask(t, tasks, principal, project.ID, "A"))))
-	b := completeTask(t, tasks, principal, claimTask(t, tasks, principal, approveTask(t, tasks, principal, createTask(t, tasks, principal, project.ID, "B"))))
+	a := finishTask(t, tasks, principal, startTask(t, tasks, principal, createTask(t, tasks, principal, project.ID, "A")))
+	b := finishTask(t, tasks, principal, startTask(t, tasks, principal, createTask(t, tasks, principal, project.ID, "B")))
 	target := createClassifiedTask(t, tasks, principal, project.ID, "Target", []string{a.ID, b.ID}, nil)
 	target = updateTask(t, tasks, principal, target, UpdateTask{AllowAgents: pointer(true)})
-	target = claimTask(t, tasks, principal, approveTask(t, tasks, principal, target))
+	target = startTask(t, tasks, principal, target)
 	for _, external := range [][]string{{a.ID}, {b.ID}} {
 		before := target
 		target = updateTask(t, tasks, principal, target, UpdateTask{ExternalDependsOn: &external})
@@ -98,7 +98,7 @@ func TestExternalDependencyFlagsOnlyKeepExecutionIntervalsAndVersionOrder(t *tes
 			t.Fatal("same classification advanced metadata")
 		}
 		if target.Status == core.TaskInProgress {
-			target = completeTask(t, tasks, principal, target)
+			target = finishTask(t, tasks, principal, target)
 		}
 	}
 	_, err := tasks.Update(ctx, principal, project.ID, target.ID, UpdateTask{Version: target.Version - 1, ExternalDependsOn: pointer([]string{uuid.NewString()})})
@@ -147,8 +147,8 @@ func TestExternalDependencyWritesRejectInvalidCandidatesAndAllEdgeCycles(t *test
 		requireFault(t, err, "dependency_cycle")
 		assertTaskUnchanged(t, tasks, principal, a)
 	}
-	target = approveTask(t, tasks, principal, target)
-	_, err = tasks.Claim(ctx, principal, project.ID, target.ID, target.Version)
+
+	_, err = tasks.SetStatus(ctx, principal, project.ID, target.ID, SetTaskStatus{Version: target.Version, Status: core.TaskInProgress})
 	requireFault(t, err, "dependency_unsatisfied")
 	assertTaskUnchanged(t, tasks, principal, target)
 }

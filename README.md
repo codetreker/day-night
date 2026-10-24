@@ -131,7 +131,7 @@ of the Web switch. The service, CLI and Web implement this permission; the
 service, CLI and Web also implement optional execution-platform requirements,
 explicit clearing and compatibility filtering under the
 [platform decision](.agents/notes/implemented/feature/2026-10-24-task-required-platform.md).
-The worker runtime and unique worker-claim integration remain implementation work. Authentication and the approval-based task lifecycle are
+The worker runtime and unique worker-claim integration remain implementation work. Authentication and three-state status setting are
 delivered prerequisites; worker integration preserves the current task execution
 timestamp contract.
 
@@ -158,7 +158,7 @@ describe the confirmed behavior. Shared YAML projections, the
 `serverUrl` configuration field, bounded HTTP client and repository discovery
 with ignored local bindings are implemented. `project create/list/show` manage
 remote projects through the configured server. Task create/list/ready/show/update/graph
-and approve/unapprove/claim/complete commands use explicit project selection or the current repository binding;
+and set-status commands use explicit project selection or the current repository binding;
 installed real-service and resource-budget acceptance are implemented.
 [PR #55](https://github.com/codetreker/daynight/pull/55) records the original
 integration and real-default-budget validation. Current deadline tests use short
@@ -178,12 +178,12 @@ replacement on reinstall. The entrypoint, four mode references and shared
 [Goal workflow requirements](docs/spec/daynight-goal-workflow.md) and
 [design](docs/design/daynight-goal-workflow.md) define staged persistent work:
 `[Goal]<outcome>` first owns a requirements discussion. An explicit request to
-start that discussion authorizes its approval and claim into in_progress; a
-registration-only request leaves that sole task proposed. After the user confirms
-requirements and requests the next discussion, complete requirements and only then
-create and start its dependent solution or architecture discussion. Keep candidate
-breakdown inside that task until the user confirms the solution; then register
-actual proposed delivery tasks with dependencies and verify their artifacts before
+start that discussion authorizes setting it to in_progress; a registration-only
+request leaves that sole task todo. After the user confirms requirements and
+requests the next discussion, set requirements done and only then create and
+start its dependent solution or architecture discussion. Keep candidate breakdown
+inside that task until the user confirms the solution; then register actual todo
+delivery tasks with dependencies and verify their artifacts before
 completing the discussion. Applicable UI Goals produce a final-style, frontend-only
 interactive prototype during requirements discussion. Stage briefs are inputs;
 requirements, prototypes and architecture are their outputs.
@@ -193,7 +193,7 @@ requirements, prototypes and architecture are their outputs.
 | `handbook` | Command purposes and operational context; use CLI help for command usage |
 | `create-task` | Register concrete work within creation permission; a Goal first has only its requirements task. Registration-only requests return; explicit discussion-start requests follow the Goal protocol |
 | `run-task <task-id>` | Execute the designated task using discussion confirmation or actual delivery acceptance; explicit Goal discussion transitions follow the shared protocol |
-| `autopilot <goal or scope>` | Restore the current task or select one most relevant approved ready todo, and continue only after confirmed completion |
+| `autopilot <goal or scope>` | Restore the current task or select one most relevant ready todo within the authorized scope, and continue only after confirmed completion |
 
 Calling `using-daynight` without input uses the actual context; unclear intent is
 resolved with the user. Autopilot requires an explicit request for continuous
@@ -214,18 +214,19 @@ alone do not supply that permission.
 Existing explicit permission applies within its stated scope without repeated
 confirmation. Goal permission covers in-scope registration in its confirmed
 stage order, without precreating future stages. A specific request to begin a
-Goal discussion authorizes approval and claim of that discussion only. Ordinary
-creation, run-task and autopilot do not supply approval; confirming a solution does
-not approve or execute delivery subtasks. Approved ready work is claimed at the
-reviewed version. Automatic selection reads the actual runtime
-`process.platform`: win32 maps to windows, darwin to macos and linux to linux,
-including WSL. An unknown or unsupported runtime waits for clarification. It uses
-`task ready --allow-agents true --compatible-platform <actual-platform> --json`
-and retains both filters on fallback inventories. Before exact-version claim,
-the latest full task must still allow automatic execution, be ready and have a
-null or matching platform requirement. Workflows never enable the flag themselves
-or treat an automatically selected ID as explicit manual assignment. Explicitly
-designated manual work can use ordinary claim independently of automatic eligibility. Task descriptions are self-contained
+Goal discussion authorizes starting that discussion only. Creation does not
+start execution. Ready todo work within the existing execution scope starts with
+versioned set-status in_progress; completed acceptance and required delivery lead
+to set-status done. The same scope may cover ready successors without another
+task approval stage. Automatic discovery observes process.platform: win32 maps to windows, darwin to
+macos and linux to linux, including WSL. Unknown or unsupported runtime waits.
+Use `task ready --allow-agents true --compatible-platform <actual-platform> --json`
+and retain both filters on fallback inventories. Before exact-version start,
+reread the complete task and recheck todo, ready, permission=true and null/matching
+requiredPlatform. Carry automatic mode and platform into run-task; a selected ID
+does not acquire the explicit manual exception. Workflows never enable the flag.
+Explicitly designated tasks or fixed queues retain their manual path regardless
+of either automatic-selection condition, with dependencies and execution scope intact. Task descriptions are self-contained
 Markdown briefs: the concrete problem and action, scope, deliverables, constraints,
 observable completion summaries and actual input references. The Web renders that
 Markdown; API storage and CLI/Agent output preserve the original string bytes.
@@ -768,9 +769,7 @@ daynight task list [--all | --status <status>] [--ready] [--json] [--project <pr
 daynight task ready [--limit <N>] [--json] [--project <project-id>]
 daynight task show <task-id> [--json] [--project <project-id>]
 daynight task update <task-id> [options]
-daynight task approve <task-id> [--if-version <version>] [--project <project-id>]
-daynight task claim <task-id> [--if-version <version>] [--project <project-id>]
-daynight task complete <task-id> [--if-version <version>] [--project <project-id>]
+daynight task set-status <task-id> <status> [--if-version <version>] [--project <project-id>]
 daynight task graph [--json] [--project <project-id>]
 daynight task attachment
 daynight task attachment put <task-id> <file> [--path <relative-path>] [--project <project-id>]
@@ -1080,13 +1079,10 @@ daynight task update <task-id> --allow-agents true --if-version <version>
 daynight task create --title "Check Windows build" --required-platform windows
 daynight task update <task-id> --required-platform macos --if-version <version>
 daynight task update <task-id> --clear-required-platform --if-version <version>
-daynight task approve <task-id> --if-version 1
-daynight task claim <task-id> --if-version 2
-daynight task complete <task-id> --if-version 3
+daynight task set-status <task-id> <status> [--if-version <version>] [--project <project-id>]
 daynight task update <task-id> --depends-on <task-a> --depends-on <task-b>
 daynight task update <task-id> --clear-dependencies
 daynight task graph --json
-daynight task unapprove <todo-task-id> --if-version <version>
 ```
 
 Every operation accepts `--project <project-id>`, which selects a project for one
@@ -1099,29 +1095,37 @@ server origin and repository identity, after ensuring `/.daynight/` is effective
 in the root `.gitignore`. A cached binding is verified against the server on each
 use and remains stable if another project later shares that repository.
 
-Creation starts in `proposed` with `allowAgents=false` and unrestricted
-`requiredPlatform=null` unless an explicit platform is supplied; `task approve` moves it to `todo`; `task unapprove`
-withdraws approval of todo work and returns it to `proposed`; `task claim` moves
-ready todo to `in_progress`; `task complete` moves in-progress work to `done`.
-Approval and withdrawal permit unfinished prerequisites; claim and completion
-require every direct prerequisite to be done. Every project
-member, including administrators, may use these resource operations; the
-administrator role additionally manages members, invitations and project
-execution-warning settings. Each task action
-uses an expected version and increments it once. `--if-version` submits the exact
-observed int64 value; without it, the CLI reads once immediately before submitting.
-Conflicts and wrong states fail without retry. Generic updates cannot write
-status, and there is no reopen or direct todo-to-done operation. Existing todo,
-in-progress and done records keep their states, versions and existing timestamps.
-Task resources also expose required nullable `startedAt` and `completedAt`. Claim
-records the database start time, completion records the end, and ordinary edits
-preserve both. Migration leaves historical timing unknown instead of deriving it
-from creation or edit times; completing a historical running task can record a
-real end without inventing its missing start. The full graph includes a database
-`observedAt` sample taken after its data reads. These fields are read-only and
-retained by JSON output, including list JSON; human output keeps its existing
-field choices. Web polling refreshes its separate clock sample and monotonic receipt while
-preserving graph/index identity when only `observedAt` changes.
+Creation starts in `todo` with `allowAgents=false` and unrestricted
+`requiredPlatform=null` unless explicitly set. `task set-status <id> <status>`
+sets `todo`, `in_progress` or `done`, including reopening and direct completion.
+Every project member may use it. Status does not grant execution or delivery
+authority. Generic updates cannot write status; old lifecycle commands and routes
+are removed without aliases. `--if-version` uses the exact reviewed int64 value;
+without it, the CLI reads once immediately before submitting. No write retries
+occur. Version is checked before same-state handling: current same-state keeps
+version, update time and timing unchanged; actual changes increment once.
+
+Entering in_progress or done requires all direct prerequisites, ordinary and
+external, to be done. Reopening done requires no direct in-progress or done
+dependents. Refusals return sorted blocking task IDs without cascading changes.
+The project transaction serializes status and dependency writes and preserves
+materials, properties/PRs, permission, both dependency sets and attachments.
+
+New migration `014_task_status_assignment.sql` converts historical proposed rows
+to todo, increments only those versions and updates their update time while
+preserving every other field, including requiredPlatform and historical execution timestamps. Default,
+data, CHECK and ledger change atomically. Other rows and applied migrations remain
+unchanged; restart does not repeat the conversion. Runtime readers reject the old state.
+
+Task resources expose required nullable `startedAt` and `completedAt`. Actual entry
+into in_progress starts a new interval and clears the end; return to todo clears
+both. In-progress to done preserves a nullable start and records a real end;
+todo to done records only an end, leaving duration unknown. Metadata and same-state
+writes preserve time. The graph supplies a database `observedAt` sample; Web
+polling updates its separate clock without rebuilding unchanged graph/index data.
+Read-only timing fields remain in JSON; human CLI output keeps its field choices.
+The [status requirements](docs/spec/daynight-task-status.md) and
+[architecture](docs/design/daynight-task-status.md) own the complete rules.
 
 Task and graph resources also require `externalDependsOn`, a sorted,
 duplicate-free subset of all `dependsOn` IDs. CLI JSON preserves it and the
@@ -1157,37 +1161,36 @@ and disappear on completion without changing task status. The server-sample
 clock avoids client wall-clock skew but does not remove network sampling delay.
 
 
-Proposed tasks appear in unfinished inventories and Web statistics. The Web task
-detail dialog places Approve / 批准任务 for proposed and Unapprove / 撤回审批
-for todo at the far right of the task-title row, on both detail tabs. Each opens
-an action-specific confirmation using the reviewed task's exact version; Cancel
-or Escape sends no request. Confirmed responses refresh the graph. Withdrawal
-preserves task materials, dependencies, execution timestamps and attachments;
-it makes the task non-ready without changing successor states. Approval makes
-work eligible for later claim and grants no implementation or merge permission.
-Task details place one **Automatic execution / 自动执行** label and switch on
-the right of the status row below the title. Both directions open confirmation;
-Cancel, close and Escape submit nothing. The switch updates only after a
-confirmed successful response. Permission, platform and approval share the same per-task
-write gate, retaining pending/unknown results across detail close/reopen.
-Actual permission changes are locked during `in_progress`; permission changes
-do not approve, withdraw, stop or transfer work. Independent task rows and graph
-nodes show each task's permission and required platform without treating root
-values as chain-wide. Task details use one platform select in the left status
-group to display the confirmed requirement and offer Any platform, Windows,
-Linux and macOS. Choosing a different value opens confirmation showing the
-current and target platforms; only confirmation submits the reviewed exact task
-version. Choosing the saved value, Cancel, close, backdrop dismissal and Escape
-send no request. Cancellation returns focus to the select. The confirmed value
-remains displayed until success, and Any platform clears the requirement.
-Overview has no separate platform editor or Save action. The control stays
-available on either detail tab, is locked during `in_progress`, and retains
-unknown-write reconciliation and request ownership across dialog changes. The
-[confirmed platform control decision](.agents/notes/implemented/simplification/2026-10-24-task-platform-confirmation-control.md)
+The Web detail header places a three-item status menu beside the actual task
+title on both tabs. The current item remains selectable. Confirmation names the
+task, current/target states and timing effects; Cancel and Escape send no write.
+Status, **Automatic execution / 自动执行** and platform confirmation share one per-task mutation owner.
+Pending, stale or unknown results block conflicting writes. Current-version same-state responses
+confirm no stored change; actual changes refresh the graph. Unknown outcomes use
+GET-only reconciliation, preserving errors and never attributing the observed
+state to the uncertain request. Closing details does not roll back a submission.
+
+Task details use one platform select in the left status group to display the
+confirmed requirement and offer Any platform, Windows, Linux and macOS. Choosing
+a different value opens confirmation showing the current and target platforms;
+only confirmation submits the reviewed exact task version. Choosing the saved
+value, Cancel, close, backdrop dismissal and Escape send no request. Cancellation
+returns focus to the select. The confirmed value remains displayed until success,
+and Any platform clears requiredPlatform. Overview has no separate platform
+editor or Save action. The control stays available on either detail tab, is
+locked during in_progress, and retains shared pending/unknown reconciliation
+across navigation. Rows and graph nodes remain read-only and show each task's
+own requirement; root values do not define chain-wide platform requirements.
+The [confirmed platform control decision](.agents/notes/implemented/simplification/2026-10-24-task-platform-confirmation-control.md)
 records its allocation and focus behavior.
-The [lifecycle decision](.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)
-and [withdrawal decision](.agents/notes/implemented/feature/2026-10-23-task-unapprove.md)
-record the state and approval boundaries.
+
+The permission switch has confirmation in both directions, remains false by
+default and is locked against actual changes while in_progress. It governs
+automatic discovery; explicit task execution may use either value. Rows and graph
+nodes display each task's own permission. Neither status nor permission controls
+worker ownership, stops a process or replaces PR review and delivery authority.
+The [status decision](.agents/notes/implemented/architecture/2026-10-24-task-status-assignment.md)
+records migration and shared-session trade-offs.
 
 `task ready` selects up to 10 actionable tasks by
 default; `--limit <N>` accepts decimal integers from 1 through 100. It makes one
@@ -1203,11 +1206,12 @@ reads every matching page, including with `--ready`, and excludes `done` by
 default. `--all` includes every status; `--status <status>` selects one status,
 including `done`. These two options conflict. `--ready` intersects the selected
 statuses and can be combined with `--all`. List results place `in_progress`
-first, then ready tasks, other `todo` tasks, `proposed`, and `done`; each group retains
+first, then ready tasks, other `todo` tasks, and `done`; each group retains
 service order across all pages. This order applies to human and JSON results.
 `task ready` accepts neither `--status` nor `--cursor`. `task list` supports the
-same optional permission and compatibility filters across every matching page. The permission flag is
-independent of readiness and approval; manual claim accepts either value.
+same permission and compatibility filters across every matching page. Both are
+automatic-selection conditions independent of readiness; explicitly designated
+execution retains the manual exception.
 
 Updates preserve omitted fields; an empty description clears it. Repeated
 `--depends-on` and `--external-depends-on` declare the complete ordinary and
@@ -1227,7 +1231,7 @@ accepts `--clear-required-platform` to send null, mutually exclusive with settin
 a platform. Omission preserves an existing requirement. New and migrated tasks
 are unrestricted unless explicitly set. Exact-version equal platform updates
 preserve version and time; stale updates conflict and actual in-progress changes
-are refused atomically. Ordinary manual claim remains available for every
+are refused atomically. Explicit manual status setting remains available for every
 requirement. The query platform selects candidates; it does not configure or
 prove the environment of a future worker.
 By default the CLI reads the task version before PATCH; `--if-version <n>`

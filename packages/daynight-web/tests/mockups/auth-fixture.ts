@@ -46,7 +46,7 @@ const currentUser: User = { id: authUserId, name: 'Jianjun', email: 'jianjun@exa
 type WireMember = Omit<ProjectMember, 'version'> & { version: number };
 type StoredProject = { project: Project; graph: TaskGraph; members: WireMember[]; invitations: ProjectInvitation[] };
 const member = (userId: string, name: string, email: string, role: WireMember['role'], projectId = authProjectId): WireMember => ({ projectId, userId, name, email, avatarUrl: null, role, version: 1, createdAt: stamp, updatedAt: stamp });
-const emptySummary = { total: 0, proposed: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 };
+const emptySummary = { total: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 };
 const initialInvitation = (projectId: string, number: number): ProjectInvitation => ({ id: uuid(number), projectId, createdBy: authUserId, createdAt: stamp, expiresAt: '2026-10-29T09:00:00Z', consumedBy: null, consumedAt: null, revokedAt: null });
 const error = (status: number, code: string): Response => Response.json({ error: { code, message: 'Controlled authentication fixture failure.', requestId: `auth-fixture-${code}` } }, { status });
 const wait = (signal: AbortSignal | null | undefined): Promise<Response> => new Promise((_resolve, reject) => {

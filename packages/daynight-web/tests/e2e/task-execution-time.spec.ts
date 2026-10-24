@@ -6,7 +6,7 @@ import { parseApiJson, stringifyApiJson } from '../../src/api/json';
 import { parseTaskDetail, parseTaskGraph, project as parseProject } from '../../src/api/parse';
 import { decodeProjectJson, decodeTaskGraphJson } from '../../src/api/project-json';
 import type { TaskDetail } from '../../src/api/types';
-import { createProject, createApprovedTask, claimTask, completeApprovedTask, completeTask, expect, seedClaimedTaskStart, seedExternalDependencies, test } from './fixtures';
+import { createProject, createTask, startTask, executeTask, finishTask, expect, seedRunningTaskStart, seedExternalDependencies, test } from './fixtures';
 import type { AuthenticatedAPI } from './authentication';
 import { expectedChainMembers } from './visible-topology';
 
@@ -68,7 +68,7 @@ test('task-execution-time', { annotation: { type: 'scenario', description: 'task
     tasks: [] as { label: string; value: TaskDetail }[], graphReads: [] as string[],
     progress: [] as string[], failures: [] as { phase: string; name: string; message: string }[],
     timing: {} as Record<string, unknown>, layouts: [] as { locale: string; width: number; kind: string }[],
-    controlledConditions: ['Browser Date.now is fixed in 2055 while timers/performance.now and PostgreSQL time advance normally.', 'Only owned claimed-task start timestamps are seeded; subsequent graph GET deliveries are held during the actual one-second clock threshold crossing.', 'The blocked merge edge to the running prerequisite is explicitly external in the owned database; all dependencies and task timing remain intact.'],
+    controlledConditions: ['Browser Date.now is fixed in 2055 while timers/performance.now and PostgreSQL time advance normally.', 'Only owned running-task start timestamps are seeded; subsequent graph GET deliveries are held during the actual one-second clock threshold crossing.', 'The blocked merge edge to the running prerequisite is explicitly external in the owned database; all dependencies and task timing remain intact.'],
   };
   const success = async (argv: readonly string[]): Promise<string> => {
     const result = await cli.run(argv); evidence.commands.push({ argv, ...result }); expect(result.exitCode).toBe(0); expect(result.stderr).toBe(''); return result.stdout;
@@ -106,29 +106,29 @@ test('task-execution-time', { annotation: { type: 'scenario', description: 'task
   try {
     const project = await createProject(api, { name: `Execution time ${randomUUID()}` }); evidence.projectId = project.id;
     const roots = [
-      await createApprovedTask(api, project.id, { title: 'Completed prerequisite A' }),
-      await createApprovedTask(api, project.id, { title: 'Completed prerequisite B' }),
+      await createTask(api, project.id, { title: 'Completed prerequisite A' }),
+      await createTask(api, project.id, { title: 'Completed prerequisite B' }),
     ];
-    for (const root of roots) await completeApprovedTask(api, project.id, root);
-    const external = await claimTask(api, project.id, await createApprovedTask(api, project.id, { title: 'Overdue external prerequisite' }));
-    const blockedMerge = await createApprovedTask(api, project.id, { title: 'Blocked merge exposes the external running prerequisite', dependsOn: [roots[1]!.id, external.id] });
+    for (const root of roots) await executeTask(api, project.id, root);
+    const external = await startTask(api, project.id, await createTask(api, project.id, { title: 'Overdue external prerequisite' }));
+    const blockedMerge = await createTask(api, project.id, { title: 'Blocked merge exposes the external running prerequisite', dependsOn: [roots[1]!.id, external.id] });
     await seedExternalDependencies(api, project.id, blockedMerge, [external.id]);
     const classifiedMerge = await record(project.id, blockedMerge.id, 'blocked-merge-external-classification');
     expect(classifiedMerge.externalDependsOn).toEqual([external.id]);
-    const crossing = await claimTask(api, project.id, await createApprovedTask(api, project.id, { title: 'Current attempt crosses the saved threshold', dependsOn: roots.map(({ id }) => id) }));
-    await createApprovedTask(api, project.id, { title: 'Keeps completed timing visible in the active chain', dependsOn: [crossing.id] });
-    const multiParent = await claimTask(api, project.id, await createApprovedTask(api, project.id, { title: 'Long multi-parent multi-day execution title '.repeat(7), dependsOn: roots.map(({ id }) => id) }));
-    const brief = await createApprovedTask(api, project.id, { title: 'Known sub-minute completed task', dependsOn: [roots[1]!.id] });
-    await completeApprovedTask(api, project.id, brief);
-    const standalone = await claimTask(api, project.id, await createApprovedTask(api, project.id, { title: 'Long standalone multi-day execution '.repeat(6) }));
-    const legacy = await claimTask(api, project.id, await createApprovedTask(api, project.id, { title: 'Historical unknown execution start' }));
-    const briefRow = await createApprovedTask(api, project.id, { title: 'Known sub-minute standalone completion' });
-    await completeApprovedTask(api, project.id, briefRow);
-    await seedClaimedTaskStart(project.id, external.id, 2 * 86_400_000);
-    await seedClaimedTaskStart(project.id, multiParent.id, 3 * 86_400_000 + 17 * 60_000);
-    await seedClaimedTaskStart(project.id, standalone.id, 4 * 86_400_000 + 25 * 60_000);
+    const crossing = await startTask(api, project.id, await createTask(api, project.id, { title: 'Current attempt crosses the saved threshold', dependsOn: roots.map(({ id }) => id) }));
+    await createTask(api, project.id, { title: 'Keeps completed timing visible in the active chain', dependsOn: [crossing.id] });
+    const multiParent = await startTask(api, project.id, await createTask(api, project.id, { title: 'Long multi-parent multi-day execution title '.repeat(7), dependsOn: roots.map(({ id }) => id) }));
+    const brief = await createTask(api, project.id, { title: 'Known sub-minute completed task', dependsOn: [roots[1]!.id] });
+    await executeTask(api, project.id, brief);
+    const standalone = await startTask(api, project.id, await createTask(api, project.id, { title: 'Long standalone multi-day execution '.repeat(6) }));
+    const legacy = await startTask(api, project.id, await createTask(api, project.id, { title: 'Historical unknown execution start' }));
+    const briefRow = await createTask(api, project.id, { title: 'Known sub-minute standalone completion' });
+    await executeTask(api, project.id, briefRow);
+    await seedRunningTaskStart(project.id, external.id, 2 * 86_400_000);
+    await seedRunningTaskStart(project.id, multiParent.id, 3 * 86_400_000 + 17 * 60_000);
+    await seedRunningTaskStart(project.id, standalone.id, 4 * 86_400_000 + 25 * 60_000);
     const legacyBefore = await record(project.id, legacy.id, 'legacy-before-seed');
-    await seedClaimedTaskStart(project.id, legacy.id, null);
+    await seedRunningTaskStart(project.id, legacy.id, null);
     const legacyUnknown = await record(project.id, legacy.id, 'legacy-unknown-start');
     expect(legacyUnknown).toEqual({ ...legacyBefore, startedAt: null });
     const settings = async (minutes: number) => {
@@ -153,7 +153,7 @@ test('task-execution-time', { annotation: { type: 'scenario', description: 'task
     };
     await openTimingChain();
     const claimed = await record(project.id, crossing.id, 'crossing-before-seed');
-    await seedClaimedTaskStart(project.id, crossing.id, 3_585_000);
+    await seedRunningTaskStart(project.id, crossing.id, 3_585_000);
     await page.reload();
     const ticking = card(page, crossing.id);
     await expect(duration(ticking)).toBeVisible();
@@ -205,7 +205,7 @@ test('task-execution-time', { annotation: { type: 'scenario', description: 'task
     await expect(unknownRunning).toContainText('进行中');
     await expect(duration(unknownRunning)).toHaveCount(0); await expect(unknownRunning.locator('.task-stuck-label')).toHaveCount(0);
     await page.getByRole('tab', { name: '任务链', exact: true }).click();
-    await success(['task', 'complete', crossing.id, '--project', project.id, '--if-version', String(running.version)]);
+    await success(['task', 'set-status', crossing.id, 'done', '--project', project.id, '--if-version', String(running.version)]);
     const completed = await record(project.id, crossing.id, 'completed-freeze');
     expect(completed.startedAt).toBe(running.startedAt); expect(completed.completedAt).not.toBeNull();
     await expect(ticking.locator('.graph-status')).toHaveText('已完成', { timeout: 10_000 });
@@ -215,7 +215,7 @@ test('task-execution-time', { annotation: { type: 'scenario', description: 'task
     const freezeResponse = page.waitForResponse((response) => new URL(response.url()).pathname === graphPath);
     await freezeResponse; expect(await duration(ticking).getAttribute('datetime')).toBe(frozen);
     evidence.timing.completedDuration = frozen; evidence.progress.push('completed-duration-frozen-across-poll');
-    await completeTask(api, project.id, legacy);
+    await finishTask(api, project.id, legacy);
     const completedLegacy = await record(project.id, legacy.id, 'completed-legacy-remains-unknown');
     expect(completedLegacy.startedAt).toBeNull(); expect(completedLegacy.completedAt).not.toBeNull();
     await retained.dispose();

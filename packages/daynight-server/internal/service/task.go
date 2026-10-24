@@ -74,7 +74,7 @@ func (s *Tasks) Create(ctx context.Context, principal core.Principal, projectID 
 	if err != nil {
 		return core.Task{}, fmt.Errorf("generate task ID: %w", err)
 	}
-	values := store.TaskWrite{RequiredPlatform: input.RequiredPlatform, AllowAgents: false, Title: input.Title, Description: input.Description, Status: core.TaskProposed, Properties: core.TaskProperties{PullRequests: append([]core.PullRequestProperty{}, input.Properties.PullRequests...)}}
+	values := store.TaskWrite{RequiredPlatform: input.RequiredPlatform, AllowAgents: false, Title: input.Title, Description: input.Description, Status: core.TaskTodo, Properties: core.TaskProperties{PullRequests: append([]core.PullRequestProperty{}, input.Properties.PullRequests...)}}
 	values.DependsOn, err = canonicalDependencies(input.DependsOn, id.String())
 	if err != nil {
 		return core.Task{}, err
@@ -233,10 +233,6 @@ func validateTaskValues(values store.TaskWrite) error {
 		return invalidInput("Task description must be UTF-8 text without NUL characters.")
 	}
 	return nil
-}
-
-func validTaskStatus(status core.TaskStatus) bool {
-	return status == core.TaskProposed || status == core.TaskTodo || status == core.TaskInProgress || status == core.TaskDone
 }
 
 func canonicalDependencies(ids []string, self string) ([]string, error) {

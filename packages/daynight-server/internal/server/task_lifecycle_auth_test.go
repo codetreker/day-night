@@ -23,8 +23,8 @@ func TestTaskLifecycleAuthenticationAndMemberAccess(t *testing.T) {
 	project := identityDecode[api.Project](t, data)
 	_, data = identityRequest(t, admin, http.MethodPost, integration.server.URL+taskCollection(project.ID), `{"title":"Completed external prerequisite"}`, origin, http.StatusCreated)
 	prerequisite := identityDecode[api.Task](t, data)
-	for _, action := range []string{"approve", "claim", "complete"} {
-		_, data = identityRequest(t, admin, http.MethodPost, integration.server.URL+taskPath(prerequisite)+"/"+action, jsonBody(t, api.TaskTransitionRequest{Version: prerequisite.Version}), origin, http.StatusOK)
+	for _, action := range []string{"in_progress", "done"} {
+		_, data = identityRequest(t, admin, http.MethodPut, integration.server.URL+taskPath(prerequisite)+"/status", jsonBody(t, api.TaskStatusUpdateRequest{Version: prerequisite.Version, Status: action}), origin, http.StatusOK)
 		prerequisite = identityDecode[api.Task](t, data)
 	}
 	_, data = identityRequest(t, admin, http.MethodPost, integration.server.URL+"/api/v1/projects/"+project.ID+"/invitations", `{}`, origin, http.StatusCreated)
@@ -82,24 +82,24 @@ func TestTaskLifecycleAuthenticationAndMemberAccess(t *testing.T) {
 	}
 	data = request(t, member, http.MethodPatch, taskPath(task), jsonBody(t, map[string]any{"version": task.Version, "externalDependsOn": []string{prerequisite.ID}}), origin, http.StatusOK, "")
 	task = identityDecode[api.Task](t, data)
-	for _, step := range []struct{ action, status string }{{"approve", "todo"}, {"unapprove", "proposed"}, {"approve", "todo"}, {"claim", "in_progress"}, {"complete", "done"}} {
+	for _, step := range []struct{ action, status string }{{"in_progress", "in_progress"}, {"todo", "todo"}, {"done", "done"}} {
 		t.Run(step.action, func(t *testing.T) {
-			path := taskPath(task) + "/" + step.action
-			body := jsonBody(t, api.TaskTransitionRequest{Version: task.Version})
-			request(t, anonymous, http.MethodPost, path, body, nil, http.StatusUnauthorized, "unauthenticated")
+			path := taskPath(task) + "/status"
+			body := jsonBody(t, api.TaskStatusUpdateRequest{Version: task.Version, Status: step.status})
+			request(t, anonymous, http.MethodPut, path, body, nil, http.StatusUnauthorized, "unauthenticated")
 			request(t, anonymous, http.MethodDelete, path, body, nil, http.StatusUnauthorized, "unauthenticated")
-			request(t, member, http.MethodPost, path, body, map[string]string{"Origin": "https://foreign.example"}, http.StatusForbidden, "forbidden")
-			request(t, outsider, http.MethodPost, path, body, origin, http.StatusNotFound, "not_found")
+			request(t, member, http.MethodPut, path, body, map[string]string{"Origin": "https://foreign.example"}, http.StatusForbidden, "forbidden")
+			request(t, outsider, http.MethodPut, path, body, origin, http.StatusNotFound, "not_found")
 			data := request(t, member, http.MethodGet, taskPath(task), "", nil, http.StatusOK, "")
 			if observed := identityDecode[api.Task](t, data); !reflect.DeepEqual(observed, task) {
 				t.Fatal("rejected lifecycle request changed the member's task")
 			}
 			browser, headers := member, map[string]string{"Origin": integration.server.URL}
-			if step.action == "claim" || step.action == "unapprove" {
+			if step.action == "in_progress" || step.action == "todo" {
 				browser, headers = anonymous, map[string]string{"Authorization": bearer["Authorization"]}
 			}
 			headers["X-Request-ID"] = "lifecycle-member-" + step.action
-			data = request(t, browser, http.MethodPost, path, body, headers, http.StatusOK, "")
+			data = request(t, browser, http.MethodPut, path, body, headers, http.StatusOK, "")
 			changed := identityDecode[api.Task](t, data)
 			if changed.Status != step.status || changed.Version != task.Version+1 || changed.AllowAgents != task.AllowAgents || len(changed.ExternalDependsOn) != 1 || changed.ExternalDependsOn[0] != prerequisite.ID {
 				t.Fatalf("ordinary member could not perform %s: %+v", step.action, changed)
@@ -123,11 +123,11 @@ func TestTaskLifecycleAuthenticationAndMemberAccess(t *testing.T) {
 	}
 	identityRequest(t, member, http.MethodDelete, integration.server.URL+"/api/v1/me/tokens/"+token.ID, "", origin, http.StatusNoContent)
 	identityRequest(t, member, http.MethodPost, integration.server.URL+"/api/v1/auth/logout", "", origin, http.StatusNoContent)
-	for _, action := range []string{"approve", "unapprove", "claim", "complete"} {
-		path := taskPath(task) + "/" + action
-		body := jsonBody(t, api.TaskTransitionRequest{Version: task.Version})
-		request(t, anonymous, http.MethodPost, path, body, bearer, http.StatusUnauthorized, "unauthenticated")
-		request(t, anonymous, http.MethodPost, path, body, map[string]string{"Cookie": session, "Origin": integration.server.URL}, http.StatusUnauthorized, "unauthenticated")
+	for _, action := range []string{"todo", "in_progress", "done"} {
+		path := taskPath(task) + "/status"
+		body := jsonBody(t, api.TaskStatusUpdateRequest{Version: task.Version, Status: action})
+		request(t, anonymous, http.MethodPut, path, body, bearer, http.StatusUnauthorized, "unauthenticated")
+		request(t, anonymous, http.MethodPut, path, body, map[string]string{"Cookie": session, "Origin": integration.server.URL}, http.StatusUnauthorized, "unauthenticated")
 	}
 	_, data = identityRequest(t, admin, http.MethodGet, integration.server.URL+taskPath(task), "", nil, http.StatusOK)
 	if persisted := identityDecode[api.Task](t, data); !reflect.DeepEqual(persisted, task) {
@@ -136,11 +136,11 @@ func TestTaskLifecycleAuthenticationAndMemberAccess(t *testing.T) {
 	integration.logs.mu.Lock()
 	logs := integration.logs.buffer.String()
 	integration.logs.mu.Unlock()
-	for _, action := range []string{"approve", "unapprove", "claim", "complete"} {
+	for _, action := range []string{"todo", "in_progress", "done"} {
 		found := false
 		for line := range strings.SplitSeq(logs, "\n") {
 			var entry map[string]any
-			if json.Unmarshal([]byte(line), &entry) == nil && entry["component"] == "task" && entry["phase"] == action &&
+			if json.Unmarshal([]byte(line), &entry) == nil && entry["component"] == "task" && entry["phase"] == "set_status" &&
 				entry["request_id"] == "lifecycle-member-"+action && entry["user_id"] == memberUser.ID {
 				found = true
 			}

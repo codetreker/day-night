@@ -39,7 +39,7 @@ func TestExternalDependencyMigrationPreservesExistingFactsAndDefaults(t *testing
 	database := &Store{Pool: pool}
 	project := queryProject(t, database, 1)
 	stamp := time.Date(2026, 1, 2, 3, 4, 5, 123456000, time.UTC)
-	for number, status := range map[int]core.TaskStatus{10: core.TaskDone, 11: core.TaskTodo, 12: core.TaskProposed} {
+	for number, status := range map[int]core.TaskStatus{10: core.TaskDone, 11: core.TaskTodo, 12: core.TaskStatus("proposed")} {
 		mustQueryExec(t, database, `INSERT INTO tasks(id,project_id,title,description,status,version,created_at,updated_at,started_at,completed_at,properties)
 			VALUES ($1,$2,'Preserved title','Preserved description',$3,17,$4,$5,$4,$5,'{"pullRequests":[{"url":"https://example.com/pr/1","title":"Preserved"}]}')`,
 			queryID(number), project.ID, status, stamp, stamp.Add(time.Hour))
@@ -51,7 +51,7 @@ func TestExternalDependencyMigrationPreservesExistingFactsAndDefaults(t *testing
 	if err := pool.QueryRow(ctx, `SELECT jsonb_agg(to_jsonb(t) ORDER BY version)::text FROM schema_migrations t`).Scan(&ledger); err != nil {
 		t.Fatal(err)
 	}
-	if err := migrate(ctx, pool, schemaMigrations); err != nil {
+	if err := migrate(ctx, pool, schemaMigrations[:12]); err != nil {
 		t.Fatal(err)
 	}
 	if after := externalDependencyFacts(t, database); !reflect.DeepEqual(after, before) {
@@ -62,7 +62,7 @@ func TestExternalDependencyMigrationPreservesExistingFactsAndDefaults(t *testing
 		t.Fatalf("migration changed the existing ledger: %v", err)
 	}
 	for _, number := range []int{11, 12} {
-		task := snapshotTask(t, database, project.ID, queryID(number))
+		task := snapshotHistoricalTask(t, database, project.ID, queryID(number))
 		if task.ExternalDependsOn == nil || len(task.ExternalDependsOn) != 0 || !slices.Equal(task.DependsOn, []string{queryID(10)}) {
 			t.Fatalf("historical edge was not normal: %#v", task)
 		}
@@ -81,7 +81,7 @@ func TestExternalDependencyMigrationPreservesExistingFactsAndDefaults(t *testing
 	if err := pool.QueryRow(ctx, "SELECT applied_at FROM schema_migrations WHERE version=12").Scan(&applied); err != nil {
 		t.Fatal(err)
 	}
-	if err := migrate(ctx, pool, schemaMigrations); err != nil {
+	if err := migrate(ctx, pool, schemaMigrations[:12]); err != nil {
 		t.Fatal(err)
 	}
 	var repeated time.Time

@@ -24,9 +24,9 @@ The [mode decision](../architecture/2026-10-21-using-daynight-modes.md) retains 
 four modes and general authorization boundaries.
 
 Starting a Goal requirements discussion creates or reuses only `[Goal]<outcome>`.
-An explicit request to begin that discussion authorizes its normal proposed,
-approve, claim sequence, using observed versions and confirming `in_progress`.
-A registration-only request leaves the sole requirements task proposed and
+An explicit request to begin that discussion authorizes set-status in_progress,
+using its observed version and confirming the result. A registration-only request
+leaves the sole requirements task todo and
 returns. No architecture placeholder or delivery tasks are created upfront.
 
 The requirements task owns current requirements, applicable interactive prototype
@@ -36,15 +36,16 @@ transition. Record the accepted material and confirmation, complete the
 requirements task, and confirm the service result before creating or starting the
 next task. The solution-discussion task uses an ordinary dependency on the
 completed requirements task. That explicit transition instruction authorizes
-approval and claim of this next discussion task; completion alone does not.
+starting this next discussion task; completion alone does not.
 
 The solution task owns architecture, execution approach and a draft breakdown.
 No actual delivery tasks are registered before the user confirms the current
 solution. After confirmation, register the complete outcome-based delivery
 breakdown with real dependencies, task-specific plans and verified shared inputs.
 Read back the complete registration before completing the solution-discussion
-task. Delivery tasks remain proposed; accepting a solution does not approve or
-execute them, enable automatic execution, start autopilot, or authorize merges.
+task. Delivery tasks are registered as todo without execution. Existing explicit
+execution scope remains effective for ready successors; solution acceptance alone
+does not enable automatic execution, start autopilot or authorize merges.
 Material revisions after confirmation require renewed confirmation before
 advancement.
 

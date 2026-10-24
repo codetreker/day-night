@@ -69,6 +69,22 @@ func (tx *ProjectTx) tasks(ctx context.Context, condition string, value any, pha
 	return tasks, nil
 }
 
+func (tx *ProjectTx) ActiveDependentIDs(ctx context.Context, id string) ([]string, error) {
+	rows, err := tx.tx.Query(ctx, `SELECT t.id::text FROM task_dependencies d
+		JOIN tasks t ON t.project_id = d.project_id AND t.id = d.task_id
+		WHERE d.project_id = $1 AND d.depends_on_task_id = $2
+		AND t.status IN ('in_progress', 'done') ORDER BY t.id`, tx.projectID, id)
+	if err != nil {
+		return nil, queryError("read active dependents", err)
+	}
+	defer rows.Close()
+	ids, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return nil, queryError("read active dependents", err)
+	}
+	return ids, nil
+}
+
 func (tx *ProjectTx) Reachable(ctx context.Context, from, to string, replacement DependencyReplacement) (bool, error) {
 	var reachable bool
 	err := tx.tx.QueryRow(ctx, `WITH RECURSIVE edges(task_id, depends_on_task_id) AS (
@@ -102,11 +118,12 @@ func (tx *ProjectTx) UpdateTask(ctx context.Context, id string, values TaskWrite
 	result, err := tx.tx.Exec(ctx, `UPDATE tasks SET title = $3, description = $4, status = $5, properties = $6, allow_agents = $7, required_platform = $8,
 		started_at = CASE
 			WHEN status <> $5 AND $5 = 'in_progress' THEN statement_timestamp()
-			WHEN status = 'done' AND $5 <> 'done' THEN NULL
+			WHEN status <> $5 AND $5 = 'todo' THEN NULL
+			WHEN status = 'todo' AND $5 = 'done' THEN NULL
 			ELSE started_at END,
 		completed_at = CASE
 			WHEN status <> $5 AND $5 = 'done' THEN statement_timestamp()
-			WHEN status <> $5 AND ($5 = 'in_progress' OR status = 'done') THEN NULL
+			WHEN status <> $5 AND $5 IN ('todo', 'in_progress') THEN NULL
 			ELSE completed_at END,
 		version = version + 1, updated_at = statement_timestamp() WHERE project_id = $1 AND id = $2`,
 		tx.projectID, id, values.Title, values.Description, values.Status, taskproperties.Encode(values.Properties), values.AllowAgents, values.RequiredPlatform)

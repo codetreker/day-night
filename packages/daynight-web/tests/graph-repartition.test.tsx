@@ -22,7 +22,7 @@ const node = (id: string, titlePreview: string, dependsOn: readonly string[]): G
 const graph = (tasks: readonly GraphTask[]): TaskGraph => ({
   project: { id: projectId, name: 'Task repartition', repoUrl: '', settings: { version: 1n, executionWarningMinutes: 60 }, createdAt: time, updatedAt: time },
   observedAt: time, tasks,
-  summary: { total: tasks.length, proposed: 0, todo: tasks.length, inProgress: 0, done: 0,
+  summary: { total: tasks.length, todo: tasks.length, inProgress: 0, done: 0,
     ready: tasks.filter((task) => task.ready).length, blocked: tasks.filter((task) => !task.ready).length },
 });
 let root: HTMLDivElement;

@@ -16,13 +16,13 @@ const projectId = '10000000-0000-4000-8000-000000000001';
 const taskId = '20000000-0000-4000-8000-000000000001';
 const time = '2026-10-24T00:00:00Z';
 const project: Project = { id: projectId, name: 'Platform tasks', repoUrl: 'https://example.com/repo', settings: { version: 1n, executionWarningMinutes: 60 }, createdAt: time, updatedAt: time };
-const detail: TaskDetail = { id: taskId, projectId, title: 'Reviewed task', description: 'Keep this content', allowAgents: false, requiredPlatform: null, status: 'proposed', version: 9007199254740993n,
-  dependsOn: [], externalDependsOn: [], blockedBy: [], ready: false, properties: { pullRequests: [] }, startedAt: null, completedAt: null, createdAt: time, updatedAt: time };
+const detail: TaskDetail = { id: taskId, projectId, title: 'Reviewed task', description: 'Keep this content', allowAgents: false, requiredPlatform: null, status: 'todo', version: 9007199254740993n,
+  dependsOn: [], externalDependsOn: [], blockedBy: [], ready: true, properties: { pullRequests: [] }, startedAt: null, completedAt: null, createdAt: time, updatedAt: time };
 const graphTask = (value: TaskDetail): GraphTask => ({ id: value.id, titlePreview: value.title, titleTruncated: false, status: value.status,
   requiredPlatform: value.requiredPlatform, allowAgents: value.allowAgents, dependsOn: value.dependsOn, externalDependsOn: value.externalDependsOn, blockedBy: value.blockedBy, ready: value.ready,
   startedAt: value.startedAt, completedAt: value.completedAt, createdAt: value.createdAt, updatedAt: value.updatedAt });
 const snapshot = (value: TaskDetail, revision = 1) => {
-  const graph: TaskGraph = { observedAt: time, project, tasks: [graphTask(value)], summary: { total: 1, proposed: value.status === 'proposed' ? 1 : 0,
+  const graph: TaskGraph = { observedAt: time, project, tasks: [graphTask(value)], summary: { total: 1,
     todo: value.status === 'todo' ? 1 : 0, inProgress: value.status === 'in_progress' ? 1 : 0, done: value.status === 'done' ? 1 : 0, ready: value.ready ? 1 : 0, blocked: value.status === 'todo' && !value.ready ? 1 : 0 } };
   return { observedAt: time, graph, index: buildGraphIndex(graph), receivedMonotonic: performance.now(), receivedAt: 1, revision };
 };
@@ -58,12 +58,12 @@ describe('confirmed status-row platform selection', () => {
     confirm();
     expect(writes).toHaveBeenCalledExactlyOnceWith(projectId, taskId, 'linux', detail.version, expect.any(AbortSignal));
     expect(select()).toHaveValue(''); expect(select()).toBeDisabled(); expect(screen.getByRole('switch')).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Approve task' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'To do' })).toBeDisabled();
     expect(screen.queryByRole('alertdialog')).toBeNull();
     await act(async () => pending.resolve({ ...detail, requiredPlatform: 'linux', version: detail.version + 1n }));
     await screen.findByText('Execution platform updated.');
     expect(select()).toHaveValue('linux'); expect(select()).toBeEnabled(); expect(screen.getByRole('switch')).toBeEnabled();
-    expect(screen.queryByRole('region', { name: 'Task approval' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Task status' })).toBeNull();
   });
   it.each([
     { from: null, to: 'windows' }, { from: 'windows', to: 'linux' }, { from: 'linux', to: 'macos' }, { from: 'macos', to: null },
@@ -83,7 +83,7 @@ describe('confirmed status-row platform selection', () => {
     expect(document.querySelector('.task-detail-dialog')).toHaveAttribute('inert');
     expect(within(confirmation()).getByRole('button', { name: 'Cancel' })).toHaveFocus();
     if (action === 'Escape') fireEvent.keyDown(document, { key: 'Escape' });
-    else if (action === 'backdrop') fireEvent.click(document.querySelector('.task-approval-confirmation-backdrop')!);
+    else if (action === 'backdrop') fireEvent.click(document.querySelector('.task-confirmation-backdrop')!);
     else fireEvent.click(within(confirmation()).getByRole('button', { name: action }));
     expect(screen.queryByRole('alertdialog')).toBeNull(); expect(select()).toHaveValue('windows'); expect(select()).toHaveFocus();
     expect(document.querySelector('.task-detail-dialog')).not.toHaveAttribute('inert'); expect(props.onClose).not.toHaveBeenCalled();
@@ -108,16 +108,18 @@ describe('confirmed status-row platform selection', () => {
     confirm(); expect(writes).toHaveBeenCalledExactlyOnceWith(projectId, taskId, 'macos', changed.version, expect.any(AbortSignal));
     await screen.findByText('Execution platform updated.');
   });
-  it('keeps platform, permission and approval confirmation mutually exclusive', async () => {
-    await open(); const automation = screen.getByRole('switch'); const approval = screen.getByRole('button', { name: 'Approve task' });
-    review('linux'); fireEvent.click(automation); fireEvent.click(approval);
+  it('keeps platform, permission and status confirmation mutually exclusive', async () => {
+    await open(); const automation = screen.getByRole('switch');
+    review('linux'); fireEvent.click(automation);
     expect(screen.getAllByRole('alertdialog')).toHaveLength(1); expect(confirmation()).toBeVisible(); expect(writes).not.toHaveBeenCalled();
     fireEvent.click(within(confirmation()).getByRole('button', { name: 'Cancel' }));
     fireEvent.click(automation); review('windows');
     const permission = screen.getByRole('alertdialog', { name: 'Enable automatic execution' });
     expect(screen.getAllByRole('alertdialog')).toHaveLength(1); fireEvent.click(within(permission).getByRole('button', { name: 'Cancel' }));
-    fireEvent.click(approval); review('macos'); expect(screen.getAllByRole('alertdialog')).toHaveLength(1);
-    expect(screen.getByRole('alertdialog', { name: 'Approve task' })).toBeVisible(); expect(writes).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'To do' }));
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Done' }));
+    review('macos'); fireEvent.click(automation); expect(screen.getAllByRole('alertdialog')).toHaveLength(1);
+    expect(screen.getByRole('alertdialog', { name: 'Set task status' })).toBeVisible(); expect(writes).not.toHaveBeenCalled();
   });
   it('keeps the header control usable on Attachments and retains its state during platform and permission writes', async () => {
     await open(); fireEvent.click(screen.getByRole('tab', { name: 'Attachments' }));
@@ -149,17 +151,17 @@ describe('confirmed status-row platform selection', () => {
     await open(); vi.mocked(getTask).mockRejectedValueOnce(new ApiError('network')); writes.mockRejectedValueOnce(new ApiError('network'));
     review('linux'); confirm(); const check = await screen.findByRole('button', { name: 'Check actual task' });
     await waitFor(() => expect(check).toBeEnabled()); expect(select()).toHaveValue('');
-    expect(select()).toBeDisabled(); expect(screen.getByRole('switch')).toBeDisabled(); expect(screen.getByRole('button', { name: 'Approve task' })).toBeDisabled();
+    expect(select()).toBeDisabled(); expect(screen.getByRole('switch')).toBeDisabled(); expect(screen.getByRole('button', { name: 'To do' })).toBeDisabled();
     vi.mocked(getTask).mockResolvedValueOnce({ ...detail, requiredPlatform: 'linux', version: detail.version + 1n }); fireEvent.click(check);
     await screen.findByText('The actual task has been read. The displayed platform is confirmed.');
     expect(select()).toHaveValue('linux'); expect(select()).toBeEnabled(); expect(writes).toHaveBeenCalledTimes(1);
   });
   it('locks an executing task and renders all Chinese platform labels in the header', async () => {
-    await open({ ...detail, status: 'in_progress', requiredPlatform: 'windows' }, 'zh-CN');
+    await open({ ...detail, status: 'in_progress', ready: false, requiredPlatform: 'windows' }, 'zh-CN');
     const platform = screen.getByRole('combobox', { name: '执行平台' });
     expect(platform).toBeDisabled(); expect(platform).toHaveValue('windows'); expect(screen.queryByRole('button', { name: '保存平台' })).toBeNull();
     expect(within(platform).getAllByRole('option').map((option) => option.textContent)).toEqual(['不限平台', 'Windows', 'Linux', 'macOS']);
-    expect(screen.getByText('任务已被领取，执行结束或解除领取前无法修改执行平台。')).toBeVisible();
+    expect(screen.getByText('任务正在进行中，保持此状态时无法修改执行平台。')).toBeVisible();
   });
   it('localizes readonly badges and leaves feedback empty for another operation kind', () => {
     const idle: TaskMutationState = { operation: null, phase: 'idle', error: null, reconciling: false, reconciliationError: null };

@@ -8,7 +8,7 @@ Ready tasks may require a person to arrange their execution, while a foreground
 worker needs a stable rule for selecting work without a new conversation. A
 task can also wait for human input during agent execution without changing who
 owns its resources. The task model must express permission for automatic
-selection independently of approval, dependency readiness and actual executor
+selection independently of status, dependency readiness and actual executor
 identity.
 
 ## Decision
@@ -29,7 +29,7 @@ existing tasks `true` while preserving their other fields, versions and business
 timestamps. Creation rejects a supplied permission. An authenticated project
 member changes the flag through ordinary versioned task PATCH: omission keeps
 the value, explicit false disables it, and null or nonboolean values fail.
-Approval and withdrawal preserve the flag. Explicit manual claim remains
+Status changes preserve the flag. Explicitly designated execution remains
 available regardless of it; automatic worker claim requires it together with
 ready state, platform compatibility and unique ownership.
 
@@ -88,8 +88,8 @@ before candidate pagination and included in cursor scope. Future worker claim
 must recheck it inside the claim transaction. A local filter on a bounded page
 cannot establish that no eligible work exists.
 
-Switch changes share the task write gate with confirmed platform changes,
-approval and withdrawal. The [platform control decision](../simplification/2026-10-24-task-platform-confirmation-control.md)
+Switch changes share the task write gate with status setting and confirmed
+platform changes. The [platform control decision](../simplification/2026-10-24-task-platform-confirmation-control.md)
 owns the status-row select, its confirmation and select-focus restoration.
 Version conflicts require a fresh decision, confirmed failures retain the prior
 value, and uncertain writes remain unresolved until actual state is observed. Those
@@ -108,7 +108,7 @@ permission and JSON retains the required boolean.
 
 Permission acceptance covers migration/defaults, strict resources, both filter
 values and cursor scopes, full-precision versions, no-op/in-progress rules,
-claim races, confirmed controls and existing manual lifecycle independently of
+status/permission races, confirmed controls and existing explicit task execution independently of
 worker-specific endpoints. Browser acceptance exercises the same permission
 PATCH through a real service, including lost responses and cross-close request
 ownership. Automatic claim transaction checks, controlled coordinator

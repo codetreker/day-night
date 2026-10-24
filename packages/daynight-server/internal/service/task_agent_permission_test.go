@@ -9,17 +9,17 @@ import (
 	"github.com/codetreker/daynight/packages/daynight-server/internal/core"
 )
 
-func TestTaskAgentPermissionUpdatesAndLifecycleRemainIndependent(t *testing.T) {
+func TestTaskAgentPermissionUpdatesAndStatusRemainIndependent(t *testing.T) {
 	tasks, _, project, _, principal := taskService(t)
 	ctx := context.Background()
 	for _, allowed := range []bool{false, true} {
-		task := createTask(t, tasks, principal, project.ID, "Permission lifecycle")
+		task := createTask(t, tasks, principal, project.ID, "Permission status")
 		if task.AllowAgents {
 			t.Fatal("new task permits automatic execution")
 		}
 		task = updateTask(t, tasks, principal, task, UpdateTask{AllowAgents: &allowed})
-		if task.AllowAgents != allowed || task.Status != core.TaskProposed || task.Ready {
-			t.Fatalf("permission changed lifecycle: %#v", task)
+		if task.AllowAgents != allowed || task.Status != core.TaskTodo || !task.Ready {
+			t.Fatalf("permission changed status: %#v", task)
 		}
 		noOp := updateTask(t, tasks, principal, task, UpdateTask{AllowAgents: &allowed})
 		if !reflect.DeepEqual(noOp, task) {
@@ -28,17 +28,17 @@ func TestTaskAgentPermissionUpdatesAndLifecycleRemainIndependent(t *testing.T) {
 		_, err := tasks.Update(ctx, principal, project.ID, task.ID, UpdateTask{Version: task.Version + 1, AllowAgents: &allowed})
 		requireFault(t, err, "version_conflict")
 		task = updateTask(t, tasks, principal, task, UpdateTask{Description: pointer("Preserved metadata"), Properties: core.TaskPropertiesPatch{PullRequests: pointer([]core.PullRequestProperty{{URL: "https://example.com/pr/1", Title: "Evidence"}})}})
-		task = approveTask(t, tasks, principal, task)
+
 		if !task.Ready || task.AllowAgents != allowed {
-			t.Fatal("approval changed permission or readiness")
+			t.Fatal("metadata edit changed permission or readiness")
 		}
-		task = unapproveTask(t, tasks, principal, task)
+		task = setStatusTask(t, tasks, principal, task, core.TaskTodo)
 		if task.AllowAgents != allowed {
-			t.Fatal("withdrawal changed permission")
+			t.Fatal("same-status request changed permission")
 		}
-		task = claimTask(t, tasks, principal, approveTask(t, tasks, principal, task))
+		task = startTask(t, tasks, principal, task)
 		if task.AllowAgents != allowed || task.StartedAt == nil {
-			t.Fatal("explicit manual claim must preserve either permission")
+			t.Fatal("explicit manual start must preserve either permission")
 		}
 		if noOp := updateTask(t, tasks, principal, task, UpdateTask{AllowAgents: &allowed}); !reflect.DeepEqual(noOp, task) {
 			t.Fatal("active same-value request changed resource")
@@ -51,7 +51,7 @@ func TestTaskAgentPermissionUpdatesAndLifecycleRemainIndependent(t *testing.T) {
 		if edited.AllowAgents != allowed || !reflect.DeepEqual(edited.StartedAt, task.StartedAt) || edited.CompletedAt != nil {
 			t.Fatal("ordinary metadata changed permission/timing")
 		}
-		task = completeTask(t, tasks, principal, edited)
+		task = finishTask(t, tasks, principal, edited)
 		changed := updateTask(t, tasks, principal, task, UpdateTask{AllowAgents: &toggle})
 		if changed.AllowAgents != toggle || !reflect.DeepEqual(changed.StartedAt, task.StartedAt) || !reflect.DeepEqual(changed.CompletedAt, task.CompletedAt) || !reflect.DeepEqual(changed.Properties, task.Properties) {
 			t.Fatal("completed permission edit changed historical execution or properties")
@@ -64,7 +64,7 @@ func TestTaskAgentPermissionFilterPrecedesLimitAndBindsCursor(t *testing.T) {
 	ctx := context.Background()
 	var permitted, manual []string
 	for index := range 6 {
-		task := approveTask(t, tasks, principal, createTask(t, tasks, principal, project.ID, "Permission candidate"))
+		task := createTask(t, tasks, principal, project.ID, "Permission candidate")
 		if index >= 3 {
 			task = updateTask(t, tasks, principal, task, UpdateTask{AllowAgents: pointer(true)})
 			permitted = append(permitted, task.ID)
@@ -122,15 +122,15 @@ func TestTaskAgentPermissionFilterPrecedesLimitAndBindsCursor(t *testing.T) {
 	}
 }
 
-func TestTaskAgentPermissionAndClaimRaceHasOneMutationWinner(t *testing.T) {
+func TestTaskAgentPermissionAndStartRaceHasOneMutationWinner(t *testing.T) {
 	tasks, database, project, _, principal := taskService(t)
-	before := approveTask(t, tasks, principal, createTask(t, tasks, principal, project.ID, "Permission race"))
+	before := createTask(t, tasks, principal, project.ID, "Permission race")
 	results := competeTaskWrites(t, database, project.ID,
 		func(ctx context.Context) (core.Task, error) {
 			return tasks.Update(ctx, principal, project.ID, before.ID, UpdateTask{Version: before.Version, AllowAgents: pointer(true)})
 		},
 		func(ctx context.Context) (core.Task, error) {
-			return tasks.Claim(ctx, principal, project.ID, before.ID, before.Version)
+			return tasks.SetStatus(ctx, principal, project.ID, before.ID, SetTaskStatus{Version: before.Version, Status: core.TaskInProgress})
 		})
 	assertOneTaskWinner(t, results, "version_conflict")
 	after, err := tasks.Get(context.Background(), principal, project.ID, before.ID)
@@ -139,9 +139,9 @@ func TestTaskAgentPermissionAndClaimRaceHasOneMutationWinner(t *testing.T) {
 	}
 	if after.Status == core.TaskInProgress {
 		if after.AllowAgents || after.StartedAt == nil {
-			t.Fatal("claim winner changed permission or omitted timing")
+			t.Fatal("start winner changed permission or omitted timing")
 		}
 	} else if after.Status != core.TaskTodo || !after.AllowAgents || after.StartedAt != nil {
-		t.Fatalf("permission winner changed lifecycle: %#v", after)
+		t.Fatalf("permission winner changed status: %#v", after)
 	}
 }

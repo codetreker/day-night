@@ -55,9 +55,9 @@ export const verifyPublicExternalDependencyWrites = async (page: Page, api: Auth
       const task = parseTaskDetail(parseApiJson(await success(['task', 'show', id, '--project', project.id, '--json'])), project.id, id);
       expect(task, 'Installed CLI and API read the same full task').toEqual(await read(id, label)); return task;
     };
-    const action = async (task: TaskDetail, name: 'approve' | 'claim' | 'complete'): Promise<TaskDetail> => {
-      await success(['task', name, task.id, '--project', project.id, '--if-version', String(task.version)]);
-      const after = await read(task.id, `cli-${name}`);
+    const action = async (task: TaskDetail, status: TaskDetail['status']): Promise<TaskDetail> => {
+      await success(['task', 'set-status', task.id, status, '--project', project.id, '--if-version', String(task.version)]);
+      const after = await read(task.id, `cli-${status}`);
       expect(after.version).toBe(task.version + 1n);
       expect(after.dependsOn).toEqual(task.dependsOn); expect(after.externalDependsOn).toEqual(task.externalDependsOn);
       return after;
@@ -66,7 +66,7 @@ export const verifyPublicExternalDependencyWrites = async (page: Page, api: Auth
       const id = resourceId(await success(['task', 'create', '--project', project.id, '--title', title, ...options]));
       return cliRead(id, 'cli-created');
     };
-    const complete = async (task: TaskDetail) => action(await action(await action(task, 'approve'), 'claim'), 'complete');
+    const complete = async (task: TaskDetail) => action(await action(task, 'in_progress'), 'done');
     const patchFlags = async (task: TaskDetail, external: readonly string[], status = 200, version = task.version): Promise<TaskDetail> => {
       const path = taskPath(project.id, task.id); const body = stringifyApiJson({ version, externalDependsOn: external });
       const response = await api.patch(path, { headers: { 'Content-Type': 'application/json' }, data: body });
@@ -106,14 +106,14 @@ export const verifyPublicExternalDependencyWrites = async (page: Page, api: Auth
 
     const ordinary = await complete(await create('普通链交付起点'));
     const externalRoot = await complete(await create('外部链交付起点'));
-    let external = await action(await create('外部链尚未完成的成果', ['--depends-on', externalRoot.id]), 'approve');
+    let external = await create('外部链尚未完成的成果', ['--depends-on', externalRoot.id]);
     let consumer = await create('由 CLI 声明混合依赖的任务', [
       '--description', '公开创建和分类更新应保留任务状态、执行时间与关联资料。',
       '--depends-on', ordinary.id, '--external-depends-on', external.id,
       '--pull-request-url', 'https://example.com/pull/42', '--pull-request-title', 'Preserved public dependency contract',
     ]);
     expect(consumer.dependsOn).toEqual([ordinary.id, external.id].sort()); expect(consumer.externalDependsOn).toEqual([external.id]);
-    expect(consumer.status).toBe('proposed'); expect(consumer.startedAt).toBeNull(); expect(consumer.completedAt).toBeNull();
+    expect(consumer.status).toBe('todo'); expect(consumer.startedAt).toBeNull(); expect(consumer.completedAt).toBeNull();
     const listed = JSON.parse(await success(['task', 'list', '--project', project.id, '--all', '--json'])) as { id: string; externalDependsOn: string[]; description?: string }[];
     const listedConsumer = listed.find(({ id }) => id === consumer.id)!;
     expect(listedConsumer.externalDependsOn).toEqual([external.id]); expect(Object.hasOwn(listedConsumer, 'description')).toBe(false);
@@ -129,22 +129,21 @@ export const verifyPublicExternalDependencyWrites = async (page: Page, api: Auth
     await expect(detail(page).getByRole('region', { name: '当前未完成的前置', exact: true }).locator('.task-detail-relation-external')).toHaveCount(1);
     await page.keyboard.press('Escape'); evidence.steps.push('installed-cli-create-api-and-web-readback');
 
-    consumer = await action(consumer, 'approve');
-    const blocked = await run(['task', 'claim', consumer.id, '--project', project.id, '--if-version', String(consumer.version)]);
+    const blocked = await run(['task', 'set-status', consumer.id, 'in_progress', '--project', project.id, '--if-version', String(consumer.version)]);
     expect(blocked.exitCode).toBe(1); expect(blocked.stderr).toContain('dependency_unsatisfied'); expect(blocked.stderr).toContain(external.id);
-    const claimRequestIds = [...blocked.stderr.matchAll(/\(requestId=([^)]*)\)/g)];
-    expect(claimRequestIds, 'Installed refusal retains one complete server correlation ID').toHaveLength(1);
-    expect(claimRequestIds[0]![1]).toMatch(requestIdPattern);
-    expect(await read(consumer.id, 'external-claim-refusal')).toEqual(consumer);
+    const statusRequestIds = [...blocked.stderr.matchAll(/\(requestId=([^)]*)\)/g)];
+    expect(statusRequestIds, 'Installed refusal retains one complete server correlation ID').toHaveLength(1);
+    expect(statusRequestIds[0]![1]).toMatch(requestIdPattern);
+    expect(await read(consumer.id, 'external-status-refusal')).toEqual(consumer);
     const ready = JSON.parse(await success(['task', 'ready', '--project', project.id, '--json'])) as { id: string; externalDependsOn: string[] }[];
     expect(ready.some(({ id }) => id === consumer.id)).toBe(false); expect(ready.find(({ id }) => id === external.id)!.externalDependsOn).toEqual([]);
     await success(['task', 'update', consumer.id, '--project', project.id, '--if-version', String(consumer.version), '--description', '仅修改描述，完整依赖及外部标识保持。']);
     const edited = await cliRead(consumer.id, 'omitted-dependency-fields');
     expect(edited).toEqual({ ...consumer, description: '仅修改描述，完整依赖及外部标识保持。', version: consumer.version + 1n, updatedAt: edited.updatedAt }); consumer = edited;
-    external = await action(await action(external, 'claim'), 'complete');
+    external = await action(await action(external, 'in_progress'), 'done');
     const unblocked = await read(consumer.id, 'external-completion-derived-readiness');
     expect(unblocked).toEqual({ ...consumer, blockedBy: [], ready: true }); consumer = unblocked;
-    consumer = await action(consumer, 'claim'); expect(consumer.startedAt).not.toBeNull(); expect(consumer.completedAt).toBeNull();
+    consumer = await action(consumer, 'in_progress'); expect(consumer.startedAt).not.toBeNull(); expect(consumer.completedAt).toBeNull();
     evidence.steps.push('external-execution-prerequisite-and-lifecycle-preserved');
 
     const runningStart = consumer.startedAt;
@@ -178,7 +177,7 @@ export const verifyPublicExternalDependencyWrites = async (page: Page, api: Auth
     await replace(['--clear-dependencies'], [], [], 'cli-clear-both-dependency-sets');
     await readWeb(); await page.getByRole('tab', { name: '独立任务', exact: true }).click();
     await expect(page.locator(`#standalone-task-${consumer.id}`)).toBeVisible(); expect(consumer.startedAt).toBe(runningStart);
-    const beforeCompletion = consumer; consumer = await action(consumer, 'complete'); expect(consumer.startedAt).toBe(runningStart); expect(consumer.completedAt).not.toBeNull();
+    const beforeCompletion = consumer; consumer = await action(consumer, 'done'); expect(consumer.startedAt).toBe(runningStart); expect(consumer.completedAt).not.toBeNull();
     await patchFlags(consumer, []); await patchFlags(consumer, [], 409, beforeCompletion.version); await patchFlags(consumer, [ordinary.id], 400);
     await readWeb();
     await page.getByRole('checkbox', { name: /显示已完成独立任务/ }).check();

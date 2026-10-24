@@ -28,10 +28,11 @@ with the captured exact version. Cancel, Escape, close and backdrop dismissal
 preserve the saved value and restore focus to the connected, enabled select;
 if the opener is no longer usable, focus returns to the task title.
 
-`TaskDetailDialog` owns one discriminated confirmation state for approval,
+`TaskDetailDialog` owns one discriminated confirmation state for status,
 automatic-execution permission and platform. The shared `TaskConfirmation`
-provides the modal shell, focus trap and inert parent, with an optional transition
-paragraph for platform changes. This keeps deliberate selection local while the
+provides the modal shell, focus trap and inert parent. Its existing optional
+content slot accommodates the platform transition, as it does the status change
+and timing effects. This keeps deliberate selection local while the
 existing task session continues to own submitted operations after confirmation
 or detail closure. Pending, unknown and reconciliation states still block other
 writes; in-progress tasks lock the control. Only a confirmed successful response
@@ -70,5 +71,5 @@ shared locks, stale review and late-response ownership.
 
 The platform continues to describe task requirements rather than a current
 machine or active worker. This allocation does not change automatic eligibility,
-manual claim, backend execution locks, worker ownership or recovery. Those
+explicit manual status setting, backend execution locks, worker ownership or recovery. Those
 mechanisms retain their existing owners and evidence requirements.

@@ -1,7 +1,7 @@
 import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { approveTask, attachmentPreviewRoot, getTask, getTaskGraph, listAttachments, readAttachmentText } from '../src/api/client';
+import { setTaskStatus, attachmentPreviewRoot, getTask, getTaskGraph, listAttachments, readAttachmentText } from '../src/api/client';
 import type { Attachment, TaskDetail } from '../src/api/types';
 import { ProjectPage } from '../src/features/projects/ProjectPage';
 import { createLocaleRender } from './helpers/renderWithLocale';
@@ -10,7 +10,7 @@ import { browsingProjects } from './mockups/browsing-fixture';
 
 vi.mock('../src/api/client', async (original) => ({
   ...await original<typeof import('../src/api/client')>(),
-  approveTask: vi.fn(), getTaskGraph: vi.fn(), getTask: vi.fn(), listAttachments: vi.fn(), readAttachmentText: vi.fn(),
+  setTaskStatus: vi.fn(), getTaskGraph: vi.fn(), getTask: vi.fn(), listAttachments: vi.fn(), readAttachmentText: vi.fn(),
 }));
 
 const render = createLocaleRender('zh-CN');
@@ -30,7 +30,7 @@ let root: HTMLDivElement;
 
 beforeEach(() => {
   installGraphMeasurements();
-  vi.mocked(approveTask).mockReset();
+  vi.mocked(setTaskStatus).mockReset();
   root = document.createElement('div');
   root.id = 'root';
   document.body.append(root);
@@ -59,12 +59,9 @@ const graphSnapshot = (container: HTMLElement) => ({
 });
 
 describe('graph inspection and detail reading integration', () => {
-  it.each(['todo', 'proposed'] as const)('retains the selected dependency path while another %s task opens Markdown and its attachment in the same dialog', async (status) => {
-    if (status === 'proposed') {
-      vi.mocked(getTaskGraph).mockResolvedValue({ ...graph, tasks: graph.tasks.map((task) => task.id === detailNode.id ? { ...task, status, ready: false } : task),
-        summary: { ...graph.summary, proposed: graph.summary.proposed + 1, todo: graph.summary.todo - 1, blocked: graph.summary.blocked - 1 } });
-      vi.mocked(getTask).mockResolvedValue({ ...detail, status, ready: false, version: 1n });
-    }
+  it.each([false, true])('retains the selected dependency path while task permission %s opens Markdown and its attachment in the same dialog', async (allowAgents) => {
+    vi.mocked(getTaskGraph).mockResolvedValue({ ...graph, tasks: graph.tasks.map((task) => task.id === detailNode.id ? { ...task, allowAgents } : task) });
+    vi.mocked(getTask).mockResolvedValue({ ...detail, allowAgents });
     const user = userEvent.setup();
     const view = render(<ProjectPage projectId={graph.project.id} />, { container: root });
     await waitFor(() => { expect(root.querySelectorAll('.react-flow__node')).toHaveLength(6); });
@@ -84,8 +81,7 @@ describe('graph inspection and detail reading integration', () => {
     const dialog = screen.getByRole('dialog');
     await within(dialog).findByRole('heading', { name: 'Delivery notes' });
     expect(root).toHaveAttribute('inert');
-    if (status === 'proposed') expect(within(dialog).getByRole('button', { name: '批准任务' })).toBeEnabled();
-    else expect(within(dialog).queryByRole('button', { name: '批准任务' })).toBeNull();
+    expect(within(dialog).getByRole('button', { name: '待处理' })).toBeEnabled();
     expect(graphSnapshot(root)).toEqual(state);
     const link = within(dialog).getByRole('link', { name: 'Read acceptance guide' });
     expect(link).toHaveAttribute('href', `${attachmentPreviewRoot(graph.project.id, detailNode.id)}docs/guide.md`);
@@ -104,7 +100,7 @@ describe('graph inspection and detail reading integration', () => {
     expect(root).not.toHaveAttribute('inert');
     expect(trigger).toHaveFocus();
     expect(graphSnapshot(view.container)).toEqual(state);
-    expect(approveTask).not.toHaveBeenCalled();
+    expect(setTaskStatus).not.toHaveBeenCalled();
     expect(getTaskGraph).toHaveBeenCalledTimes(1);
     expect(getTask).toHaveBeenCalledExactlyOnceWith(graph.project.id, detailNode.id, expect.any(AbortSignal));
   });

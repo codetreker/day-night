@@ -11,15 +11,15 @@
 进行中的任务持续显示耗时；完成时固定结果。早先尝试不累加，普通字段编辑不重置计时。
 计时不表示 CPU 时间、人工有效工作时间或持续收到进度信号的时间。
 
-当前公开生命周期由 `approve`、`unapprove`、`claim`、`complete` 提供
-`proposed → todo → in_progress → done`，`unapprove` 仅将尚未开始的 todo 撤回 proposed；普通更新不能修改状态。
-approve 与 unapprove 保留已有执行起止，不产生新的计时事实。计时功能保留这些限制，不增加重新打开、直接完成或重复 claim 的入口。
-若存储中发生新的合法 `in_progress` 进入，起点替换而非累加；当前调用者仍须遵守既有生命周期。
+状态由 `task set-status` 在 todo、in_progress、done 间设置，普通元数据更新没有 status。
+同状态先核验精确版本并保持计时；实际进入 in_progress 开始新尝试，实际退回 todo 清空两端；
+in_progress→done 保留可空起点并写终点，todo→done 仅写终点，耗时未知。
+历史 proposed→todo 迁移只归类状态，保留已有起止时间，详见[状态要求](daynight-task-status.md)。
 
 ## TT2：起止时间与一致性
 
 服务端生成 `startedAt` 与 `completedAt`，客户端不能提交或修改它们。
-成功 claim 记录真实开始，成功 complete 记录真实完成；修改标题、描述、依赖和 PR 属性保留起止时间。
+实际进入 in_progress 记录真实开始，进入 done 记录真实完成；修改标题、描述、依赖和 PR 属性保留起止时间。
 状态、时间和任务版本在同一事务提交。版本冲突、无效转换、未完成前置、权限拒绝、取消或数据库失败均不能留下部分计时更新。
 
 完成后的耗时不随时间、后续字段编辑、页面刷新或服务重启增长。

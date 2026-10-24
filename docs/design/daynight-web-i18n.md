@@ -84,7 +84,7 @@ Provider 使用一份当前 issue 状态，初始值来自 `initial.issue`。选
 
 生产入口在 `createRoot()` 前执行初始解析，再把常驻 Provider 放在应用根部。首屏 HTML `lang` 和标题使用解析结果，后续导航与切换同步更新。Provider 不以 locale 作为 `key`，领域组件也不使用 locale 重置实例。
 
-导航、全屏工具栏和独立 `AttachmentPage` 共用 `LanguageSelector`。居中 `TaskDetailDialog` 通过同一个 `LocaleProvider` 订阅应用当前语言，其顶栏保留任务标题、当前审批动作和关闭入口。详情打开时底层页面继续处于 `inert`，模态入口使用既有焦点圈定、Escape 分层和关闭后恢复机制；独立阅读页保留普通浏览器键盘行为。语言变化本身不移动焦点。
+导航、全屏工具栏和独立 `AttachmentPage` 共用 `LanguageSelector`。居中 `TaskDetailDialog` 通过同一个 `LocaleProvider` 订阅应用当前语言，其顶栏保留任务标题、当前状态菜单和关闭入口。详情打开时底层页面继续处于 `inert`，模态入口使用既有焦点圈定、Escape 分层和关闭后恢复机制；独立阅读页保留普通浏览器键盘行为。语言变化本身不移动焦点。
 
 项目、图、详情与附件请求仍由资源 ID、revision 和原有操作触发。locale 不进入业务 hook 的请求、取消或订阅依赖；上传、覆盖、删除和刷新期间切换只更新展示。附件预览继续使用原来的 key、URL、DOM 和 iframe 身份，输入与已选文件保持不变。
 
@@ -108,9 +108,9 @@ Provider 使用一份当前 issue 状态，初始值来自 `initial.issue`。选
 | `language-state-preservation` | 图节点/边/视口、全屏与模态焦点、PR 页码、附件输入/iframe 身份及内容；待完成上传、覆盖和删除期间切换，每项写入只执行一次。 |
 | `language-errors-and-narrow` | 读/无效值/写入故障与重试、真实隔离数据库故障下错误重译及相同 request ID，两种语言的 1440px/320px 图、对话框与附件布局。 |
 
-三个场景使用现有受监控页面与场景级 `en-US` 浏览器 locale，继续由单一 Playwright project 执行一次、零 retry。需要精确比较语言切换前后业务请求数量的隔离阶段控制浏览器时钟，排除独立项目定时器触发；真实周期刷新由 `refresh-staleness` 单独验证。滚动恢复读取实际 `scrollTop`，以测试进程单调时钟观察其连续稳定状态，不依赖受控浏览器定时器。functional inventory、报告聚合与严格预期测试使用相同 annotation；双语接入时每目标 13 个功能场景；当前[审批生命周期](../../.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)
-增加三个审批场景，[描述阅读](daynight-task-inspection.md#markdown-与附件链接)增加一个功能场景，
-鉴权增加六个功能场景，审批撤回另有 `task-unapproval`。当前每目标 24 个功能场景，原生保留 5 个容量/超限场景，共 29 个；
-容器 24 个，总计 53 个。容量矩阵、性能预算、覆盖率与清理规则保持原要求。
+三个场景使用现有受监控页面与场景级 `en-US` 浏览器 locale，继续由单一 Playwright project 执行一次、零 retry。需要精确比较语言切换前后业务请求数量的隔离阶段控制浏览器时钟，排除独立项目定时器触发；真实周期刷新由 `refresh-staleness` 单独验证。滚动恢复读取实际 `scrollTop`，以测试进程单调时钟观察其连续稳定状态，不依赖受控浏览器定时器。functional inventory、报告聚合与严格预期测试使用相同 annotation；当前每目标 28 个功能场景，
+原生另有五个容量/超限场景，共 33 个；容器 28 个，总计 61 个。三状态使用 task-status、
+task-status-conflicts、task-status-recovery、task-status-transitions，状态浏览器写入只允许登记资源的
+精确 PUT status。容量、性能、覆盖率与清理规则保持，当前 inventory 由生产验收脚本验证。
 
 组合验收核对相同源码的真实嵌入式服务与生产容器回执，验证完整 L1–L10，包括首屏、持久保存、键盘操作、两种语言的 1440px/320px 视觉、错误恢复、业务请求数量和资源清理。原型、隔离组件、JSDOM 与本地浏览器各有其证据范围，不能替代真实服务和对应源码的生产验收。

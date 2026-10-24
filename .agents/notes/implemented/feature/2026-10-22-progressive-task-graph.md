@@ -186,7 +186,7 @@ preserves their extension points without implying those capabilities.
 
 Acceptance independently derives initial membership, induced edges, batch deltas
 and root-connected refresh retention. It covers 50/100 boundaries, stable order,
-shared neighbors, proposed/completed states, dense manual expansion, unrelated
+shared neighbors, todo/completed states, dense manual expansion, unrelated
 external successors, failure retention and dialog focus. PR134 retained body-open
 details and polylines as its delivered baseline. The later
 [inspection decision](2026-10-22-task-dependency-inspection.md) now owns sibling

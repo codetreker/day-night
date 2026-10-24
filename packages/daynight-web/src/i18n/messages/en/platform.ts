@@ -7,7 +7,7 @@ export const platform: PlatformMessages = {
   explanation: "The task requirement changes only after confirmation. Workers must run on the required platform; Any platform removes the requirement.",
   confirm: "Change platform", cancel: "Cancel", closeConfirmation: "Close confirmation",
   help: "Workers must run on the required platform. Any platform removes the requirement. Select an option to review and confirm the change.",
-  locked: "This task is already claimed. The execution platform is locked until execution ends or is released.",
+  locked: "This task is in progress. The execution platform cannot change while it remains in progress.",
   pending: "Saving the execution platform. You can close these details while the request completes.",
   confirmed: "Execution platform updated.",
   conflict: "The task changed. Review its current platform before confirming another change.",

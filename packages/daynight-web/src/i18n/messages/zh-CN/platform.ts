@@ -7,7 +7,7 @@ export const platform: PlatformMessages = {
   explanation: "只有确认后才会修改任务要求。Worker 必须在指定平台运行；不限平台会清除要求。",
   confirm: "修改平台", cancel: "取消", closeConfirmation: "关闭确认框",
   help: "Worker 必须在指定平台运行；不限平台会清除要求。选择选项后审阅并确认修改。",
-  locked: "任务已被领取，执行结束或解除领取前无法修改执行平台。",
+  locked: "任务正在进行中，保持此状态时无法修改执行平台。",
   pending: "正在保存执行平台。可以关闭详情，结果会保留。",
   confirmed: "执行平台已更新。",
   conflict: "任务已发生变化，请检查当前平台后重新确认修改。",

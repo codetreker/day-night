@@ -20,17 +20,17 @@ func TestTaskTimingMigrationPreservesUnknownHistoricalIntervals(t *testing.T) {
 	project := projectBeforeSettings(t, database, 1)
 	stamp := time.Date(2026, 1, 2, 3, 4, 5, 123456000, time.UTC)
 	var historical []core.Task
-	for index, status := range []core.TaskStatus{core.TaskProposed, core.TaskTodo, core.TaskInProgress, core.TaskDone} {
+	for index, status := range []core.TaskStatus{core.TaskStatus("proposed"), core.TaskTodo, core.TaskInProgress, core.TaskDone} {
 		id := queryID(index + 10)
 		mustQueryExec(t, database, `INSERT INTO tasks (id, project_id, title, description, status, version, created_at, updated_at)
 			VALUES ($1, $2, 'Historical execution', 'Preserved', $3, $4, $5, $6)`, id, project.ID, status, index+17, stamp, stamp.Add(time.Hour))
 		historical = append(historical, snapshotTaskBeforeTiming(t, database, project.ID, id))
 	}
-	if err := migrate(ctx, pool, schemaMigrations); err != nil {
+	if err := migrate(ctx, pool, schemaMigrations[:12]); err != nil {
 		t.Fatal(err)
 	}
 	for _, before := range historical {
-		after := snapshotTask(t, database, project.ID, before.ID)
+		after := snapshotHistoricalTask(t, database, project.ID, before.ID)
 		if !reflect.DeepEqual(after, before) || after.StartedAt != nil || after.CompletedAt != nil {
 			t.Fatalf("historical timing or metadata was invented: before %#v after %#v", before, after)
 		}
@@ -39,7 +39,7 @@ func TestTaskTimingMigrationPreservesUnknownHistoricalIntervals(t *testing.T) {
 	if err := pool.QueryRow(ctx, "SELECT applied_at FROM schema_migrations WHERE version=9").Scan(&applied); err != nil {
 		t.Fatal(err)
 	}
-	if err := migrate(ctx, pool, schemaMigrations); err != nil {
+	if err := migrate(ctx, pool, schemaMigrations[:12]); err != nil {
 		t.Fatal(err)
 	}
 	var repeated time.Time
@@ -90,8 +90,8 @@ func TestTaskTimingReplacesTheLatestIntervalAndPreservesEdits(t *testing.T) {
 		t.Fatalf("new execution reused a previous attempt: %#v", restarted)
 	}
 	reentered := write(core.TaskTodo, "Paused attempt")
-	if !reflect.DeepEqual(reentered.StartedAt, restarted.StartedAt) {
-		t.Fatalf("noncompleted transition changed the latest start: %#v", reentered)
+	if reentered.StartedAt != nil || reentered.CompletedAt != nil {
+		t.Fatalf("returning to todo retained execution timing: %#v", reentered)
 	}
 	latest := write(core.TaskInProgress, "Latest attempt")
 	if latest.StartedAt == nil || !latest.StartedAt.After(*restarted.StartedAt) || latest.CompletedAt != nil {

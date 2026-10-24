@@ -12,6 +12,12 @@ prerequisites, so a root-anchored viewport can conceal the new context.
 
 ## Decision
 
+The [status assignment decision](../architecture/2026-10-24-task-status-assignment.md) owns the current three-state
+protocol. Status journeys use exact registered PUT status writes; current
+inventory is 33 native and 28 container results. The rollout counts below retain
+their original delivery context; repeatable current commands and mappings belong
+to the Web README.
+
 The [external dependency decision](../architecture/2026-10-23-external-dependency-design.md)
 retains complete ancestor context and implements ordinary-component membership
 with explicit edge classification. It preserves the original reason for full
@@ -74,9 +80,9 @@ container scenarios at that stage. The
 added six functional scenarios per target, and the
 [Markdown description delivery](../architecture/2026-10-22-task-description-markdown.md)
 added one, producing the earlier twenty-five-native/twenty-container inventory.
-The [approval lifecycle](2026-10-22-task-approval-lifecycle.md) adds three approval
-scenarios per target. The later [withdrawal decision](2026-10-23-task-unapprove.md)
-adds one functional scenario per target. Current strict inventories are twenty-nine
+The [approval lifecycle](2026-10-22-task-approval-lifecycle.md) added three approval
+scenarios per target. The historical [withdrawal decision](2026-10-23-task-unapprove.md)
+added one functional scenario per target. At that delivery the inventories were twenty-nine
 native and twenty-four container scenarios, with these same five capacity/limit cases.
 
 The [requirements](../../../../docs/spec/daynight-web.md) own visible behavior,

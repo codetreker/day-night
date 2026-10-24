@@ -8,23 +8,12 @@ import (
 	"github.com/codetreker/daynight/packages/daynight-server/internal/core/store"
 )
 
-func (s *Tasks) Approve(ctx context.Context, principal core.Principal, projectID, id string, version int64) (core.Task, error) {
-	return s.transition(ctx, principal, projectID, id, version, core.TaskProposed, core.TaskTodo)
+type SetTaskStatus struct {
+	Version int64
+	Status  core.TaskStatus
 }
 
-func (s *Tasks) Unapprove(ctx context.Context, principal core.Principal, projectID, id string, version int64) (core.Task, error) {
-	return s.transition(ctx, principal, projectID, id, version, core.TaskTodo, core.TaskProposed)
-}
-
-func (s *Tasks) Claim(ctx context.Context, principal core.Principal, projectID, id string, version int64) (core.Task, error) {
-	return s.transition(ctx, principal, projectID, id, version, core.TaskTodo, core.TaskInProgress)
-}
-
-func (s *Tasks) Complete(ctx context.Context, principal core.Principal, projectID, id string, version int64) (core.Task, error) {
-	return s.transition(ctx, principal, projectID, id, version, core.TaskInProgress, core.TaskDone)
-}
-
-func (s *Tasks) transition(ctx context.Context, principal core.Principal, projectID, id string, version int64, from, to core.TaskStatus) (core.Task, error) {
+func (s *Tasks) SetStatus(ctx context.Context, principal core.Principal, projectID, id string, input SetTaskStatus) (core.Task, error) {
 	if err := requirePrincipal(principal); err != nil {
 		return core.Task{}, err
 	}
@@ -36,8 +25,11 @@ func (s *Tasks) transition(ctx context.Context, principal core.Principal, projec
 	if err != nil {
 		return core.Task{}, err
 	}
-	if version < 1 {
+	if input.Version < 1 {
 		return core.Task{}, invalidInput("Version must be a positive integer.")
+	}
+	if !input.Status.Valid() {
+		return core.Task{}, invalidInput("Task status is invalid.")
 	}
 	return s.write(ctx, principal, projectID, func(tx *store.ProjectTx) (taskMutation, error) {
 		current, err := tx.Task(ctx, id)
@@ -47,16 +39,25 @@ func (s *Tasks) transition(ctx context.Context, principal core.Principal, projec
 		if err != nil {
 			return taskMutation{}, err
 		}
-		if current.Version != version {
+		if current.Version != input.Version {
 			return taskMutation{}, &Fault{Code: "version_conflict", Message: "Task version does not match."}
 		}
-		if current.Status != from {
-			return taskMutation{}, &Fault{Code: "invalid_transition", Message: "Task must be " + string(from) + " before becoming " + string(to) + "."}
+		if current.Status == input.Status {
+			return taskMutation{current: current}, nil
 		}
-		if (to == core.TaskInProgress || to == core.TaskDone) && len(current.BlockedBy) > 0 {
+		if (input.Status == core.TaskInProgress || input.Status == core.TaskDone) && len(current.BlockedBy) > 0 {
 			return taskMutation{}, &Fault{Code: "dependency_unsatisfied", Message: "Task prerequisites must be done.", TaskIDs: current.BlockedBy}
 		}
-		values := store.TaskWrite{RequiredPlatform: current.RequiredPlatform, AllowAgents: current.AllowAgents, Title: current.Title, Description: current.Description, Properties: current.Properties, Status: to, DependsOn: current.DependsOn, ExternalDependsOn: current.ExternalDependsOn}
+		if current.Status == core.TaskDone {
+			dependents, err := tx.ActiveDependentIDs(ctx, id)
+			if err != nil {
+				return taskMutation{}, err
+			}
+			if len(dependents) > 0 {
+				return taskMutation{}, &Fault{Code: "dependency_unsatisfied", Message: "Task dependents must return to todo before reopening this prerequisite.", TaskIDs: dependents}
+			}
+		}
+		values := store.TaskWrite{RequiredPlatform: current.RequiredPlatform, AllowAgents: current.AllowAgents, Title: current.Title, Description: current.Description, Properties: current.Properties, Status: input.Status, DependsOn: current.DependsOn, ExternalDependsOn: current.ExternalDependsOn}
 		return taskMutation{id: id, current: current, values: values, changed: true}, nil
 	})
 }

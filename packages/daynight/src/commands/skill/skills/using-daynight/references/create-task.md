@@ -2,7 +2,7 @@
 
 Use this mode to prepare and register work that needs persistent tracking. Read
 [the handbook](handbook.md) before discovery, queries, or writes. Return after
-registration; registration alone does not authorize approval, execution or
+registration; registration alone does not authorize execution or
 autopilot. An explicit request to start a Goal discussion routes the registered
 current stage to run-task under the Goal protocol.
 
@@ -12,8 +12,7 @@ or review supplies standing creation permission for necessary tasks within the
 confirmed scope. Reuse suitable tasks and do not ask for that permission again.
 Loading this mode, needing durable tracking, or permission to implement or run
 autopilot alone does not grant creation permission. Ask when it is missing; reuse
-permission already granted for the scope. Creation does not authorize approval,
-execution, or delivery.
+permission already granted for the scope. Creation does not authorize execution or delivery.
 
 ## Choose the tracked outcome
 
@@ -37,8 +36,8 @@ or delivery tasks upfront. Its stage brief describes the discussion and its
 user-confirmation gate; finished requirements and applicable prototypes are
 outputs. User-confirmed requirements permit creation and start of solution
 discussion. Only user-confirmed solution permits actual delivery registration.
-A registration-only request leaves the current stage proposed and returns; an
-explicit discussion-start request authorizes its approval and claim through
+A registration-only request leaves the current stage todo and returns; an
+explicit discussion-start request authorizes its start through
 run-task. Creating a Goal covers the later in-scope stages and breakdown only
 at those confirmation gates.
 
@@ -154,13 +153,14 @@ evidence. The prototype remains with its actual owner when shared across a Goal.
 ## Register and verify
 
 New tasks have `allowAgents=false`; creation cannot enable the permission.
-Automatic workers and agent workflows must not turn it on themselves. Approval
-and automatic-execution permission remain separate explicit decisions. Tasks
-without `--required-platform` are unrestricted; set `windows`, `linux` or `macos`
-only when the confirmed task requires that execution environment. Platform
-requirements do not approve tasks or enable automatic execution.
+Automatic workers and agent workflows must not turn it on themselves. Execution
+authorization and automatic-discovery permission remain separate decisions.
 
-Reuse the established project and suitable tasks. Create new tasks in `proposed`,
+Tasks without `--required-platform` are unrestricted. Set windows, linux or macos
+only when the confirmed task needs that execution environment. Platform requirements
+do not start tasks or enable automatic execution; they survive all status changes.
+
+Reuse the established project and suitable tasks. Create new tasks in `todo`,
 retaining each confirmed ID. Set concrete descriptions and actual ordinary and
 external prerequisites using the handbook's full CLI replacement rule. Upload each task's own primary Markdown and required
 resources; add actual attachment references to the complete description using
@@ -175,17 +175,15 @@ interaction. For a Goal, verify only the current discussion stage and its brief;
 verify later stages and delivery tasks when their confirmation gate permits
 registration.
 Registration is complete only when required artifacts and associations are
-confirmed readable. Without separate explicit approval authorization, leave
-registered work proposed and report that approval is pending. A Goal
-discussion-start request is scoped approval and claim authorization for that
-discussion, as the Goal protocol specifies; registration alone grants none.
-User solution confirmation permits registration of proposed delivery tasks,
-without granting their approval or execution. A user can explicitly approve a
-stated task or Goal-task scope, or approve directly through CLI/Web; an authorized Agent uses each reviewed
-task's exact version through `task approve`.
+confirmed readable. Registration leaves work todo and does not execute it. A Goal
+discussion-start request is scoped execution authorization for that discussion,
+as the Goal protocol specifies. User solution confirmation permits registration
+of todo delivery tasks and grants no delivery execution permission. Apply any
+existing explicit execution authorization only within its stated task or Goal
+scope; ready successors in an authorized fixed queue need no per-task authorization.
 
 If creation succeeds but a later operation fails, retain the confirmed IDs and
-resume missing operations there. Tasks remain `proposed`. Reconcile uncertain results through the handbook before another
+resume missing operations there. Tasks remain `todo`. Reconcile uncertain results through the handbook before another
 mutation. Report incomplete registration with the exact missing operation or
 artifact and next step. Do not move detailed plans into descriptions to bypass
 an attachment failure. Return after verified registration without selecting or

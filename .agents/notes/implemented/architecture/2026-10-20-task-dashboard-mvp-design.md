@@ -85,11 +85,10 @@ retaining complete-snapshot ownership and resource isolation. The later
 [Web attachment decision](../feature/2026-10-21-task-attachment-web.md) uses that
 separation for file upload, overwrite and deletion in task details. Task fields and
 dependency editing remain outside the browser's delivered scope. The
-[approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md) adds only proposed→todo
-approval in full task details, with reviewed versions and coordinated snapshot
-refresh. Proposed tasks retain their current-language badge, matching statistics
-and aggregate chain state. The four-state reader preparation preserved read-only
-task fields until that dedicated operation existed. Remote access
+[status assignment decision](2026-10-24-task-status-assignment.md) provides a
+three-item status menu in full details with reviewed versions, shared permission
+mutation ownership and coordinated snapshot refresh. Task creation and three-state
+projection agree across service, CLI and browser. Remote access
 is not an additive configuration change: authentication, authorization, and deployment boundaries require their
 own design. Graph filtering must retain dependency context; large-graph support
 needs a new closed-subgraph contract or measured limit changes.

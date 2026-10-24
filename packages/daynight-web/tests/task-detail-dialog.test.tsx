@@ -30,7 +30,7 @@ const node = (task: TaskDetail): GraphTask => ({ requiredPlatform: task.required
 const snapshot = (tasks = [detail()], revision = 1): GraphSnapshot => {
   const graph: TaskGraph = { observedAt: "2026-10-20T12:00:00Z",
     project, tasks: tasks.map(node), summary: {
-      total: tasks.length, proposed: tasks.filter((task) => task.status === "proposed").length, todo: tasks.filter((task) => task.status === 'todo').length,
+      total: tasks.length, todo: tasks.filter((task) => task.status === 'todo').length,
       inProgress: tasks.filter((task) => task.status === 'in_progress').length,
       done: tasks.filter((task) => task.status === 'done').length,
       ready: tasks.filter((task) => task.ready).length,
@@ -72,30 +72,30 @@ beforeEach(() => {
 afterEach(() => { cleanup(); root.remove(); document.body.style.overflow = ''; });
 
 describe('task detail dialog', () => {
-  it('retranslates a proposed task and its unfinished proposed prerequisite without a ready badge or refetch', async () => {
-    const prerequisite = detail(2, { status: 'proposed', ready: false });
-    const proposed = detail(1, { status: 'proposed', dependsOn: [id(2)], blockedBy: [id(2)], ready: false });
-    const fetch = vi.fn().mockResolvedValue(response(proposed));
+  it('retranslates a to-do task and its unfinished to-do prerequisite without a ready badge or refetch', async () => {
+    const prerequisite = detail(2, { status: 'todo', ready: true });
+    const reviewed = detail(1, { status: 'todo', dependsOn: [id(2)], blockedBy: [id(2)], ready: false });
+    const fetch = vi.fn().mockResolvedValue(response(reviewed));
     vi.stubGlobal('fetch', fetch);
-    const options = props({ snapshot: snapshot([proposed, prerequisite]) });
+    const options = props({ snapshot: snapshot([reviewed, prerequisite]) });
     const view = renderWithLocale(<TaskDetailDialog {...options} />, { locale: 'en', container: host });
     await screen.findByRole('heading', { name: '任务 1' });
-    const original = screen.getByRole('dialog', { name: proposed.title });
-    expect(within(original).getByRole('heading', { level: 2, name: proposed.title }).closest('.task-detail-header')).not.toBeNull();
-    expect(original.querySelector('.task-detail-heading')).not.toHaveTextContent(proposed.id);
+    const original = screen.getByRole('dialog', { name: reviewed.title });
+    expect(within(original).getByRole('heading', { level: 2, name: reviewed.title }).closest('.task-detail-header')).not.toBeNull();
+    expect(original.querySelector('.task-detail-heading')).not.toHaveTextContent(reviewed.id);
     expect(original.querySelector('.task-detail-heading .task-detail-title')).toBeNull();
-    expect(within(original).getAllByText(proposed.id)).toHaveLength(1);
+    expect(within(original).getAllByText(reviewed.id)).toHaveLength(1);
     expect(within(original).getByRole('button', { name: 'Copy task ID' })).toBeVisible();
-    expect(within(original).getByText('Proposed')).toHaveClass('task-detail-status-proposed');
+    expect(within(original).getByRole('button', { name: 'To do' })).toHaveClass('task-status-trigger');
     expect(within(original).queryByText('Ready')).toBeNull();
     expect(within(original).queryByRole('combobox', { name: '语言 / Language' })).toBeNull();
     view.setLocale('zh-CN');
-    const dialog = screen.getByRole('dialog', { name: proposed.title });
+    const dialog = screen.getByRole('dialog', { name: reviewed.title });
     expect(dialog).toBe(original);
-    expect(within(dialog).getByText('待审批')).toHaveClass('task-detail-status-proposed');
+    expect(within(dialog).getByRole('button', { name: '待处理' })).toHaveClass('task-status-trigger');
     expect(within(dialog).queryByText('可开始')).toBeNull();
     const relation = within(screen.getByRole('region', { name: '当前未完成的前置' })).getByRole('button', { name: /^任务 2，普通依赖$/ });
-    expect(relation.querySelector('.task-detail-relation-dot')).toHaveClass('task-detail-dot-proposed');
+    expect(relation.querySelector('.task-detail-relation-dot')).toHaveClass('task-detail-dot-todo');
     fireEvent.click(relation);
     expect(options.onSelectTask).toHaveBeenCalledWith(id(2));
     expect(fetch).toHaveBeenCalledTimes(1);
@@ -105,12 +105,12 @@ describe('task detail dialog', () => {
   });
 
   it('classifies predecessors and successors using each dependency edge owner', async () => {
-    const ordinary = detail(1, { status: 'proposed', ready: false });
-    const external = detail(2, { status: 'proposed', ready: false });
-    const selected = detail(3, { status: 'proposed', dependsOn: [ordinary.id, external.id],
+    const ordinary = detail(1, { status: 'todo', ready: true });
+    const external = detail(2, { status: 'todo', ready: true });
+    const selected = detail(3, { status: 'todo', dependsOn: [ordinary.id, external.id],
       externalDependsOn: [external.id], blockedBy: [ordinary.id, external.id], ready: false });
-    const nextOrdinary = detail(4, { status: 'proposed', dependsOn: [selected.id], blockedBy: [selected.id], ready: false });
-    const nextExternal = detail(5, { status: 'proposed', dependsOn: [selected.id], externalDependsOn: [selected.id], blockedBy: [selected.id], ready: false });
+    const nextOrdinary = detail(4, { status: 'todo', dependsOn: [selected.id], blockedBy: [selected.id], ready: false });
+    const nextExternal = detail(5, { status: 'todo', dependsOn: [selected.id], externalDependsOn: [selected.id], blockedBy: [selected.id], ready: false });
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(selected)));
     const options = props({ taskId: selected.id, snapshot: snapshot([ordinary, external, selected, nextOrdinary, nextExternal]) });
     const view = open(options); await screen.findByRole('heading', { name: '任务 3' });
@@ -245,11 +245,11 @@ describe('task detail dialog', () => {
     await user.tab();
     expect(screen.getByRole('heading', { name: '任务 1' })).toHaveFocus();
     await user.tab();
-    expect(screen.getByRole('button', { name: '撤回审批' })).toHaveFocus();
+    expect(screen.getByRole('button', { name: '待处理' })).toHaveFocus();
     await user.tab();
     expect(close).toHaveFocus();
     await user.tab({ shift: true });
-    expect(screen.getByRole('button', { name: '撤回审批' })).toHaveFocus();
+    expect(screen.getByRole('button', { name: '待处理' })).toHaveFocus();
     await user.tab({ shift: true });
     expect(screen.getByRole('heading', { name: '任务 1' })).toHaveFocus();
     await user.tab({ shift: true });
@@ -340,35 +340,35 @@ describe('task detail dialog', () => {
   });
 
   it.each([
-    { locale: 'en', overview: 'Overview', approve: 'Approve task' },
-    { locale: 'zh-CN', overview: '概览', approve: '批准任务' },
-  ] as const)('keeps unchanged automatic reads quiet and approval available in $locale', async ({ locale, overview, approve }) => {
-    const proposed = detail(1, { status: 'proposed', ready: false });
+    { locale: 'en', overview: 'Overview', statusLabel: 'To do' },
+    { locale: 'zh-CN', overview: '概览', statusLabel: '待处理' },
+  ] as const)('keeps unchanged automatic reads quiet and status selection available in $locale', async ({ locale, overview, statusLabel }) => {
+    const reviewed = detail(1, { status: 'todo', ready: true });
     const updates = [deferred<Response>(), deferred<Response>(), deferred<Response>()];
-    const fetch = vi.fn().mockResolvedValueOnce(response(proposed));
+    const fetch = vi.fn().mockResolvedValueOnce(response(reviewed));
     for (const update of updates) fetch.mockReturnValueOnce(update.promise);
     vi.stubGlobal('fetch', fetch);
-    const initial = props({ snapshot: snapshot([proposed]) });
+    const initial = props({ snapshot: snapshot([reviewed]) });
     const view = renderWithLocale(<TaskDetailDialog {...initial} />, { locale, container: host });
-    await screen.findByRole('heading', { name: proposed.title });
+    await screen.findByRole('heading', { name: reviewed.title });
     const heading = document.querySelector<HTMLElement>('.task-detail-heading')!;
     const panel = screen.getByRole('tabpanel', { name: overview });
-    const approval = screen.getByRole('button', { name: approve });
+    const statusButton = screen.getByRole('button', { name: statusLabel });
     panel.scrollTop = 140;
-    approval.focus();
+    statusButton.focus();
 
     for (const [index, update] of updates.entries()) {
-      view.rerender(<TaskDetailDialog {...initial} snapshot={snapshot([proposed], index + 2)} />);
+      view.rerender(<TaskDetailDialog {...initial} snapshot={snapshot([reviewed], index + 2)} />);
       expect(fetch).toHaveBeenCalledTimes(index + 2);
       expect(within(heading).queryByRole('status')).toBeNull();
-      expect(approval).toBeEnabled();
-      expect(approval).toHaveFocus();
+      expect(statusButton).toBeEnabled();
+      expect(statusButton).toHaveFocus();
       expect(screen.getByRole('tabpanel', { name: overview })).toBe(panel);
       expect(panel.scrollTop).toBe(140);
-      await act(async () => { update.resolve(response(proposed)); });
+      await act(async () => { update.resolve(response(reviewed)); });
       expect(within(heading).queryByRole('status')).toBeNull();
-      expect(approval).toBeEnabled();
-      expect(approval).toHaveFocus();
+      expect(statusButton).toBeEnabled();
+      expect(statusButton).toHaveFocus();
       expect(panel.scrollTop).toBe(140);
     }
   });
@@ -397,13 +397,13 @@ describe('task detail dialog', () => {
     await act(async () => { update.resolve(failure()); });
     expect(screen.getByRole('alert')).toHaveTextContent('任务详情更新失败');
     expect(screen.getByRole('alert')).toHaveTextContent('正在显示上次成功读取的详情，将自动重试更新。');
-    const retained = screen.getByText('当前显示之前读取的任务详情，确认最新详情前无法执行审批操作。');
+    const retained = screen.getByText('当前显示之前读取的任务详情，确认最新详情前无法修改任务。');
     expect(screen.getByRole('region', { name: '附件' })).toBe(attachment);
     expect(draft).toHaveValue('notes/working.md');
     expect(draft).toHaveFocus();
     view.rerender(<TaskDetailDialog {...initial} snapshot={snapshot([detail()], 3)} />);
     expect(screen.getByRole('alert')).toBeVisible();
-    expect(screen.getByText('当前显示之前读取的任务详情，确认最新详情前无法执行审批操作。')).toBe(retained);
+    expect(screen.getByText('当前显示之前读取的任务详情，确认最新详情前无法修改任务。')).toBe(retained);
     await act(async () => { recovery.resolve(response(detail(1, { description: '新的描述' }))); });
     expect(screen.queryByRole('alert')).toBeNull();
     expect(document.querySelector('.task-detail-retained')).toBeNull();
@@ -627,7 +627,11 @@ describe('task detail dialog', () => {
     await user.tab();
     expect(screen.getByRole('heading', { name: first.title })).toHaveFocus();
     await user.tab();
+    expect(screen.getByRole('button', { name: '已完成' })).toHaveFocus();
+    await user.tab();
     expect(close).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(screen.getByRole('button', { name: '已完成' })).toHaveFocus();
     await user.tab({ shift: true });
     expect(screen.getByRole('heading', { name: first.title })).toHaveFocus();
     await user.tab({ shift: true });
