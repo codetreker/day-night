@@ -64,7 +64,7 @@ const mount = () => renderWithLocale(<ProjectPage projectId={project} />, { loca
 const openChild = async () => {
   const node = await screen.findByRole('button', { name: 'Task 2, Details' });
   fireEvent.click(node);
-  const dialog = screen.getByRole('dialog', { name: 'Task details' });
+  const dialog = await screen.findByRole('dialog', { name: 'Task 2' });
   await within(dialog).findByRole('heading', { name: 'Task 2' });
   return dialog;
 };
@@ -88,7 +88,7 @@ describe('approval in shared production task details', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Close task details' }));
     fireEvent.click(screen.getByRole('tab', { name: 'Standalone tasks' }));
     fireEvent.click(screen.getByRole('button', { name: /Task 3/ }));
-    dialog = screen.getByRole('dialog', { name: 'Task details' });
+    dialog = screen.getByRole('dialog');
     await within(dialog).findByRole('heading', { name: 'Task 3' });
     const approvalButton = within(dialog).getByRole('button', { name: 'Approve task' });
     const tab = within(dialog).getByRole('tab', { name: 'Attachments' });
@@ -152,7 +152,7 @@ describe('approval in shared production task details', () => {
     mount(); const dialog = await openChild();
     confirmApproval(within(dialog).getByRole('button', { name: 'Approve task' }));
     const failed = await within(dialog).findByRole('heading', { name: 'Task details could not be loaded' });
-    const alert = failed.parentElement!;
+    const alert = within(dialog).getByRole('alert', { name: failed.textContent! });
     expect(alert).toHaveTextContent('This task can no longer be read. Refresh the task graph.');
     expect(alert).toHaveTextContent('lost-detail-reconciliation');
     const operation = within(dialog).getByRole('region', { name: 'Task approval' });
@@ -196,7 +196,7 @@ describe('approval in shared production task details', () => {
     const openStandalone = async (title: string) => {
       fireEvent.click(screen.getByRole('tab', { name: 'Standalone tasks' }));
       fireEvent.click(screen.getByRole('button', { name: new RegExp(title) }));
-      const dialog = screen.getByRole('dialog', { name: 'Task details' });
+      const dialog = screen.getByRole('dialog');
       await within(dialog).findByRole('heading', { name: title });
       return dialog;
     };
@@ -234,10 +234,10 @@ describe('approval in shared production task details', () => {
 
   it.each(['in_progress', 'done'] as const)('retains approval confirmation when a later detail read reaches %s without claiming it is still todo', async (status) => {
     vi.mocked(approveTask).mockImplementation(async () => commit(standalone));
-    mount(); await screen.findByRole('tab', { name: 'Standalone tasks' });
+    const view = mount(); await screen.findByRole('tab', { name: 'Standalone tasks' });
     fireEvent.click(screen.getByRole('tab', { name: 'Standalone tasks' }));
     fireEvent.click(screen.getByRole('button', { name: /Task 3/ }));
-    let dialog = screen.getByRole('dialog', { name: 'Task details' });
+    let dialog = screen.getByRole('dialog');
     await within(dialog).findByRole('heading', { name: 'Task 3' });
     confirmApproval(within(dialog).getByRole('button', { name: 'Approve task' }));
     await within(dialog).findByText('Approval confirmed.');
@@ -245,12 +245,12 @@ describe('approval in shared production task details', () => {
     records.set(standalone, { ...current, status, ready: false, version: current.version + 1n, updatedAt: '2026-10-22T00:02:00Z' });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Close task details' }));
     fireEvent.click(screen.getByRole('button', { name: /Task 3/ }));
-    dialog = screen.getByRole('dialog', { name: 'Task details' });
+    dialog = screen.getByRole('dialog');
     await within(dialog).findByText(status === 'done' ? 'Done' : 'In progress', { selector: '.task-detail-status' });
     expect(within(dialog).getByText('Approval confirmed.')).toBeVisible();
     expect(within(dialog).getByText('The current task state has been loaded.')).toBeVisible();
     expect(within(dialog).queryByRole('button', { name: 'Approve task' })).toBeNull();
-    fireEvent.change(within(dialog).getByRole('combobox', { name: '语言 / Language' }), { target: { value: 'zh-CN' } });
+    view.setLocale('zh-CN');
     expect(within(dialog).getByText('批准成功。')).toBeVisible();
     expect(within(dialog).getByText(status === 'done' ? '已完成' : '进行中', { selector: '.task-detail-status' })).toBeVisible();
   });
@@ -324,7 +324,7 @@ describe('approval in shared production task details', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Close task details' }));
     fireEvent.click(screen.getByRole('tab', { name: 'Standalone tasks' }));
     fireEvent.click(screen.getByRole('button', { name: /Task 3/ }));
-    const otherDialog = screen.getByRole('dialog', { name: 'Task details' });
+    const otherDialog = screen.getByRole('dialog');
     await within(otherDialog).findByRole('heading', { name: 'Task 3' });
     await act(async () => { mutation.resolve(commit()); });
     expect(oldSignal.aborted).toBe(true);

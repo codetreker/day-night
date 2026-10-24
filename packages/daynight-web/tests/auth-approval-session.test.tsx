@@ -64,7 +64,7 @@ const mount = () => renderWithLocale(<AuthenticatedApp />, { locale: 'en', conta
 const open = async (title: string) => {
   fireEvent.click(screen.getByRole('tab', { name: 'Standalone tasks' }));
   fireEvent.click(screen.getByRole('button', { name: new RegExp(title) }));
-  const dialog = screen.getByRole('dialog', { name: 'Task details' });
+  const dialog = screen.getByRole('dialog');
   await within(dialog).findByRole('heading', { name: title }); return dialog;
 };
 const close = (dialog: HTMLElement) => fireEvent.click(within(dialog).getByRole('button', { name: 'Close task details' }));
@@ -135,7 +135,7 @@ describe('authenticated approval ownership', () => {
     await act(async () => { mutation.reject(new ApiError('network')); });
     expect(screen.getByRole('heading', { name: 'Sign in to your workspace' })).toBeVisible();
     expect(screen.queryByText('Alice reviewed content')).toBeNull();
-    expect(screen.queryByRole('dialog', { name: 'Task details' })).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
     expect(getTask).toHaveBeenCalledTimes(reads);
     expect(logout).toHaveBeenCalledTimes(1);
   });

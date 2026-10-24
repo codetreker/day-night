@@ -1,4 +1,4 @@
-import { useId, type RefObject } from 'react';
+import { useEffect, useId, useRef, useState, type RefObject } from 'react';
 import { ApiError } from '../../api/client';
 import type { TaskDetail } from '../../api/types';
 import { useI18n } from '../../i18n/LocaleProvider';
@@ -57,16 +57,27 @@ export const TaskAgentPermissionFeedback = ({ detail, mutation, id, onReconcile 
 }) => {
   const { messages: { automation: m } } = useI18n();
   const relevant = mutation.operation?.action === 'allowAgents';
+  const previous = useRef(mutation);
+  const [showSuccess, setShowSuccess] = useState(false);
+  useEffect(() => {
+    const observed = previous.current;
+    previous.current = mutation;
+    setShowSuccess(false);
+    if (!relevant || mutation.phase !== 'confirmed' || observed.phase === 'confirmed' && observed.operation === mutation.operation) return;
+    setShowSuccess(true);
+    const timer = window.setTimeout(() => setShowSuccess(false), 3000);
+    return () => window.clearTimeout(timer);
+  }, [mutation.phase, mutation.operation]);
   const busy = relevant && (mutation.phase === 'pending' || mutation.reconciling);
   const unresolved = relevant && (mutation.phase === 'unknown' || mutation.reconciliationError !== null);
   const message = !relevant ? null : mutation.reconciling ? m.checking : mutation.phase === 'pending' ? m.pending
-    : mutation.phase === 'confirmed' ? m.confirmed : mutation.phase === 'unknown' ? m.unknown
+    : mutation.phase === 'unknown' ? m.unknown
       : mutation.phase === 'conflict' ? m.conflict : mutation.phase === 'reconciled' ? m.reconciled : null;
-  return <div id={id} className="task-automation-feedback" aria-live="polite" aria-busy={busy}>
+  return <><div id={id} className="task-automation-feedback" aria-live="polite" aria-busy={busy}>
     {detail?.status === 'in_progress' && <p>{m.locked}</p>}
     {message !== null && <p role={unresolved || mutation.phase === 'conflict' ? 'alert' : 'status'}>{message}</p>}
     {unresolved && <button className="button" type="button" disabled={busy} onClick={onReconcile}>{mutation.reconciling ? m.checking : m.checkState}</button>}
     {relevant && mutation.error !== null && <div className="task-automation-error" role="alert"><PermissionError error={mutation.error} /></div>}
     {relevant && mutation.reconciliationError !== null && <div className="task-automation-error" role="alert"><p>{m.checkFailed}</p><PermissionError error={mutation.reconciliationError} /></div>}
-  </div>;
+  </div>{showSuccess && <div className="task-detail-toast" role="status">{m.confirmed}</div>}</>;
 };

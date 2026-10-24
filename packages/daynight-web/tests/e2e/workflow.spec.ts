@@ -653,7 +653,7 @@ test('project-view-tabs', scenario('project-view-tabs'), async ({ page, api: req
   const trigger = standalone(page, independent.id);
   await trigger.focus();
   await page.keyboard.press('Enter');
-  const dialog = page.getByRole('dialog', { name: '任务详情' });
+  const dialog = page.locator('.task-detail-dialog');
   await expect(dialog.locator('.task-detail-title')).toHaveText(independent.title);
   await expect(dialog.getByRole('button', { name: '关闭任务详情', exact: true })).toBeFocused();
   await expect(page.locator('#root')).toHaveAttribute('inert', '');
@@ -791,10 +791,10 @@ test('detail-navigation', scenario('detail-navigation'), async ({ page, api: req
   let detailReads = 0;
   page.on('request', (request) => { if (new URL(request.url()).pathname === `/api/v1/projects/${project.id}/tasks/${b.id}`) detailReads++; });
   await details(page, b.id).click();
-  const dialog = page.getByRole('dialog', { name: '任务详情' });
+  const dialog = page.locator('.task-detail-dialog');
   await expect(dialog.locator('.task-detail-title')).toHaveText(title);
   expect(await dialog.getByRole('region', { name: '描述', exact: true }).locator('.task-description').textContent()).toBe(description);
-  await expect(dialog.locator('.task-detail-full-id')).toHaveText(b.id);
+  await expect(dialog.locator('.task-detail-full-id > span').first()).toHaveText(b.id);
   await expect(dialog.locator('time')).toHaveCount(2);
   await expect(dialog.locator('img,script')).toHaveCount(0);
   const properties = await checkPullRequests(dialog, pullRequests);
@@ -881,7 +881,7 @@ test('refresh-staleness', scenario('refresh-staleness'), async ({ page, api: req
   await inspectTask(page, dependent.id).click();
   await expect(inspectTask(page, dependent.id)).toHaveAttribute('aria-pressed', 'true');
   await details(page, dependent.id).click();
-  const dialog = page.getByRole('dialog', { name: '任务详情' });
+  const dialog = page.locator('.task-detail-dialog');
   await expect(dialog.locator('.task-detail-title')).toHaveText(dependent.title);
   await expect(dialog.locator('.task-detail-ready')).toHaveText('可开始');
   await expect(dialog.getByText('任务详情与当前任务图不同，刷新后可查看一致的进度和关系。')).toBeVisible();
@@ -1109,7 +1109,7 @@ test('failure-recovery', scenario('failure-recovery'), async ({ page, api: reque
   await expect(inspectTask(page, task.id)).toBeVisible();
   await pauseRefreshClock(page);
   const receipt = await page.locator('.snapshot-time time').getAttribute('datetime');
-  const dialog = page.getByRole('dialog', { name: '任务详情' });
+  const dialog = page.locator('.task-detail-dialog');
   await withDependencyFailure(async () => {
     const failedDetail = page.waitForResponse((response) => new URL(response.url()).pathname === `/api/v1/projects/${project.id}/tasks/${task.id}`);
     await details(page, task.id).click();
@@ -1258,9 +1258,9 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, api: request }
   await trigger.focus();
   await expect(trigger).toBeFocused();
   await page.keyboard.press('Enter');
-  const dialog = page.getByRole('dialog', { name: '任务详情' });
+  const dialog = page.locator('.task-detail-dialog');
   const close = dialog.getByRole('button', { name: '关闭任务详情', exact: true });
-  const detailLanguage = dialog.getByRole('combobox', { name: '语言 / Language', exact: true });
+  await expect(dialog.locator('.task-detail-header').getByRole('combobox')).toHaveCount(0);
   await expect(dialog.locator('.task-detail-title')).toHaveText(b.title);
   expect(detailReads).toBe(1);
   await expect(close).toBeFocused();
@@ -1269,10 +1269,7 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, api: request }
   const approvalAction = dialog.getByRole('button', { name: '撤回审批', exact: true });
   const automation = dialog.getByRole('switch', { name: '自动执行', exact: true });
   const overviewTab = dialog.getByRole('tab', { name: '概览', exact: true });
-  await page.keyboard.press('Tab');
-  await expect(taskTitle).toBeFocused();
-  await page.keyboard.press('Tab');
-  await expect(approvalAction).toBeFocused();
+  const copyTaskId = dialog.getByRole('button', { name: '复制任务 ID', exact: true });
   await page.keyboard.press('Tab');
   await expect(automation).toBeFocused();
   await page.keyboard.press('Tab');
@@ -1284,17 +1281,21 @@ test('keyboard-focus', scenario('keyboard-focus'), async ({ page, api: request }
   await page.keyboard.press('Shift+Tab');
   await expect(automation).toBeFocused();
   await page.keyboard.press('Shift+Tab');
+  await expect(close).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
   await expect(approvalAction).toBeFocused();
   await page.keyboard.press('Shift+Tab');
   await expect(taskTitle).toBeFocused();
   await page.keyboard.press('Shift+Tab');
-  await expect(close).toBeFocused();
-  await page.keyboard.press('Shift+Tab');
-  await expect(detailLanguage).toBeFocused();
+  await expect(copyTaskId).toBeFocused();
   await page.keyboard.press('Shift+Tab');
   await expect(dialog.getByRole('region', { name: '任务图快照中的直接后续', exact: true }).getByRole('button', { name: `${c.title}，普通依赖`, exact: true })).toBeFocused();
   await page.keyboard.press('Tab');
-  await expect(detailLanguage).toBeFocused();
+  await expect(copyTaskId).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(taskTitle).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(approvalAction).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(close).toBeFocused();
   for (let index = 0; index < 9; index++) {
@@ -1430,7 +1431,7 @@ test('narrow-layout', scenario('narrow-layout'), async ({ page, api: request }, 
   }
   await details(page, a.id).focus();
   await page.keyboard.press('Enter');
-  const dialog = page.getByRole('dialog', { name: '任务详情' });
+  const dialog = page.locator('.task-detail-dialog');
   await expect(dialog.locator('.task-detail-title')).toHaveText(a.title);
   await expect(dialog.locator('.task-description')).toHaveText(a.description);
   await checkPullRequests(dialog, pullRequests);

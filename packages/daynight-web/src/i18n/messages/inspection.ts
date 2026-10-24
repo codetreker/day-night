@@ -67,6 +67,10 @@ export type InspectionMessages = {
     readonly created: string;
     readonly updated: string;
     readonly taskId: string;
+    readonly copy: string;
+    readonly copyTaskId: string;
+    readonly copied: string;
+    readonly copyFailed: string;
     readonly footer: string;
     readonly countedHeading: (args: { label: string; count: string }) => string;
   };

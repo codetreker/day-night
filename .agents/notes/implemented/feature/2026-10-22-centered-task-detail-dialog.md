@@ -26,7 +26,10 @@ task content. The [split-view decision](../architecture/2026-10-22-task-attachme
 partially supersedes that content ownership: Overview scrolls the task reading
 columns, while the separate Attachments tab bounds adjacent file and preview
 panes with one right-side vertical scroll owner. Heading, tabs, close and footer
-remain outside panel scrolling. Overview pairs a reading column with a 265px
+remain outside panel scrolling. The
+[compact-header decision](../simplification/2026-10-24-compact-task-detail-header.md)
+places the task title directly in that header, bounds its own keyboard scrolling
+and keeps ID copying in Overview metadata. Overview pairs a reading column with a 265px
 metadata/relationship column; the latter becomes 225px at 850px and below, and
 both columns stack at 600px and below. Long text wraps and tables/code retain
 local horizontal scrolling.

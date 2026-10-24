@@ -79,7 +79,7 @@ const openDialog = async (fullscreen = false) => {
   const trigger = await screen.findByRole('button', { name: '节点 所选任务' });
   trigger.focus();
   fireEvent.click(trigger);
-  const dialog = screen.getByRole('dialog', { name: '任务详情' });
+  const dialog = screen.getByRole('dialog', { name: '正在加载任务详情' });
   expect(root.contains(dialog)).toBe(false);
   expect(root).toHaveAttribute('inert');
   expect(document.body.style.overflow).toBe('hidden');
@@ -122,7 +122,7 @@ describe('project dialog focus restoration', () => {
     const fullscreen = await screen.findByRole('dialog', { name: '任务依赖图全屏查看' });
     await waitFor(() => expect(within(fullscreen).getByRole('button', { name: '退出全屏' })).toHaveFocus());
     expect(trigger.isConnected).toBe(false);
-    expect(screen.queryByRole('dialog', { name: '任务详情' })).toBeNull();
+    expect(document.querySelector('.task-detail-dialog')).toBeNull();
     expect(root).not.toHaveAttribute('inert');
     expect(document.body.style.overflow).toBe('hidden');
     fireEvent.keyDown(document.activeElement!, { key: 'Escape' });

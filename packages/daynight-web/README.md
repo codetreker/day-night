@@ -49,6 +49,11 @@ label and switch on the right of the status row below the title, with status
 and readiness on the left. Both enabling and disabling require confirmation;
 Cancel, close and Escape submit nothing. The switch keeps confirmed server
 state until success and actual changes are disabled during `in_progress`.
+Successful permission changes observed in the open detail show a floating status
+bubble for three seconds without moving the heading, tabs or reading area.
+Pending, refusal, unknown-result, reconciliation and locked feedback retain their
+existing behavior. Dismissing a bubble changes only presentation; reopening a
+detail with an already confirmed result does not replay it.
 Standalone rows and graph nodes show each task's permission without turning a
 root value into a chain aggregate. Full task and graph decoders require an
 explicit boolean `allowAgents`; missing, null and nonboolean values fail.
@@ -198,8 +203,10 @@ cached native Intl formatters, initial resolution, a Provider and the shared
 native selector under `src/i18n/`. Production `main.tsx` resolves language and
 sets HTML `lang` and the authentication loading title before React renders.
 `AuthenticatedApp` and the workspace update document
-metadata on navigation and language changes. The top bar, centered detail dialog
-and fullscreen graph expose selectors using the same saved language.
+metadata on navigation and language changes. The top bar and fullscreen graph
+expose selectors using the same saved language. Task details consume the current
+application locale through the same Provider; their header contains the task
+title, applicable approval action and close control.
 
 `LocaleProvider` requires an explicit initial locale result. `useI18n()` reads
 `locale`, `messages` and `format`; `useLocaleCommands()` exposes selection and
@@ -312,15 +319,17 @@ or blocked counts. Proposed tasks remain unfinished even when all prerequisites
 are complete. Creation starts in proposed.
 
 Every project member, including administrators, can approve proposed tasks and
-withdraw approval of todo tasks. Both actions sit at the far right of the actual
-task-title row on the overview and attachment tabs. The body's flex layout
-reserves a reading area while the heading context can shrink and scroll its full
-title, status and retained/stale notices. Focusing the title provides keyboard
-access to that native scrolling context. Retained read errors have their own
-bounded, keyboard-focusable scrolling area, so errors and long titles together
-cannot consume the space needed to reach tabs, materials or actions. Narrow
-screens retain the separate right action without horizontal page overflow.
-In-progress and done tasks have no approval action. The
+withdraw approval of todo tasks. Both actions remain in the common dialog header
+on the overview and attachment tabs. The actual task title is the header's h2 and
+the dialog's accessible name; loading and initial failure use their state titles.
+The complete title has bounded height and its own native scrolling, available by
+focusing it for keyboard reading. Approval and close controls remain accessible
+at narrow widths, while details use the current application locale. The body heading retains status and retained/stale notices, while Overview
+metadata owns the ID. The body reserves a reading area for the panels.
+Retained read errors have their own bounded, keyboard-focusable scrolling area,
+so errors and long titles together keep tabs, materials and actions reachable
+without horizontal page overflow. In-progress and done tasks have no approval
+action. The
 [lifecycle decision](../../.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)
 extends the original [reader preparation](../../.agents/notes/implemented/feature/2026-10-22-proposed-task-readers.md);
 the [withdrawal decision](../../.agents/notes/implemented/feature/2026-10-23-task-unapprove.md)
@@ -567,9 +576,13 @@ PostgreSQL. This entry and `/tests/mockups/attachments.html` share
 ## Task attachments
 
 Every task detail opens on Overview, which retains descriptions, PR
-associations, relationships and metadata. The separate Attachments tab places
-the path-addressed file tree, refresh and upload on the left and the selected
-file's preview on the right. A vertical divider separates independently
+associations, relationships and metadata. The complete task ID appears only in
+its metadata row, beside a localized Copy button. This writes the exact ID with
+`navigator.clipboard.writeText` and exposes success or a recoverable failure; the
+ID remains selectable when browser clipboard access fails. Copy feedback belongs
+to the displayed task and is cleared when that identity changes. The separate
+Attachments tab places the path-addressed file tree, refresh and upload on the
+left and the selected file's preview on the right. A vertical divider separates independently
 scrollable panes; narrow layouts retain this left/right placement. The
 [split-view decision](../../.agents/notes/implemented/architecture/2026-10-22-task-attachment-split-view.md)
 owns this composition and its scroll rules.

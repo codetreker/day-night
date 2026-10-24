@@ -63,7 +63,7 @@ const mount = () => {
 const openStandalone = async (id: string) => {
   fireEvent.click(tab('standalone'));
   const trigger = row(id); trigger.focus(); fireEvent.click(trigger);
-  const dialog = screen.getByRole('dialog', { name: '任务详情' });
+  const dialog = screen.getByRole('dialog');
   await within(dialog).findByRole('heading', { name: `详情 ${id}` });
   return { trigger, dialog };
 };
@@ -284,7 +284,7 @@ describe('project task views', () => {
   it('keeps details while refresh removes an edge and falls back to the still-active chain tab', async () => {
     graphRequest.mockResolvedValueOnce(snapshot([seed('A'), seed('B', 'todo', ['A'])])).mockResolvedValueOnce(snapshot([seed('A'), seed('B')]));
     mount(); fireEvent.click(await screen.findByTestId('graph-node'));
-    const dialog = await screen.findByRole('dialog', { name: '任务详情' }); await within(dialog).findByRole('heading', { name: '详情 A' });
+    const dialog = await screen.findByRole('dialog'); await within(dialog).findByRole('heading', { name: '详情 A' });
     fireEvent.click(within(dialog).getByRole('button', { name: '刷新任务图' }));
     await screen.findByRole('heading', { name: '暂无任务链' }); expect(dialog).toBeVisible();
     expectUnfinishedCounts(0, 2);

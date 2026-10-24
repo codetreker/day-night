@@ -36,15 +36,17 @@ be withdrawn when claim is refused for unfinished prerequisites. A rejected or
 uncertain response is not permission to submit the action again with a newer
 version. Clients reconcile the actual task before a new decision.
 
-Task details place the applicable action at the far right of the task-title row:
-Approve task for proposed, Unapprove task for todo, and no approval action for
-in-progress or done. The entry remains available on overview and attachment
-tabs. The body reserves a reading area for the resource panels. Its shrinkable,
-natively scrolling heading context retains the complete title, status and
-retained/stale notices; focusing the title provides keyboard scrolling through
-that parent. Retained read errors have a separately bounded, keyboard-focusable
-native scrolling area. This allocation keeps tabs, materials and actions
-reachable when errors and long valid names coexist. Both actions open a task-specific
+Task details place the applicable action beside the actual task title in the
+common header: Approve task for proposed, Unapprove task for todo, and no approval
+action for in-progress or done. The entry remains available on overview and
+attachment tabs. The body reserves a reading area for the resource panels and
+retains status and retained/stale notices in its shrinkable native scrolling
+context. The [compact-header decision](../simplification/2026-10-24-compact-task-detail-header.md)
+partially supersedes the original shared title/context allocation: the complete
+title now owns bounded, focusable native scrolling in the header. Retained read
+errors keep a separately bounded, keyboard-focusable scrolling area. This
+allocation keeps tabs, materials and actions reachable when errors and long
+valid names coexist. Both actions open a task-specific
 confirmation before sending any mutation. Approval explains that todo becomes
 claimable only after prerequisites finish; withdrawal explains the return to
 proposal review and retention of task materials. Cancel and Escape send no

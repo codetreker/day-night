@@ -149,7 +149,7 @@ test('auth-project-isolation', scenario('auth-project-isolation'), async ({ page
     await expect(page.getByRole('heading', { name: own.name, exact: true })).toBeVisible();
     await page.getByRole('tab', { name: '独立任务', exact: true }).click();
     await page.locator(`#standalone-task-${task.id}`).click();
-    const detail = page.getByRole('dialog', { name: '任务详情', exact: true });
+    const detail = page.locator('.task-detail-dialog');
     await expect(detail.locator('.task-detail-title')).toHaveText(task.title);
     await detail.getByRole('tab', { name: '附件', exact: true }).click();
     await detail.locator('button.attachment-file').filter({ hasText: /index\.html/ }).click();
@@ -464,7 +464,7 @@ test('auth-resource-session', scenario('auth-resource-session'), async ({ page, 
   await page.goto(`/projects/${project.id}`);
   await page.getByRole('tab', { name: '独立任务', exact: true }).click();
   await page.locator(`#standalone-task-${task.id}`).click();
-  const detail = page.getByRole('dialog', { name: '任务详情', exact: true });
+  const detail = page.locator('.task-detail-dialog');
   await detail.getByRole('tab', { name: '附件', exact: true }).click();
   const attachments = detail.getByRole('region', { name: /附件/ });
   const uploadDisclosure = attachments.locator('.attachment-upload-disclosure');

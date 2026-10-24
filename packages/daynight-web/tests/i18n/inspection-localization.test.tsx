@@ -193,8 +193,8 @@ describe('inspection language changes', () => {
       const close = screen.getByRole('button', { name: '关闭任务详情' });
       expect(close).toHaveFocus();
       const dialog = screen.getByRole('dialog');
-      switchTo('en');
-      expect(screen.getByRole('dialog', { name: 'Task details' })).toBe(dialog);
+      view.setLocale('en');
+      expect(screen.getByRole('dialog')).toBe(dialog);
       expect(screen.getByRole('button', { name: 'Close task details' })).toBe(close);
       expect(close).toHaveFocus();
       expect(screen.getByRole('alert')).toHaveTextContent('This task can no longer be read. Refresh the task graph.');

@@ -61,7 +61,7 @@ it('resets membership visibility and inspection while retaining fullscreen and a
   fireEvent.click(body);
   expect(body).toHaveAttribute('aria-pressed', 'true');
   fireEvent.click(view.container.querySelector<HTMLButtonElement>(`.react-flow__node[data-id="${B}"] .task-node-details`)!);
-  const dialog = screen.getByRole('dialog', { name: '任务详情' });
+  const dialog = await screen.findByRole('dialog', { name: 'Detached branch' });
   await within(dialog).findByRole('heading', { name: 'Detached branch' });
   const close = within(dialog).getByRole('button', { name: '关闭任务详情' });
   expect(close).toHaveFocus();
@@ -75,7 +75,7 @@ it('resets membership visibility and inspection while retaining fullscreen and a
   expect(root).toHaveAttribute('inert');
   expect(document.body.style.overflow).toBe('hidden');
   fireEvent.keyDown(close, { key: 'Escape' });
-  await waitFor(() => expect(screen.queryByRole('dialog', { name: '任务详情' })).toBeNull());
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Detached branch' })).toBeNull());
   expect(fullscreen).toBeVisible();
   const exit = within(fullscreen).getByRole('button', { name: '退出全屏' });
   expect(exit).toHaveFocus();

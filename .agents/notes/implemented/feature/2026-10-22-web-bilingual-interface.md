@@ -20,9 +20,13 @@ the initial document language and route title, and mounts one persistent
 now mounts `AuthenticatedApp` under that same Provider and updates document
 metadata on language or route changes.
 Navigation focus remains dependent on the route, so changing a language does
-not refocus the page. The navigation bar, centered `TaskDetailDialog` and
-fullscreen graph each expose the shared `LanguageSelector`; modal users can
-operate their own selector while the underlying application is inert. The
+not refocus the page. The original integration placed the shared selector in the
+navigation bar, task details and fullscreen graph so modal users could change
+language while the underlying application was inert. The
+[compact-header decision](../simplification/2026-10-24-compact-task-detail-header.md)
+removes the duplicate task-detail selector; details consume the same current
+application locale through the persistent Provider. Navigation and fullscreen
+graphs continue to expose `LanguageSelector`. The
 [standalone attachment reader](../architecture/2026-10-22-task-attachment-full-reader.md)
 uses that same Provider and selector outside the workspace shell, with its own
 localized route title and ordinary browser keyboard behavior.

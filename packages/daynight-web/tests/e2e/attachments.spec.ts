@@ -187,7 +187,7 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
     const originalOverflow = await page.evaluate(() => ({ document: document.documentElement.style.overflow, body: document.body.style.overflow }));
     await trigger.click();
     const dialog = page.locator('.task-detail-dialog');
-    await expect(dialog).toHaveAccessibleName('任务详情');
+    await expect(dialog).toHaveAccessibleName(task.title);
     const attachments = dialog.locator('.task-attachments');
     await expect(dialog.getByRole('tab', { name: '概览', exact: true })).toHaveAttribute('aria-selected', 'true');
     await dialog.getByRole('tab', { name: '附件', exact: true }).click();
@@ -398,14 +398,19 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
     }
     await page.setViewportSize({ width: 844, height: 390 });
     await selectFile(attachments, 'long/reading.md');
-    const language = page.locator('.task-detail-dialog').getByRole('combobox', { name: '语言 / Language', exact: true });
+    const changeDetailLanguage = async (locale: string): Promise<void> => {
+      const confirmation = await confirmDeletion(page, attachments, 'docs/design.md');
+      await confirmation.getByRole('combobox', { name: '语言 / Language', exact: true }).selectOption(locale);
+      await confirmation.getByRole('button', { name: locale === 'en' ? 'Cancel' : '取消', exact: true }).click();
+    };
+    await expect(dialog.locator('.task-detail-header').getByRole('combobox')).toHaveCount(0);
     for (const locale of ['zh-CN', 'en']) {
-      await language.selectOption(locale);
+      await changeDetailLanguage(locale);
       const shortScreenshot = info.outputPath(`task-attachments-short-${locale}.png`);
       await page.screenshot({ path: shortScreenshot, fullPage: false });
       await info.attach(`task-attachments-short-${locale}`, { path: shortScreenshot, contentType: 'image/png' });
     }
-    await language.selectOption('zh-CN');
+    await changeDetailLanguage('zh-CN');
     await page.setViewportSize({ width: 320, height: 800 });
     await selectFile(attachments, longPath);
     await expect(attachments.getByRole('heading', { name: longPath, exact: true })).toHaveAttribute('title', longPath);
@@ -471,7 +476,9 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
 
     await innerButton.focus();
     await page.keyboard.press('Tab');
-    await expect(dialog.getByRole('combobox', { name: '语言 / Language', exact: true })).toBeFocused();
+    await expect(dialog.locator('.task-detail-title')).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(dialog.getByRole('button', { name: '撤回审批', exact: true })).toBeFocused();
     await page.keyboard.press('Tab');
     await expect(dialog.getByRole('button', { name: '关闭任务详情', exact: true })).toBeFocused();
     await innerButton.focus();
@@ -570,7 +577,7 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
 
     const menuLayouts: unknown[] = [];
     for (const locale of ['zh-CN', 'en']) {
-      await language.selectOption(locale);
+      await changeDetailLanguage(locale);
       for (const viewport of [{ width: 1440, height: 800 }, { width: 768, height: 800 }, { width: 320, height: 800 }, { width: 844, height: 390 }]) {
         await page.setViewportSize(viewport);
         await (await fileActions(attachments, longPath)).click();
@@ -590,7 +597,7 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
     }
     const longPathLayouts: unknown[] = [];
     for (const locale of ['zh-CN', 'en']) {
-      await language.selectOption(locale);
+      await changeDetailLanguage(locale);
       for (const viewport of [{ width: 320, height: 780 }, { width: 320, height: 568 }, { width: 844, height: 390 }]) {
         await page.setViewportSize(viewport);
         const confirmation = await confirmDeletion(page, attachments, longConfirmationPath);
@@ -650,7 +657,7 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
         await expect(dialog).toBeVisible();
       }
     }
-    await language.selectOption('zh-CN');
+    await changeDetailLanguage('zh-CN');
     await page.setViewportSize({ width: 1600, height: 1100 });
     expect(deletionRequests).toEqual([]);
     expect(await retainedElement.evaluate((element) => element === document.querySelector('.attachment-preview-body'))).toBe(true);

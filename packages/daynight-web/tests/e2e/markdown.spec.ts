@@ -138,19 +138,6 @@ test('task-description-markdown', { annotation: { type: 'scenario', description:
     await expect(dialog.locator('.task-attachments').getByRole('heading', { name: '附件 · 106', exact: true })).toBeHidden();
     await expect.poll(() => listRequests.length).toBe(2);
 
-    for (const locale of ['en', 'zh-CN']) {
-      await dialog.getByRole('combobox', { name: '语言 / Language', exact: true }).selectOption(locale);
-      await expect(dialog).toHaveAccessibleName(locale === 'en' ? 'Task details' : '任务详情');
-      for (const width of [1440, 320]) {
-        await page.setViewportSize({ width, height: 800 });
-        await expectCenteredTaskDetail(page, dialog);
-        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-        expect(await description.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
-        expect(await description.locator('pre').evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
-        if (width === 320) expect(await description.locator('.markdown-table').evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
-        await capture(page, info, `task-description-${locale}-${width}`);
-      }
-    }
     await page.setViewportSize({ width: 1440, height: 900 });
     const planLink = description.getByRole('link', { name: '方案与验收', exact: true });
     await expect(planLink).toHaveAttribute('href', attachmentPreviewUrl(project.id, task.id, 'plan.md'));
@@ -199,6 +186,25 @@ test('task-description-markdown', { annotation: { type: 'scenario', description:
     await attachments.getByRole('button', { name: '刷新附件', exact: true }).click();
     await expect(attachments.getByRole('heading', { name: '已覆盖内容', exact: true })).toBeVisible();
     expect(listRequests.length, 'An explicit refresh reads each inventory page once').toBe(6);
+    for (const locale of ['en', 'zh-CN']) {
+      await page.keyboard.press('Escape');
+      await expect(dialog).toHaveCount(0);
+      await page.getByRole('combobox', { name: '语言 / Language', exact: true }).selectOption(locale);
+      await trigger.click();
+      await expect(dialog.locator('.task-detail-header').getByRole('combobox')).toHaveCount(0);
+      await expect(dialog).toHaveAccessibleName(task.title);
+      await expect(attachments.locator('.attachment-section-heading > h4')).toHaveText(locale === 'en' ? 'Attachments · 106' : '附件 · 106');
+      for (const width of [1440, 320]) {
+        await page.setViewportSize({ width, height: 800 });
+        await expectCenteredTaskDetail(page, dialog);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        expect(await description.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+        expect(await description.locator('pre').evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+        if (width === 320) expect(await description.locator('.markdown-table').evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+        await capture(page, info, `task-description-${locale}-${width}`);
+      }
+    }
+    await page.setViewportSize({ width: 1440, height: 900 });
     await dialog.getByRole('tab', { name: '概览', exact: true }).click();
     await description.getByRole('link', { name: '交互原型', exact: true }).click();
     const frame = attachments.locator('iframe');
@@ -210,7 +216,7 @@ test('task-description-markdown', { annotation: { type: 'scenario', description:
     await expect(dialog).toHaveCount(0);
     await expect(trigger).toBeFocused();
     await page.locator(`#standalone-task-${emptyTask.id}`).click();
-    await expect(overview(page.getByRole('dialog')).getByRole('region', { name: '描述', exact: true })).toContainText('暂无描述');
+    await expect(overview(page.locator('.task-detail-dialog')).getByRole('region', { name: '描述', exact: true })).toContainText('暂无描述');
     await page.keyboard.press('Escape');
     await test.step('preserves graph inspection while description links open the shared attachment reader', async () => {
       const ancestor = await createTask(request, project.id, { title: 'Markdown graph ancestor' });
