@@ -1,11 +1,9 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { ApiError, approveTask, getTask, isAbortError, setTaskAgentPermission, setTaskRequiredPlatform, unapproveTask } from "../../api/client";
+import { ApiError, getTask, isAbortError, setTaskAgentPermission, setTaskRequiredPlatform, setTaskStatus } from "../../api/client";
 import { isTaskStale, taskDescriptor } from "./freshness";
-import type { ApprovalAction, ExecutionPlatform, GraphTask, TaskDetail } from "../../api/types";
+import type { ExecutionPlatform, GraphTask, TaskDetail, TaskStatus } from "../../api/types";
 
-export type ApprovalOperation = { readonly action: ApprovalAction; readonly version: bigint };
-export type TaskMutationOperation = ApprovalOperation | { readonly action: "allowAgents"; readonly allowAgents: boolean; readonly version: bigint } |
-  { readonly action: "requiredPlatform"; readonly requiredPlatform: ExecutionPlatform | null; readonly version: bigint };
+export type TaskMutationOperation = { readonly action: "status"; readonly status: TaskStatus; readonly version: bigint } | { readonly action: "allowAgents"; readonly allowAgents: boolean; readonly version: bigint } | { readonly action: "requiredPlatform"; readonly requiredPlatform: ExecutionPlatform | null; readonly version: bigint };
 export type TaskMutationState = {
   readonly operation: TaskMutationOperation | null;
   readonly phase: "idle" | "pending" | "confirmed" | "refused" | "conflict" | "unknown" | "reconciled";
@@ -43,15 +41,22 @@ const preserveCollection = (previous: TaskDetail | null, detail: TaskDetail): Ta
 };
 const idleMutation = (): TaskMutationState => ({ operation: null, phase: "idle", error: null, reconciling: false, reconciliationError: null });
 const initialState = (): DetailState => ({ revision: 0, loadedRevision: null, detail: null, status: "loading", refreshing: false, requiresFreshRead: true, error: null, mutation: idleMutation() });
-export const approvalAction = (detail: TaskDetail | null): ApprovalAction | null =>
-  detail?.status === "proposed" ? "approve" : detail?.status === "todo" ? "unapprove" : null;
 const canMutate = (state: DetailState): boolean => state.detail !== null && state.status === "ready" &&
   state.mutation.phase !== "pending" && state.mutation.phase !== "unknown" && !state.mutation.reconciling && state.mutation.reconciliationError === null && !state.requiresFreshRead && state.error === null;
-export const canPerformApproval = (state: DetailState, action: ApprovalAction): boolean => approvalAction(state.detail) === action && canMutate(state);
+export const canSetStatus = (state: DetailState): boolean => canMutate(state);
 export const canSetAgentPermission = (state: DetailState): boolean => state.detail !== null && state.detail.status !== "in_progress" && canMutate(state);
 export const canSetRequiredPlatform = canSetAgentPermission;
-export const canApprove = (state: DetailState): boolean => canPerformApproval(state, "approve");
-export const canUnapprove = (state: DetailState): boolean => canPerformApproval(state, "unapprove");
+
+const sameIds = (left: readonly string[], right: readonly string[]): boolean => left.length === right.length && left.every((id) => right.includes(id));
+const preservesMaterials = (before: TaskDetail, after: TaskDetail): boolean => before.title === after.title && before.description === after.description &&
+  before.createdAt === after.createdAt && JSON.stringify(before.properties) === JSON.stringify(after.properties) &&
+  sameIds(before.dependsOn, after.dependsOn) && sameIds(before.externalDependsOn, after.externalDependsOn);
+const validStatusTiming = (before: TaskDetail, after: TaskDetail, target: TaskStatus): boolean => {
+  if (before.status === target) return before.updatedAt === after.updatedAt && before.startedAt === after.startedAt && before.completedAt === after.completedAt;
+  if (target === "todo") return after.startedAt === null && after.completedAt === null;
+  if (target === "in_progress") return after.startedAt !== null && after.completedAt === null;
+  return after.completedAt !== null && after.startedAt === (before.status === "in_progress" ? before.startedAt : null);
+};
 
 export class TaskDetailSessions {
   private readonly entries = new Map<string, Entry>();
@@ -170,18 +175,10 @@ export class TaskDetailSessions {
       }
     }
   }
-  approve(projectId: string, taskId: string): void {
+  setStatus(projectId: string, taskId: string, status: TaskStatus, version: bigint): void {
     const state = this.entry(projectId, taskId).state;
-    if (canApprove(state)) this.performApproval(projectId, taskId, "approve", state.detail!.version);
-  }
-  unapprove(projectId: string, taskId: string): void {
-    const state = this.entry(projectId, taskId).state;
-    if (canUnapprove(state)) this.performApproval(projectId, taskId, "unapprove", state.detail!.version);
-  }
-  performApproval(projectId: string, taskId: string, action: ApprovalAction, version: bigint): void {
-    const entry = this.entry(projectId, taskId);
-    if (!canPerformApproval(entry.state, action) || entry.state.detail!.version !== version) return;
-    this.performMutation(projectId, taskId, { action, version });
+    if (!canSetStatus(state) || state.detail!.version !== version || !["todo", "in_progress", "done"].includes(status)) return;
+    this.performMutation(projectId, taskId, { action: "status", status, version });
   }
   setAgentPermission(projectId: string, taskId: string, allowAgents: boolean, version: bigint): void {
     const state = this.entry(projectId, taskId).state;
@@ -206,13 +203,16 @@ export class TaskDetailSessions {
           ? await setTaskAgentPermission(projectId, taskId, operation.allowAgents, operation.version, signal)
           : operation.action === "requiredPlatform"
             ? await setTaskRequiredPlatform(projectId, taskId, operation.requiredPlatform, operation.version, signal)
-            : await (operation.action === "approve" ? approveTask : unapproveTask)(projectId, taskId, operation.version, signal);
+            : await setTaskStatus(projectId, taskId, operation.status, operation.version, signal);
+        const preservesTiming = detail.startedAt === previous.startedAt && detail.completedAt === previous.completedAt;
         const validResult = operation.action === "allowAgents"
-          ? detail.status === previous.status && detail.allowAgents === operation.allowAgents && detail.requiredPlatform === previous.requiredPlatform
+          ? detail.status === previous.status && detail.allowAgents === operation.allowAgents && detail.requiredPlatform === previous.requiredPlatform && preservesTiming
           : operation.action === "requiredPlatform"
-            ? detail.status === previous.status && detail.requiredPlatform === operation.requiredPlatform && detail.allowAgents === previous.allowAgents
-            : detail.status === (operation.action === "approve" ? "todo" : "proposed") && detail.allowAgents === previous.allowAgents && detail.requiredPlatform === previous.requiredPlatform;
-        if (detail.projectId !== projectId || detail.id !== taskId || !validResult || detail.version !== operation.version + 1n) throw new ApiError("protocol");
+            ? detail.status === previous.status && detail.requiredPlatform === operation.requiredPlatform && detail.allowAgents === previous.allowAgents && preservesTiming
+            : detail.status === operation.status && detail.allowAgents === previous.allowAgents && detail.requiredPlatform === previous.requiredPlatform && validStatusTiming(previous, detail, operation.status);
+        const changed = operation.action !== "status" || previous.status !== operation.status;
+        if (detail.projectId !== projectId || detail.id !== taskId || !validResult || !preservesMaterials(previous, detail) ||
+          detail.version !== operation.version + (changed ? 1n : 0n)) throw new ApiError("protocol");
         entry.committedVersion = detail.version;
         this.publish(entry, { ...entry.state, detail: preserveCollection(entry.state.detail, detail), status: "ready", refreshing: false, requiresFreshRead: false, error: null,
           mutation: { operation, phase: "confirmed", error: null, reconciling: false, reconciliationError: null } });

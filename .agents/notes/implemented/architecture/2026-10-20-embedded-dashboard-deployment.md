@@ -120,5 +120,8 @@ not clean CI evidence or a claim that CI repeats the fault matrix. Historical
 loopback origins, run IDs and relative source paths are observed evidence, not
 operator configuration. The [MVP design decision](2026-10-20-task-dashboard-mvp-design.md)
 continues to own the read-only baseline, graph semantics and deferred capabilities.
-The [approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md) adds a dedicated
-task-detail write while keeping the same embedded origin and deployment model.
+The [original approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md)
+introduced dedicated task-detail writes while keeping the same embedded origin
+and deployment model. The
+[status assignment decision](2026-10-24-task-status-assignment.md) now owns the
+three-state write contract on that same delivery foundation.

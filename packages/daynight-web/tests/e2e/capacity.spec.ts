@@ -335,7 +335,7 @@ const assertInspection = async (page: Page, fixture: CapacityFixture, selectedId
   while (pending.length > 0) for (const id of tasks.get(pending.pop()!)!.dependsOn) if (!closure.has(id)) { closure.add(id); pending.push(id); }
   const geometry = expectedCapacityGeometry(fixture);
   const external = new Set(geometry.nodes.filter((node) => !geometry.memberIds.includes(node.id)).map((node) => node.id));
-  const states = { proposed: { label: '待审批', color: 'rgb(130, 98, 165)' }, todo: { label: '待处理', color: 'rgb(114, 126, 144)' }, in_progress: { label: '进行中', color: 'rgb(72, 103, 181)' }, done: { label: '已完成', color: 'rgb(40, 116, 84)' } };
+  const states = { todo: { label: '待处理', color: 'rgb(114, 126, 144)' }, in_progress: { label: '进行中', color: 'rgb(72, 103, 181)' }, done: { label: '已完成', color: 'rgb(40, 116, 84)' } };
   const expected = {
     nodes: fixture.tasks.filter((task) => visible.nodes.some((node) => node.id === task.id)).map((task) => ({
       id: task.id, state: selectedId === null ? 'normal' : task.id === selectedId ? 'selected' : closure.has(task.id) ? 'prerequisite' : 'unrelated', pressed: String(task.id === selectedId),
@@ -530,7 +530,7 @@ test.describe('fixed capacity and performance @capacity', () => {
           expect(snapshot.status()).toBe(200);
           const graph = parseTaskGraph(await decodeTaskGraphJson(new Response(await snapshot.text())), fixture.project.id);
           expect(graph.summary.total).toBe(1000);
-          expect(graph.summary.proposed).toBe(0);
+          expect(graph.summary).not.toHaveProperty('proposed');
           expect(graph.summary.todo).toBe(1000);
           expect(graph.tasks).toHaveLength(1000);
           expect(new Set(graph.tasks.map((task) => task.id)).size).toBe(1000);
@@ -557,7 +557,8 @@ test.describe('fixed capacity and performance @capacity', () => {
           await assertVisibleTopology(page, overview, full);
           const total = page.locator('.stat').filter({ has: page.locator('.stat-label', { hasText: /^任务总数$/ }) }).locator('.stat-number');
           await expect(total).toHaveText(count(1000));
-          await expect(page.locator('.stat').filter({ has: page.locator('.stat-label', { hasText: /^待审批$/ }) }).locator('.stat-number')).toHaveText(count(0));
+          await expect(page.locator('.stats .stat')).toHaveCount(6);
+          await expect(page.locator('.stats .stat-label').filter({ hasText: /^待审批$/ })).toHaveCount(0);
           await expect(page.locator('.stat').filter({ has: page.locator('.stat-label', { hasText: /^待处理$/ }) }).locator('.stat-number')).toHaveText(count(1000));
           const externalIds = new Set(full.nodes.filter((node) => !full.memberIds.includes(node.id)).map((node) => node.id));
           await expect(page.locator(`#task-root-${fixture.root.id} .root-progress-label`)).toHaveText(`0/${count(1000 - externalIds.size)} 已完成`);

@@ -33,7 +33,7 @@
 | R2 | 支持创建、列表查询和读取关联一个 repo 地址的 project |
 | R3 | 在 project 内支持创建、列表查询、读取和更新 task |
 | R4 | task 支持同 project 内的依赖关系，任何成功提交都必须保持无环 |
-| R5 | task 创建为 `proposed`，经 approve、claim、complete 进入 `todo`、`in_progress`、`done`；unapprove 仅允许 todo→proposed；开始或完成要求全部直接前置已完成，通用更新不可写 status |
+| R5 | task 默认 todo，专用 PUT status 设置 todo/in_progress/done 九种组合；先精确版本、同状态 +0/实际改变 +1；进入 active/done 检查全部直接前置，重开 done 保护 active/done 直接后继；metadata PATCH 不接受 status |
 | R6 | task 更新必须支持版本冲突检测，字段和依赖必须原子提交 |
 | R7 | 通过 HTTP JSON API 提供上述行为，错误和分页具有明确语义 |
 | R8 | 采用 `api / service / server / core` 分层，store 位于 `core` 内 |
@@ -84,7 +84,7 @@ Task 包含以下持久化字段：
 | `title` | 必填的非空 UTF-8 标题，不含 NUL |
 | `description` | 不含 NUL 的 UTF-8 描述，省略时为空字符串，允许更新为空字符串 |
 | `properties` | server 预定义属性；当前 `pullRequests` 为有序的 `{url, title}` 字符串记录数组，默认空数组 |
-| `status` | `proposed / todo / in_progress / done`，创建时为 `proposed`，只能通过专用生命周期操作转换 |
+| `status` | `todo / in_progress / done`，创建时为 `todo`，只能通过专用状态资源设置 |
 | `allowAgents` | 必填布尔自动执行许可，新任务为 `false`；与状态、依赖、实际执行者独立 |
 | `requiredPlatform` | 字段必填，值为 `null`、`windows`、`linux` 或 `macos`；`null` 表示不限制，新旧任务默认均不限制 |
 | `version` | 从 `1` 开始的正整数，每次实际变更增加一次 |
@@ -99,77 +99,65 @@ Task 响应还包含 `dependsOn`、`externalDependsOn`、`blockedBy` 和 `ready`
 - `ready` 当且仅当本 task 为 `todo` 且 `blockedBy` 为空时为 `true`。
 
 这些派生字段来自读取时的一致状态；依赖任务变化不会自动修改本 task 的 `status`、
-`version` 或 `updatedAt`。`ready` 描述可开始条件，不代表已领取或已调度。`proposed` 可以有未完成前置，
-其 `blockedBy` 仍列出这些前置，但 `ready` 始终为 `false`，也不计入 todo 的阻塞数。
-
-依赖 `B dependsOn A` 表示 B 开始或完成前 A 必须完成。以下输入必须拒绝：
-
-1. 依赖自身、重复的依赖 ID、不存在的依赖。
-2. 指向其他 project 的依赖。
-3. 直接或间接形成环的依赖，包括并发请求分别创建反向边的情形。
+`version` 或 `updatedAt`。`ready` 描述可开始条件，不代表已调度或归属于某个执行者。
+todo 可有未完成前置，in_progress/done 的前置必须全部完成；状态与自动执行许可及实际归属独立。
 
 ## 状态与更新规则
 
-创建 task 总是产生 `proposed`，数据库默认值相同。创建输入只接受 `title`、可选
-`description`、`dependsOn`、`externalDependsOn`、`requiredPlatform` 与 `properties`；不能指定初始 status。省略描述为空字符串，
-依赖和 PR 数组省略时为空。既有 todo、in-progress、done 数据视为其实际状态，不重置
-审批，不修改版本或时间戳。`allowAgents` 由服务在创建时设为 false，创建输入即使传 false 也拒绝该字段。自动执行许可迁移将既有任务设为 true，保留其余业务字段、version 和时间。
-创建可省略 `requiredPlatform` 或显式设为 `null`，也可指定三个平台枚举之一。平台迁移为既有任务保存 `null`，保留原状态、版本、时间、依赖与属性。
-依赖行的 `external` 已持久化，旧边通过迁移取得 `false`。
-创建和 PATCH 接受 externalDependsOn。创建省略依赖字段时为空集合，外部子集须属于最终完整依赖集。
-PATCH 省略两字段保持原关系；仅给 dependsOn 时替换端点并保留存续边的性质，新边普通；
-仅给 externalDependsOn 时保留端点并替换全部外部子集；两字段都给时精确替换。删除边同时删除性质。
-普通编辑（包括 allowAgents 和 requiredPlatform）及 approve、unapprove、claim、complete 保留其余性质。
-完整组合和错误规则由[外部依赖需求](daynight-external-dependencies.md)定义。
+新建 task 和数据库默认值均为 `todo`，初始版本为 1，执行起止为 null，`allowAgents=false`。
+创建只接受 `title`、可选 `description`、`dependsOn`、`externalDependsOn`、`requiredPlatform` 和 `properties`；
+禁止提交 status、allowAgents 和执行时间。省略描述、依赖和 PR 列表分别为空字符串、空集合与空数组。
+任务登记不启动执行，也不提供实现、部署、发布、合并或主线 push 的权限。
+创建的 requiredPlatform 省略或 null 表示不限制，三个枚举可设置要求。迁移 013 只为旧行
+增加 nullable 平台字段，保留其状态、版本、时间、属性和边；迁移 014 再执行三状态归类。
+平台运行时值必填，缺失或非法值拒绝，不从服务端操作系统推断执行平台。
 
-| 操作 | 唯一允许前态 | 结果 | 前置要求 |
-|---|---|---|---|
-| approve | `proposed` | `todo` | 可含未完成前置 |
-| unapprove | `todo` | `proposed` | 可含未完成前置 |
-| claim | `todo` | `in_progress` | 全部直接前置已完成 |
-| complete | `in_progress` | `done` | 全部直接前置已完成 |
 
-四种操作均要求正 int64 期望 `version`，JSON 使用数字，范围为
-`1..9223372036854775807`；缺失、null、字符串、非整数、非正或越界值拒绝。请求体只
-包含 version，沿用严格字段、重复 key、UTF-8、大小和类型检查。当前版本不符先返回
-`409 version_conflict`；版本一致但前态错误返回 `409 invalid_transition`；前置未完成
-返回 `409 dependency_unsatisfied` 及有关 task ID。重复动作同样失败，不把已转换状态
-当作成功，也不隐式重试。unapprove 之外不存在退回，不能重开进行中或已完成任务，也不能 todo 直接完成。
+统一状态入口为 `PUT /api/v1/projects/{projectId}/tasks/{taskId}/status`，请求严格为
+`{"version":123,"status":"in_progress"}`。版本为正 int64 JSON 数字，范围
+`1..9223372036854775807`；拒绝缺失、null、字符串、非整数、越界、重复或未知字段及 query。
+只接受 `todo`、`in_progress`、`done`。普通成员与管理员均可设置状态；删除旧动作入口，不保留别名。
 
-普通成员与管理员均可执行四种生命周期操作，权限来自当前项目成员关系；管理员
-额外管理成员与邀请。claim 在数据库项目锁后的实际写入时记录 `startedAt` 并清空 `completedAt`，
-complete 记录真实 `completedAt` 并保留起点。迁移前已在执行的任务完成时可以只有真实终点，
-不能从 `createdAt` 或 `updatedAt` 推算其缺失起点。新建不生成执行时间；approve 与 unapprove 保留已有起止事实，
-已有历史任务的迁移初值均为 `null`。创建、PATCH 和生命周期输入均不能写入起止字段。
-HTTP 对操作及方法拒绝路由统一验证凭据，Cookie 会话写请求
-要求精确主站 Origin，响应使用 no-store。
+所有九种状态对都支持。项目锁后复核成员及精确版本，先判断版本，再判断同状态。
+同状态返回当前完整资源，不写持久化字段、版本、updatedAt 或计时；过期同状态仍返回
+`409 version_conflict`。实际改变增加一次版本，原子更新状态、时间与 updatedAt。
+实际进入 in_progress/done 要求全部普通和外部直接前置已 done；done 退回 todo/in_progress
+要求没有 in_progress/done 直接后继，否则 `409 dependency_unsatisfied` 返回稳定排序的阻塞 ID。
+拒绝不级联、不修改后继。权限、版本、依赖、取消、存储或事务失败均不留下部分结果。
 
-版本、前态、依赖及写入必须处于同一 project 锁事务中，先获得项目锁再检查成员关系。成功只增加一次 version 并
-更新一次 updatedAt，并原子维护对应起止时间，保留其余字段、属性和依赖；拒绝保持全部数据不变。同版本并发
-claim 只有一个成功，其余看到版本冲突。对同一个 ready todo 和同版本，unapprove 与 claim 只有一方成功，另一方返回版本冲突；同版本重复 unapprove 同样只有一个提交。被依赖阻塞的 todo 仍可撤回，claim 的前置拒绝不阻止该动作。撤回保留正文、属性、依赖、附件与起止时间，ready 派生为 false；后继状态及依赖边保持，未完成前置仍未满足。审批不领取任务，也不使未完成前置变为完成。
-任务审批是就绪决策，不授予实现、发布、部署、合并或主线 push 的权限。
+执行时间由锁后的数据库 statement 时间产生：进入 in_progress 替换起点并清空终点；
+退回 todo 清空两端；in_progress→done 保留可空起点并写终点；todo→done 的起点为 null，
+仅写真实终点。普通编辑和同状态保留时间，未知历史起点不从其他时间戳推算。
+状态写入保留标题、正文、属性/PR、allowAgents、requiredPlatform、全部依赖及外部分类和附件。
 
-PATCH 可修改 `title`、`description`、`dependsOn`、`externalDependsOn`、`allowAgents`、`requiredPlatform` 和预定义属性，必须带读取到的
-version，至少提供一个可修改字段。status 不属于 PATCH 输入；即使同时提交其他
-合法字段也必须整体拒绝。省略字段保持原值；仅 `requiredPlatform` 接受 `null` 表示清除，其他可修改字段的 null 拒绝。`dependsOn: []` 清空依赖，
-`properties.pullRequests: []` 清空 PR 引用；空 properties 本身不算修改字段。
-proposed 和 todo 可以带未完成前置并修改元数据；in-progress 和 done 的完整候选
-任务始终要求全部直接前置已完成。依赖仍须存在于同 project，不能重复、自身引用或成环。
+新增迁移将全部历史 proposed 改为 todo，只对转换行增加一次 version 并更新 updatedAt，
+保留其他字段及历史起止时间。归类迁移不调用运行时 todo 清空规则；其他状态行保持不变。
+默认值、转换、三状态 CHECK 与迁移 ledger 同一事务，失败回滚，重复启动不重复转换。
+已应用迁移及 checksum 不变，运行时拒绝旧状态，不提供兼容读取映射。
 
-过期版本即使期望字段恰与当前值相同也冲突。版本匹配的语义空操作保持 version 和
-updatedAt；依赖数组顺序不构成变化，PR 数组顺序、重复项和字符串均参与等值比较。
-`allowAgents` 未提供时保留原值，显式 false 关闭，null 和非布尔输入拒绝。版本检查先于等值判断；精确版本同值许可更新不写入，`in_progress` 的实际许可切换返回 `409 invalid_transition`，即使同时修改其他字段也整体拒绝。许可切换与 claim 受同一事务锁和版本检查约束；许可编辑、approve/unapprove、claim/complete 及普通元数据编辑相互保留无关字段。普通 claim 接受两种许可值，`ready` 和统计仍只取决于状态与依赖。自动 worker 的资格与唯一 claim 是[worker 要求](daynight-worker.md)中的独立运行时契约。
+PATCH 可修改 `title`、`description`、`dependsOn`、`externalDependsOn`、`allowAgents`、`requiredPlatform` 和预定义属性，
+必须带读取到的 version 并至少包含一个可修改字段。status 不属于 PATCH；即使同时提交合法字段也整体拒绝。
+省略字段保留，只有 requiredPlatform 允许 null 清除，其他字段 null 拒绝；空描述、`dependsOn: []`、`properties.pullRequests: []` 明确清空对应内容。
+空 properties 不算修改。todo 可有未完成前置；in_progress/done 的完整候选仍须全部直接前置完成。
+引用须存在于同 project，不能重复、自身引用或成环。依赖 D/E 独立 PATCH 语义由
+[外部依赖需求](daynight-external-dependencies.md)拥有；任何无关写入均保留完整分类。
 
-`requiredPlatform` 未提供时保持原值，三个枚举表示设置，显式 `null` 清除；其他字符串、大小写变体和非字符串非 null 输入拒绝。精确版本的同值平台更新保留版本与时间，旧版本仍冲突；`in_progress` 的实际设置、切换或清除返回 `409 invalid_transition`，与同时提交的其他字段整体拒绝。平台编辑与普通 claim 共享项目锁及版本检查，同版本竞争只有一方成功。平台要求、自动执行许可和生命周期相互保留；普通人工 claim 不受平台要求限制，平台不改变 ready 或统计。服务提供平台兼容领域规则，自动 worker claim 的事务重验和实际执行平台记录由 worker 集成实现，不能用服务端操作系统代替远端执行平台。
+版本匹配的语义空编辑保持版本和 updatedAt；过期等值仍冲突。依赖顺序不构成变化；
+PR 顺序、重复项与字符串参与比较。allowAgents 省略保留，false 关闭，null/非布尔拒绝；
+in_progress 实际切换许可仍返回 `409 invalid_transition`，同值精确版本不写入。
+许可、状态、元数据和依赖编辑共用项目锁及版本规则。许可只约束自动发现选择，明确指定的执行可采用任一值。
+[worker 要求](daynight-worker.md)中的唯一 claim 仍属独立计划，状态设置不提供归属或停止进程。
 
-真实字段、属性或依赖变更只增加一次版本。普通编辑及同状态低层写入保持执行起止；
-再次真正进入执行时替换起点而不累加早先尝试，但这不增加公开重开转换。附件和 PR 更新不改变生命周期。
+requiredPlatform 未提供保留，windows/linux/macos 设置，null 清除；大小写变体、其他字符串与非字符串非 null
+输入拒绝。精确版本同值不修改版本或时间，过期同值冲突；in_progress 的实际设置/切换/清除
+返回 invalid_transition，整个组合 PATCH 拒绝。平台、许可和状态相互保留，共用项目锁。
+普通人工状态设置不按平台或许可筛选；平台不改变 ready、统计或执行授权。共享领域兼容谓词为
+null 或与实际平台同值；自动 worker 的事务重验和执行平台记录仍按 worker 要求另行实现。
 
-PR 的 url 与 title 只校验字符串类型及必填结构，保留空字符串、控制字符、顺序与
-重复项。服务不检查 URL、PR 存在性或仓库匹配；严格拒绝未知字段、重复 key、null、
-缺失项和错误类型。[属性需求](daynight-task-properties.md)拥有详细行为与验收。
-[生命周期决策](../../.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)保留原三状态任意更新
-及读取准备阶段的历史取舍；[撤回决策](../../.agents/notes/implemented/feature/2026-10-23-task-unapprove.md)拥有 todo 专用撤回及保持既有执行边界的理由。
+PR url/title 仅验证字符串与必填结构，保留空白、控制字符、顺序及重复项；不检查远端 PR。
+严格拒绝属性未知字段、重复 key、null、缺项或错误类型，详见[属性需求](daynight-task-properties.md)。
+HTTP 状态资源及方法拒绝均认证；Cookie 写入要求精确主站 Origin，响应 no-store。
+[三状态要求](daynight-task-status.md)拥有完整状态契约，[状态架构](../design/daynight-task-status.md)解释并发与迁移机制。
 
 ## HTTP API
 
@@ -184,10 +172,7 @@ PR 的 url 与 title 只校验字符串类型及必填结构，保留空字符�
 | `GET` | `/api/v1/projects/{projectId}/tasks/{taskId}` | 返回 task，缺失或不属于该 project 时 `404` |
 | `GET` | `/api/v1/projects/{projectId}/task-graph` | 返回同一完整快照的 project、任务图和统计 |
 | `PATCH` | `/api/v1/projects/{projectId}/tasks/{taskId}` | 原子更新元数据和依赖，返回 `200` 和资源 |
-| `POST` | `/api/v1/projects/{projectId}/tasks/{taskId}/approve` | `proposed → todo`，返回 `200` 和完整资源 |
-| `POST` | `/api/v1/projects/{projectId}/tasks/{taskId}/unapprove` | `todo → proposed`，返回 `200` 和完整资源 |
-| `POST` | `/api/v1/projects/{projectId}/tasks/{taskId}/claim` | `todo → in_progress`，返回 `200` 和完整资源 |
-| `POST` | `/api/v1/projects/{projectId}/tasks/{taskId}/complete` | `in_progress → done`，返回 `200` 和完整资源 |
+| `PUT` | `/api/v1/projects/{projectId}/tasks/{taskId}/status` | `200`，三状态精确版本设置，返回完整任务 |
 
 HTTP 创建请求使用 `Content-Type: application/json`，可附带 UTF-8 charset。请求体
 最多 1 MiB，必须是单个 JSON 对象；拒绝无效 UTF-8、重复 key、字段名大小写不符、
@@ -221,7 +206,7 @@ Task 更新示例：
 
 列表使用 `limit`、`cursor`。`limit` 默认 `50`，允许 `1..100`；按
 `createdAt ASC, id ASC` 稳定排序，返回 `items` 和 `nextCursor`，末页后者为 `null`。
-Task 列表额外支持单个四状态 `status`、布尔 `ready`、`allowAgents`，以及 `compatiblePlatform=windows|linux|macos` 筛选。布尔值只接受字面量 true/false，平台只接受三个枚举。兼容筛选包含 requiredPlatform 为 null 或与查询平台相同的任务；省略时不按平台筛选。全部条件按 AND 组合，先于排序、分页和 lookahead 执行。未提供许可筛选时保留两种许可值。
+Task 列表支持单个三状态 status、ready/allowAgents 布尔值及 compatiblePlatform=windows|linux|macos。布尔只接受 true/false，兼容匹配包含 null 或同值要求；省略不筛选。全部条件 AND 组合，先于排序、分页和 lookahead，且每项条件进入 cursor 范围。不能取有界页再本地丢弃不匹配项。
 Cursor 必须绑定列表类型、所属 project 和筛选条件，格式错误或条件不匹配返回输入错误。重复 query 参数、显式空值和未知参数也作为
 输入错误拒绝；`limit` 的默认值仅用于未提供该参数。
 单次响应中的 task、依赖和派生字段保持一致；多次翻页不承诺跨请求快照。
@@ -233,13 +218,10 @@ project、完整 tasks、summary 及数据库时间样本 `observedAt`，不使�
 字段、分页/筛选字段和无效编码，均返回 `400 invalid_input`。成功、拒绝和读取错误
 响应采用 `Cache-Control: no-store`；GET 同时支持 HEAD，其他方法返回 405 与 Allow。
 
-summary 必须包含 `total`、`proposed`、`todo`、`inProgress`、`done`、`ready`、
-`blocked`，零值也不能省略。按不同任务 ID 计数，满足
-`total = proposed + todo + inProgress + done` 和 `todo = ready + blocked`。
-proposed 只计入自身状态和总数；blocked 只计入前置未全部完成的 todo。任务的状态、
-版本和时间不随此次读取变化。
-
-图节点包含 `id`、`titlePreview`、`titleTruncated`、`status`、`dependsOn`、
+summary 必须包含 `total`、`todo`、`inProgress`、`done`、`ready`、`blocked` 六个非负整数，零值也必须返回。
+满足 `total = todo + inProgress + done` 与 `todo = ready + blocked`。
+blocked 只计入前置未全部完成的 todo；图读取不改变任务状态、版本或时间。
+图节点返回 `id`、`titlePreview`、`titleTruncated`、`status`、`dependsOn`、
 `externalDependsOn`、`blockedBy`、`ready`、必填布尔 `allowAgents`、必填可空枚举 `requiredPlatform`、`createdAt`、`updatedAt` 以及明确可空的 `startedAt`、`completedAt`。
 顶层 `observedAt` 是图数据与统计读取后的数据库时间样本，使用 UTC RFC 3339；
 它不是事务开始时间或任务更新时间，不修改任务状态或版本。标题预览最多 160 Unicode code
@@ -265,9 +247,9 @@ points，截短时标记 titleTruncated；不返回完整标题、description �
 | `404` | `not_found` | 路径资源缺失、当前用户不是项目成员或 task 不属于指定 project |
 | `405` | `method_not_allowed` | 已知路径使用不支持的方法，并返回 `Allow` |
 | `409` | `version_conflict` | 任务元数据、生命周期或项目设置的期望版本过期 |
-| `409` | `invalid_transition` | 生命周期操作的当前状态不符合要求 |
+| `409` | `invalid_transition` | in_progress 中禁止实际切换 allowAgents |
 | `409` | `dependency_cycle` | 候选依赖图成环 |
-| `409` | `dependency_unsatisfied` | 领取、完成或元数据候选违反前置完成规则 |
+| `409` | `dependency_unsatisfied` | 进入 active/done 或元数据候选违反前置完成规则，或 done 重开存在 active/done 直接后继 |
 | `409` | `graph_limit_exceeded` | 完整图超过节点或边上限，返回精确数量和支持上限 |
 | `500` | `internal_error` | 内部或持久化操作失败，响应不泄露数据库连接信息或 SQL |
 
@@ -306,15 +288,15 @@ points，截短时标记 titleTruncated；不返回完整标题、description �
 | V1 | Project 和 task 的 HTTP 创建、列表、读取、更新可跨服务重启持久化 |
 | V2 | 无效引用、跨 project、自身、重复和间接环被拒绝且无部分写入 |
 | V3 | 同 project 并发反向依赖最多一个成功，不同 project 的写入可独立推进 |
-| V4 | 四状态及前态受限生命周期、全部错误前态、PATCH status 拒绝、同版本领取/撤回竞争和依赖更新与领取竞争保持状态约束 |
+| V4 | 三状态九组合、当前同状态+0/实际改变+1、过期同状态冲突、PATCH status 拒绝、状态/重开/后继/依赖竞争保持约束 |
 | V5 | 并发相同版本更新最多一个实际变更成功；过期版本冲突；无变化更新保持版本 |
 | V6 | 分页、筛选、派生字段和错误映射与本文一致，空列表不掩盖读取失败 |
 | V7 | 真实 PostgreSQL 测试覆盖事务回滚、迁移失败、并发写入和一致读取；取消和关闭有明确结果 |
 | V8 | `go vet`、race 测试和 `go-cov --ci` 通过；覆盖率总计严格大于 90%、每包至少 85%、每函数至少 80%，保留关键代码块检查 |
 | V9 | 覆盖率不足或 PostgreSQL 不可用使 Go 检查失败；[CI 路由](../../README.md#ci-selection)选择的检查必须成功，未选中的检查必须为 `skipped`，main push 保留全量门禁 |
 | V10 | 请求日志可按 request ID 关联业务和存储失败，记录错误类别、组件和阶段，敏感值不进入日志 |
-| V11 | 自动执行许可覆盖旧行迁移/新行默认、所有 task/graph 资源的布尔字段、创建拒绝与 PATCH 省略/false/null/类型语义、双值筛选与 cursor、精确版本同值与旧值、in_progress 拒绝、同版本 claim 竞争及审批/时间/PR/依赖保全 |
-| V12 | 平台要求覆盖迁移保全、新行默认 null、创建和 PATCH 的省略/设置/null/非法值、必填可空资源、四种要求与三种查询平台再组合许可/ready 的矩阵、分页前匹配与游标范围、精确版本空操作/运行锁/同版本普通 claim 竞争及许可/执行时间/PR/依赖保全；自动 worker claim 与实际执行记录另按 worker 要求验收 |
+| V11 | 自动执行许可覆盖旧行迁移/新行默认、所有 task/graph 资源的布尔字段、创建拒绝与 PATCH 省略/false/null/类型语义、双值筛选与 cursor、精确版本同值与旧值、in_progress 拒绝、同版本状态/许可竞争及时间/PR/依赖保全 |
+| V12 | 平台要求覆盖迁移保全、默认null、创建/PATCH省略/设置/清除/非法值、必填nullable资源、四种要求×三查询平台并组合ready/许可、分页前筛选/cursor、精确版本no-op/运行锁/状态竞争及全部字段保全；自动worker事务与实际记录按worker验收 |
 
 实际进程与安装 CLI 验收通过固定的真实 UniAuth gateway 夹具取得浏览器会话与 PAT，
 再执行 V1–V12 业务场景。受控外部 provider 响应与真实上游登录具有不同证据

@@ -45,9 +45,8 @@ take precedence.
   confirms the requirements and asks to proceed, complete that task, then create
   and start the solution or architecture discussion task. Create the actual
   delivery subtasks and their dependencies only after the user confirms the
-  solution. A request to start or advance a discussion authorizes approval and
-  claim of that discussion task; it grants no delivery-task approval or execution
-  permission. Discussion completion follows the confirmed Daynight material and
+  solution. A request to start or advance a discussion authorizes setting that
+  discussion task to `in_progress`; it grants no delivery-task execution permission. Discussion completion follows the confirmed Daynight material and
   phase acceptance. Repository delivery retains its own PR and merge requirements.
 - Complete authorized work and its verification. Report observed results and
   material limitations; keep unverified assumptions distinct from evidence.

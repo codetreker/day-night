@@ -23,18 +23,17 @@ cases accept an explicit `core.Principal`; ordinary project creation atomically
 adds its first administrator and ordinary project lists filter membership before
 pagination. The staging aliases `CreatePrivate` and `ListAccessible` are removed.
 There is no anonymous business mode, fixed user or trusted-principal adapter.
-The later [approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md)
-uses the same Principal for Approve/Unapprove/Claim/Complete and checks membership after
-acquiring the project lock. All project members may perform those resource
-operations; the admin role adds only membership and invitation management.
-Create defaults to proposed, metadata PATCH rejects status, and the new action
-POST/405 paths retain Require, Cookie Origin and no-store handling.
+The [status assignment decision](2026-10-24-task-status-assignment.md) uses the
+same Principal for SetStatus, checks membership after the project lock, and then
+validates exact version, target and dependencies. Member/admin task-write rights
+remain equal. Create defaults to todo, metadata PATCH rejects status and the
+status PUT/405 paths retain Require, Cookie Origin and no-store handling.
 
 Production `main.tsx` mounts `AuthenticatedApp` under the persistent
 `LocaleProvider`. Existing task and attachment tabs, progressive task graphs,
 bilingual presentation, centered detail dialogs and browsing formats retain their
 own state and behavior. TaskDetailSessionProvider lives inside the current
-identity/generation boundary, preserving pending task approval across dialog
+identity/generation boundary, preserving pending task status/permission writes across dialog
 close/reopen while discarding its state on an account change. This note describes the implemented composition; passing
 current-source gates, combined acceptance and real-provider login require their
 own receipts. The [requirements](../../../../docs/spec/daynight-auth.md) and

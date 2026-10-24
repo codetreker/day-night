@@ -20,7 +20,7 @@ func TestTaskPlatformMigrationPreservesHistoryAndConstrainsValues(t *testing.T) 
 	database := &Store{Pool: pool}
 	project := queryProject(t, database, 1)
 	stamp := time.Date(2026, 1, 2, 3, 4, 5, 123456000, time.UTC)
-	for index, status := range []core.TaskStatus{core.TaskProposed, core.TaskTodo, core.TaskInProgress, core.TaskDone} {
+	for index, status := range []core.TaskStatus{core.TaskStatus("proposed"), core.TaskTodo, core.TaskInProgress, core.TaskDone} {
 		mustQueryExec(t, database, `INSERT INTO tasks(id,project_id,title,description,status,version,created_at,updated_at,started_at,completed_at,allow_agents,properties)
 		 VALUES($1,$2,'Platform history','Preserved',$3,$4,$5,$6,$5,$6,$7,'{"pullRequests":[{"url":"https://example.com/pr/1","title":"Preserved"}]}')`, queryID(index+10), project.ID, status, index+17, stamp, stamp.Add(time.Hour), index%2 == 0)
 	}
@@ -42,21 +42,29 @@ func TestTaskPlatformMigrationPreservesHistoryAndConstrainsValues(t *testing.T) 
 		}
 		return result
 	}
+	read := func(id string) core.Task {
+		t.Helper()
+		task, err := scanHistoricalTask(pool.QueryRow(ctx, `SELECT `+taskProjection+` FROM tasks t WHERE t.project_id=$1 AND t.id=$2`, project.ID, id))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return task
+	}
 	before := facts()
-	if err := migrate(ctx, pool, schemaMigrations); err != nil {
+	if err := migrate(ctx, pool, schemaMigrations[:13]); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(before, facts()) {
 		t.Fatal("platform migration changed historical facts")
 	}
 	for index := range 4 {
-		if snapshotTask(t, database, project.ID, queryID(index+10)).RequiredPlatform != nil {
+		if read(queryID(index+10)).RequiredPlatform != nil {
 			t.Fatal("historical task acquired a platform requirement")
 		}
 	}
 	mustQueryExec(t, database, `INSERT INTO tasks(id,project_id,title) VALUES($1,$2,'Unrestricted new task')`, queryID(20), project.ID)
-	created := snapshotTask(t, database, project.ID, queryID(20))
-	if created.RequiredPlatform != nil || created.AllowAgents || created.Version != 1 {
+	created := read(queryID(20))
+	if created.RequiredPlatform != nil || created.AllowAgents || created.Status != core.TaskStatus("proposed") || created.Ready || created.Version != 1 {
 		t.Fatalf("new defaults: %#v", created)
 	}
 	for _, platform := range []string{"windows", "linux", "macos", "", "darwin", "Windows"} {
@@ -65,7 +73,7 @@ func TestTaskPlatformMigrationPreservesHistoryAndConstrainsValues(t *testing.T) 
 			if err != nil {
 				t.Fatal(err)
 			}
-			if actual := snapshotTask(t, database, project.ID, created.ID).RequiredPlatform; actual == nil || string(*actual) != platform {
+			if actual := read(created.ID).RequiredPlatform; actual == nil || string(*actual) != platform {
 				t.Fatal("storage lost required platform")
 			}
 		} else {
@@ -80,10 +88,10 @@ func TestTaskPlatformMigrationPreservesHistoryAndConstrainsValues(t *testing.T) 
 	if err := pool.QueryRow(ctx, `SELECT applied_at FROM schema_migrations WHERE version=13`).Scan(&applied); err != nil {
 		t.Fatal(err)
 	}
-	if err := migrate(ctx, pool, schemaMigrations); err != nil {
+	if err := migrate(ctx, pool, schemaMigrations[:13]); err != nil {
 		t.Fatal(err)
 	}
-	if err := pool.QueryRow(ctx, `SELECT applied_at FROM schema_migrations WHERE version=13`).Scan(&repeated); err != nil || !applied.Equal(repeated) || !reflect.DeepEqual(created, snapshotTask(t, database, project.ID, created.ID)) {
+	if err := pool.QueryRow(ctx, `SELECT applied_at FROM schema_migrations WHERE version=13`).Scan(&repeated); err != nil || !applied.Equal(repeated) || !reflect.DeepEqual(created, read(created.ID)) {
 		t.Fatalf("repeated migration changed ledger or resource: %v", err)
 	}
 }

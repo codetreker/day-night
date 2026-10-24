@@ -80,7 +80,7 @@ core、`TaskWrite`、完整任务与图任务增加 `ExternalDependsOn`。
 候选从当前 `D/E` 构造，字段组合规则见下一节。
 `UpdateTask` 删除旧行后，同时从完整候选重建端点和性质。
 `taskCandidate`、普通编辑及 `task_lifecycle.go` 的 `TaskWrite` 重建都必须携带 `E`，
-包括 approve、unapprove、claim、complete 的全部生命周期写入。
+包括 set-status 的全部生命周期写入。
 分类变化参与语义比较；仅排序变化不增加版本，过期同值仍先冲突。
 状态不变时沿现有 SQL 保持 `startedAt`、`completedAt`；分类写入不成为新的执行起点。
 
@@ -106,7 +106,7 @@ core、`TaskWrite`、完整任务与图任务增加 `ExternalDependsOn`。
 
 创建和 PATCH 接受 externalDependsOn，独立于完整依赖字段合成最终候选；
 具体组合见下表。移除关系同时移除其性质。
-标题、描述、PR、allowAgents、requiredPlatform 修改及 approve、unapprove、claim、complete 继续携带已存储的外部子集。
+标题、描述、PR、allowAgents、requiredPlatform 修改及 set-status 继续携带已存储的外部子集。
 
 ### 分类写入
 

@@ -62,8 +62,7 @@ export type WorkspaceMessages = {
     readonly totalTasks: string;
     readonly uniqueTasks: string;
     readonly completion: (args: { readonly percent: number }) => string;
-    readonly awaitingApproval: string;
-    readonly waiting: string;
+      readonly waiting: string;
     readonly advancing: string;
     readonly ready: string;
     readonly blocked: string;

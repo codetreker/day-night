@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Page, TestInfo } from '@playwright/test';
 import { attachmentDownloadUrl, attachmentPreviewUrl } from '../../src/api/client';
 import { authenticatedAPI, bearerContext, browserAuthentication, tokenContext, type AuthenticatedAPI } from './authentication';
-import { approveTask, completeApprovedTask, createProject, createTask, expect, test } from './fixtures';
+import { executeTask, createProject, createTask, expect, test } from './fixtures';
 
 const scenario = (description: string) => ({ annotation: { type: 'scenario', description } });
 const origin = (info: TestInfo): string => {
@@ -120,10 +120,10 @@ test('auth-project-isolation', scenario('auth-project-isolation'), async ({ page
     }
     expect((await bob.head(preview)).status()).toBe(404);
     expect((await anonymous.head(preview)).status()).toBe(401);
-    for (const action of ['approve', 'unapprove', 'claim', 'complete']) {
-      const transition = `/api/v1/projects/${own.id}/tasks/${task.id}/${action}`;
-      expect((await bob.post(transition, { data: { version: task.version } })).status()).toBe(404);
-      expect((await anonymous.post(transition, { data: { version: task.version } })).status()).toBe(401);
+    for (const status of ['todo', 'in_progress', 'done']) {
+      const transition = `/api/v1/projects/${own.id}/tasks/${task.id}/status`;
+      expect((await bob.put(transition, { data: { version: task.version, status } })).status()).toBe(404);
+      expect((await anonymous.put(transition, { data: { version: task.version, status } })).status()).toBe(401);
     }
     const list = async (actor: AuthenticatedAPI): Promise<string[]> => {
       const ids: string[] = [];
@@ -344,8 +344,7 @@ test('auth-project-members', scenario('auth-project-members'), async ({ page, co
     expect(current.version).not.toBe(observed.version);
     expect((await bob.patch(target, { data: { version: current.version, role: 'admin' } })).status()).toBe(403);
     const collaborative = await createTask(bob, project.id, { title: 'Member can write project tasks' });
-    const approved = await approveTask(bob, project.id, collaborative);
-    await completeApprovedTask(bob, project.id, approved);
+    await executeTask(bob, project.id, collaborative);
     const memberFile = attachmentDownloadUrl(project.id, collaborative.id, 'member.txt');
     expect((await bob.put(memberFile, { headers: { 'Content-Type': 'text/plain' }, data: 'Member attachment write' })).status()).toBe(201);
     expect((await bob.get(memberFile)).status()).toBe(200);

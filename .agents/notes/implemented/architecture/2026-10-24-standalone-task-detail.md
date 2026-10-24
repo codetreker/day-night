@@ -15,7 +15,7 @@ focus, inertness or Escape behavior.
 
 `TaskDetailSurface` owns the shared detail rendering and existing controllers.
 Both `TaskDetailDialog` and `TaskDetailPage` compose it, including Overview,
-Attachments, task status, relationships, PRs, metadata, approval/withdrawal,
+Attachments, task status, relationships, PRs, metadata, three-state setting,
 automatic-execution permission, platform editing and attachment file operations.
 The dialog title provides a real Open in new tab anchor for its current task,
 tab and file, with `_blank` and `noopener noreferrer`. The source dialog remains
@@ -25,7 +25,7 @@ at that file.
 The dialog wrapper retains portal, background inertness, counted scroll lock,
 focus containment, Escape close and focus restoration. The standalone page uses
 ordinary browser focus and keys, with its own return and language controls. It
-does not install the outer modal iframe bridge. Existing approval, permission
+does not install the outer modal iframe bridge. Existing status, permission
 and file-deletion confirmations retain their own modal lifetimes in either
 container; their version and request rules do not move into the shell.
 

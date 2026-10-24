@@ -19,7 +19,7 @@ whole-Goal completion. Mode routing, command ownership, authorization and the
 installer decisions remain here.
 The later [user-confirmed Goal discussion decision](../process/2026-10-24-user-confirmed-goal-discussions.md)
 owns sequential discussion creation, explicit user transition gates, and scoped
-discussion approval and claim.
+starting the specified discussion.
 
 The public bundle is named `using-daynight`. Its entrypoint routes from the actual
 request and context to handbook, create-task, run-task or autopilot, with one
@@ -86,13 +86,12 @@ interactive frontend-only UI. Implementation roots depend on design.
 Scoped Goal creation permission covers necessary stages and the confirmed breakdown
 at those respective gates.
 The Goal protocol adds no service resource, CLI command or ownership mechanism.
-The [approval lifecycle](../feature/2026-10-22-task-approval-lifecycle.md) applies
-to every stage: registration produces proposed, approval requires an explicit
-user instruction for the task or stated Goal-task scope, and ready todo is claimed
-with its reviewed version. Goal creation, stage completion, ordinary run-task and
-autopilot alone never imply approval permission. An explicit request to start or
-advance a Goal discussion supplies approval and claim authorization for that
-discussion only.
+The [status assignment decision](2026-10-24-task-status-assignment.md) applies
+to every stage: registration produces todo without execution. Ready work within
+the existing execution scope starts with observed-version set-status in_progress
+and finishes only after acceptance and required delivery. The same scope may
+cover ready successors without task approval. Explicit discussion starts still
+apply only to the current user-confirmed Goal stage.
 
 Dependencies remain in dependsOn; PR URLs and titles remain in
 properties.pullRequests. Results and merge references belong with the primary
@@ -100,19 +99,19 @@ attachment's acceptance items. Execution position, blockers and next steps use
 an existing checkpoint. Registration is complete only after necessary task-owned
 artifacts and shared inputs are read back. Partial registration retains IDs;
 uncertain writes are reconciled before further mutation. Registration leaves
-proposed work awaiting approval unless separately authorized. Run-task reads the self-contained
+todo without starting execution. Run-task reads the self-contained
 brief, detailed plan and stage inputs, executes its designated task and returns
 after completion or an external blocker. Development and PR-delivered documentation
 require every necessary PR platform-confirmed merged and acceptance satisfied
-before versioned task complete. Retaining a delivery PR keeps its task in progress;
+before versioned task set-status done. Retaining a delivery PR keeps its task in progress;
 completion grants no merge authority. Goal discussions instead follow user-confirmed
 material and their phase acceptance. An explicitly requested discussion transition
 can start the next discussion without continuous queue selection. A stage done
 does not establish whole-Goal completion.
 
 Autopilot restores the checkpoint's current task, otherwise picks exactly one
-approved ready todo most related to the authorized goal, without auto-approving
-proposed work. In-progress inventory does not
+ready todo most related to the authorized goal, requiring allowAgents=true for
+automatic discovery. Explicit task queues retain the manual path regardless of that flag. In-progress inventory does not
 establish ownership, and a bounded ready page does not establish complete backlog
 state. Delivery waits and subagents remain on the current task. Only confirmed
 done permits the next selection; external blockers retain the current task and

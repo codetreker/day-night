@@ -27,7 +27,7 @@ const project = (name = "私有项目") => ({ settings: { version: 1n, execution
 const member = (id = userId, role = "admin") => ({ projectId, userId: id, name: "Alice", email: "alice@example.com", avatarUrl: null, role, version: 12, createdAt: now, updatedAt: now });
 const json = (body: unknown, status = 200) => new Response(stringifyWireJson(body), { status, headers: { "Content-Type": "application/json" } });
 const fail = (status: number, code: string) => json({ error: { code, message: "hidden server details", requestId: "rq-safe" } }, status);
-const graph = () => json({ observedAt: "2026-10-20T12:00:00Z", project: project(), tasks: [], summary: { total: 0, proposed: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 } });
+const graph = () => json({ observedAt: "2026-10-20T12:00:00Z", project: project(), tasks: [], summary: { total: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 } });
 const defaults = (url: string): Response => {
   if (url === "/api/v1/me") return json(user());
   if (url === "/api/v1/auth/providers") return json({ providers: ["github"] });
@@ -171,7 +171,7 @@ describe("authenticated application shell", () => {
       if (url === "/api/v1/me") return ++meCalls === 1 ? Promise.resolve(json(user())) : new Promise<Response>((done) => { finishCheck = done; });
       if (url.endsWith("/task-graph")) {
         dispatchedGraphs.push({ cookie: cookieAccount, label: document.querySelector(".account-name")?.textContent ?? null });
-        return Promise.resolve(json({ observedAt: now, project: project(`${cookieAccount} 的项目`), tasks: [], summary: { total: 0, proposed: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 } }));
+        return Promise.resolve(json({ observedAt: now, project: project(`${cookieAccount} 的项目`), tasks: [], summary: { total: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 } }));
       }
       if (url.endsWith("/members")) return Promise.resolve(json({ items: [member(cookieAccount === "Alice" ? userId : otherId)] }));
       return Promise.resolve(defaults(url));
@@ -673,20 +673,20 @@ describe("authenticated application shell", () => {
     expect(screen.getByRole("link", { name: "项目成员" })).toHaveAttribute("href", `/projects/${projectId}/members`);
   });
 
-  it("submits lifecycle approval through the core API and retains pending ownership across standalone attachment navigation", async () => {
+  it("submits task status through the core API and retains pending ownership across standalone attachment navigation", async () => {
     const taskId = "00000000-0000-4000-8000-000000000005";
     const taskUrl = `/api/v1/projects/${projectId}/tasks/${taskId}`;
-    let approved = false;
-    let finishApproval!: (response: Response) => void;
-    const detail = () => ({ requiredPlatform: null, allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null, id: taskId, projectId, title: "Lifecycle task", description: "Reviewed lifecycle content", properties: { pullRequests: [] },
-      status: approved ? "todo" : "proposed", version: approved ? 8 : 7, dependsOn: [], blockedBy: [], ready: approved, createdAt: now, updatedAt: now });
-    const taskGraph = () => json({ observedAt: "2026-10-20T12:00:00Z", project: project(), tasks: [{ requiredPlatform: null, allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null, id: taskId, titlePreview: "Lifecycle task", titleTruncated: false,
-      status: approved ? "todo" : "proposed", dependsOn: [], blockedBy: [], ready: approved, createdAt: now, updatedAt: now }],
-      summary: { total: 1, proposed: approved ? 0 : 1, todo: approved ? 1 : 0, inProgress: 0, done: 0, ready: approved ? 1 : 0, blocked: 0 } });
+    let started = false;
+    let finishStatus!: (response: Response) => void;
+    const detail = () => ({ requiredPlatform: null, allowAgents: false, externalDependsOn: [], startedAt: started ? now : null, completedAt: null, id: taskId, projectId, title: "Lifecycle task", description: "Reviewed lifecycle content", properties: { pullRequests: [] },
+      status: started ? "in_progress" : "todo", version: started ? 8 : 7, dependsOn: [], blockedBy: [], ready: !started, createdAt: now, updatedAt: now });
+    const taskGraph = () => json({ observedAt: "2026-10-20T12:00:00Z", project: project(), tasks: [{ requiredPlatform: null, allowAgents: false, externalDependsOn: [], startedAt: started ? now : null, completedAt: null, id: taskId, titlePreview: "Lifecycle task", titleTruncated: false,
+      status: started ? "in_progress" : "todo", dependsOn: [], blockedBy: [], ready: !started, createdAt: now, updatedAt: now }],
+      summary: { total: 1, todo: started ? 0 : 1, inProgress: started ? 1 : 0, done: 0, ready: started ? 0 : 1, blocked: 0 } });
     const fetcher = vi.fn((url: string, options?: RequestInit) => {
-      if (url === `${taskUrl}/approve`) return new Promise<Response>((done) => { finishApproval = done; });
+      if (url === `${taskUrl}/status`) return new Promise<Response>((done) => { finishStatus = done; });
       if (url === `${taskUrl}/attachments?limit=100`) return Promise.resolve(json({ items: [{ path: "docs/guide.md", contentType: "text/markdown", sizeBytes: 12, createdAt: now, updatedAt: now }], nextCursor: null }));
-      if (url === `${taskUrl}/attachments/files/docs/guide.md`) return Promise.resolve(new Response("# Approval reference"));
+      if (url === `${taskUrl}/attachments/files/docs/guide.md`) return Promise.resolve(new Response("# Status reference"));
       if (url === taskUrl) return Promise.resolve(json(detail()));
       return Promise.resolve(url.endsWith("/task-graph") ? taskGraph() : defaults(url));
     });
@@ -700,26 +700,27 @@ describe("authenticated application shell", () => {
       fireEvent.click(screen.getByRole("button", { name: /Lifecycle task/ }));
       let dialog = screen.getByRole("dialog");
       await within(dialog).findByRole("heading", { name: "Lifecycle task" });
-      fireEvent.click(within(dialog).getByRole("button", { name: "批准任务" }));
-      fireEvent.click(within(screen.getByRole("alertdialog", { name: "批准任务" })).getByRole("button", { name: "确认批准" }));
-      await waitFor(() => expect(finishApproval).toBeTypeOf("function"));
-      const submitted = fetcher.mock.calls.find(([url]) => url === `${taskUrl}/approve`)![1]!;
-      expect(submitted).toMatchObject({ method: "POST", body: '{"version":7}', credentials: "same-origin", redirect: "error" });
+      fireEvent.click(within(dialog).getByRole("button", { name: "待处理" }));
+      fireEvent.click(within(dialog).getByRole("menuitemradio", { name: "进行中" }));
+      fireEvent.click(within(screen.getByRole("alertdialog", { name: "设置任务状态" })).getByRole("button", { name: "确认设置" }));
+      await waitFor(() => expect(finishStatus).toBeTypeOf("function"));
+      const submitted = fetcher.mock.calls.find(([url]) => url === `${taskUrl}/status`)![1]!;
+      expect(submitted).toMatchObject({ method: "PUT", body: '{"version":7,"status":"in_progress"}', credentials: "same-origin", redirect: "error" });
       fireEvent.click(within(dialog).getByRole("button", { name: "关闭任务详情" }));
       act(() => { window.history.pushState(null, "", `/projects/${projectId}/tasks/${taskId}/attachments/docs/guide.md`); window.dispatchEvent(new PopStateEvent("popstate")); });
-      await screen.findByRole("heading", { name: "Approval reference" });
+      await screen.findByRole("heading", { name: "Status reference" });
       act(() => { window.history.pushState(null, "", `/projects/${projectId}`); window.dispatchEvent(new PopStateEvent("popstate")); });
       await screen.findByRole("heading", { name: "私有项目" });
       fireEvent.click(screen.getByRole("tab", { name: "独立任务" }));
       fireEvent.click(screen.getByRole("button", { name: /Lifecycle task/ }));
       dialog = screen.getByRole("dialog");
-      expect(await within(dialog).findByRole("button", { name: "正在提交…" })).toBeDisabled();
+      expect(await within(dialog).findByRole("button", { name: "待处理" })).toBeDisabled();
       expect(fetcher.mock.calls.filter(([url]) => url === taskUrl)).toHaveLength(1);
-      expect(fetcher.mock.calls.filter(([url]) => url === `${taskUrl}/approve`)).toHaveLength(1);
-      approved = true;
-      await act(async () => finishApproval(json(detail())));
-      await within(dialog).findByText("待处理", { selector: ".task-detail-status" });
-      expect(within(dialog).queryByRole("button", { name: "批准任务" })).toBeNull();
+      expect(fetcher.mock.calls.filter(([url]) => url === `${taskUrl}/status`)).toHaveLength(1);
+      started = true;
+      await act(async () => finishStatus(json(detail())));
+      await within(dialog).findByRole("button", { name: "进行中" });
+      expect(within(dialog).getByRole("button", { name: "进行中" })).toBeEnabled();
     } finally { view.unmount(); root.remove(); }
   });
 

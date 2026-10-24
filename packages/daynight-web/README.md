@@ -54,19 +54,20 @@ bubble for three seconds without moving the heading, tabs or reading area.
 Pending, refusal, unknown-result, reconciliation and locked feedback retain their
 existing behavior. Dismissing a bubble changes only presentation; reopening a
 detail with an already confirmed result does not replay it.
-Standalone rows and graph nodes show each task's permission and optional
-platform without turning root values into chain aggregates. Full task and graph
-decoders require an explicit boolean `allowAgents` and a `requiredPlatform` key
-whose value is null, `windows`, `linux` or `macos`; missing or invalid fields fail.
-The task detail offers Any platform, Windows, Linux and macOS with a separate
-Save platform action. Selecting an option sends no request; saving Any platform
-clears the requirement. In-progress tasks lock the platform control, and left-side
-platform badges may wrap while the automatic-execution control stays right aligned
-with the first status line.
-`TaskDetailSessionProvider` owns detail, approval, permission and platform
+Standalone rows and graph nodes show each task's permission without turning a
+root value into a chain aggregate. Full task and graph decoders require an
+explicit boolean `allowAgents`; missing, null and nonboolean values fail.
+Task/graph resources require nullable requiredPlatform (null/windows/linux/macos),
+with no missing-key fallback. Rows and nodes display their own platform. The
+detail's platform select has explicit Save platform; selection sends no request
+and Any clears with null. In-progress controls are locked. Platform saves share
+status/permission freshness, request ownership and unknown-result GET reconciliation.
+The left platform badge may wrap without moving automatic execution from the
+first status line's right edge.
+`TaskDetailSessionProvider` owns detail, status, permission and platform
 state within the authenticated branch, keyed by user identity/session generation.
 All three mutations share one task write gate and exact-version freshness
-checks. Pending or unknown platform results block permission and approval writes;
+checks. Pending or unknown platform results block permission and status writes;
 conflicts require a fresh observation and unknown results require an actual task
 read before another write. Close/reopen and navigation preserve the original
 request owner, so late responses cannot change another task. Platform updates
@@ -218,7 +219,7 @@ sets HTML `lang` and the authentication loading title before React renders.
 metadata on navigation and language changes. The top bar and fullscreen graph
 expose selectors using the same saved language. Task details consume the current
 application locale through the same Provider; their header contains the task
-title, applicable approval action and close control.
+title, current status menu and close control.
 
 `LocaleProvider` requires an explicit initial locale result. `useI18n()` reads
 `locale`, `messages` and `format`; `useLocaleCommands()` exposes selection and
@@ -281,10 +282,10 @@ The application implements `/`, `/projects/{projectId}`, `/account`,
 `/invitations` and the standalone
 `/projects/{projectId}/tasks/{taskId}/attachments/{path...}` reader, direct URL
 reload, browser back/forward and a generic not-found page. All resource reads use
-the current authenticated identity. A project shows seven statistics from one
+the current authenticated identity. A project shows six statistics from one
 complete graph snapshot and two in-project tabs: Standalone tasks and Task chains.
 The first visit opens Task chains; subsequent visits restore the project's last
-tab. Both tab badges count unfinished tasks (proposed, pending and in progress)
+tab. Both tab badges count unfinished tasks (pending and in progress)
 from the complete snapshot, independently of completed-item visibility, active
 category and expanded chain. Their sum equals the project's unfinished total;
 toolbars separately report visible/total entries.
@@ -303,7 +304,7 @@ status, ID, creation time, automation permission and known execution timing.
 An unfinished prerequisite produces an explicit Blocked / 被阻塞 badge. Chain
 rows aggregate only component members: all done means done; otherwise any done
 or in-progress member means in progress; otherwise any todo member means pending;
-otherwise all members are proposed. A completed representative with unfinished
+otherwise all members are todo. A completed representative with unfinished
 members stays visible. External prerequisite context does not contribute to
 chain progress or status. The former shared-membership badge is removed: a task
 can recur as context while its actual component membership remains unique.
@@ -323,70 +324,44 @@ The [task view decision](../../.agents/notes/implemented/feature/2026-10-22-proj
 and [chain status decision](../../.agents/notes/implemented/bug-fix/2026-10-22-task-chain-status.md)
 record their current rules and original rationale.
 
-Proposed tasks use the current catalog label, Proposed or 待审批, and a distinct
-purple status color in statistics, standalone rows, chain badges, graph nodes and
-task details. The required graph summary includes `proposed`; totals satisfy
-`total = proposed + todo + inProgress + done`. Only todo tasks contribute to ready
-or blocked counts. Proposed tasks remain unfinished even when all prerequisites
-are complete. Creation starts in proposed.
+The runtime accepts todo, in_progress and done. The graph summary has six
+counts: total, todo, inProgress, done, ready and blocked. They satisfy
+`total = todo + inProgress + done` and `todo = ready + blocked`. Creation uses todo.
+All-done chains are done; any done or in-progress member makes an unfinished
+chain in progress; other chains are todo. External context does not affect progress.
 
-Every project member, including administrators, can approve proposed tasks and
-withdraw approval of todo tasks. Both actions remain in the common dialog header
-on the overview and attachment tabs. The actual task title is the header's h2 and
-the dialog's accessible name; loading and initial failure use their state titles.
-The complete title has bounded height and its own native scrolling, available by
-focusing it for keyboard reading. Approval and close controls remain accessible
-at narrow widths, while details use the current application locale. The body heading retains status and retained/stale notices, while Overview
-metadata owns the ID. The body reserves a reading area for the panels.
-Retained read errors have their own bounded, keyboard-focusable scrolling area,
-so errors and long titles together keep tabs, materials and actions reachable
-without horizontal page overflow. In-progress and done tasks have no approval
-action. The
-[lifecycle decision](../../.agents/notes/implemented/feature/2026-10-22-task-approval-lifecycle.md)
-extends the original [reader preparation](../../.agents/notes/implemented/feature/2026-10-22-proposed-task-readers.md);
-the [withdrawal decision](../../.agents/notes/implemented/feature/2026-10-23-task-unapprove.md)
-adds only todo to proposed while retaining execution and permission boundaries.
+The actual task title is the common dialog header and accessible name; ID/copy
+belongs to Overview. The three-item status menu remains available on both tabs,
+marks the current item and permits selecting it. Arrow/Home/End, activation and
+Escape preserve keyboard access and focus. Confirmation shows the full task name,
+current/target states and timing consequences. Cancel is initially focused;
+Cancel/close/Escape submits nothing. Long title and confirmation text have bounded
+native scrolling; 320px retains controls without horizontal page overflow.
 
-Clicking either title action opens an action-specific confirmation and sends no
-request. It names the task and explains the result: approval produces todo,
-claimable only after prerequisites complete; withdrawal returns to proposed and
-retains content, dependencies and attachments. The bounded confirmation keeps
-its full task name in a keyboard-scrollable body while its header and action
-footer remain accessible. Cancel and Escape send no mutation.
-The confirmation initially focuses Cancel, owns the topmost focus trap, makes
-the underlying details inert and restores its title entry on cancellation. Only
-Confirm approval / 确认批准 or Confirm withdrawal / 确认撤回 submits. Confirmation
-retains the reviewed action, resource identity, source status and exact version;
-an observed change invalidates it and requires fresh review rather than a silent
-version or action replacement.
+Status, allowAgents and requiredPlatform saves share one per-task mutation owner and confirmation union.
+Reviewed identity/status/version and material inputs remain frozen; observed
+changes invalidate confirmation. Exact bigint version survives JSON numeric
+serialization without rounding. Same-state requires +0; actual change requires +1.
+Same-state may return fresh derived readiness at the same version. Generation and
+confirmed-version floor prevent older reads from restoring stale state.
 
-Both operations use the full reviewed task's positive int64 version, represented
-as bigint without passing through a rounded JavaScript Number. Lossless JSON
-reads and numeric request serialization retain exact digits above the safe-integer
-range through int64 maximum. `TaskDetailSession` owns project/task-keyed detail
-and operation state for the workspace lifetime: closing or reopening details does
-not permit a second pending submission. Pending, unknown or reconciling operations
-disable the title entry; the overview retains feedback and state-check controls
-without duplicate action buttons. The production authenticated workspace owns a
-provider keyed by user ID and session generation, shared across workspace/invitation
-navigation; replacing identity, logout or anonymous state disposes it. Late responses
-cannot populate another identity.
+Pending, stale, unknown or failed reconciliation blocks all three writes. Closing or
+switching details retains original ownership. A confirmed result refreshes the
+matching project graph while keeping panels, attachments, reading and focus.
+Conflict rereads require fresh review. Unknown results keep the write error and
+use GET-only reconciliation; observed state is not attributed to the uncertain
+write. Failed reads keep both errors and offer GET retry. A 404 clears unavailable
+private content while retaining unknown feedback. Identity replacement disposes
+the old session; late responses cannot populate another task or identity.
 
-Confirmed responses must match HTTP 200, identity, the selected action's target
-status and the expected next version. Success retains that detail and refreshes
-the matching project's graph; a graph-refresh failure keeps the confirmed result
-and an explicit stale-snapshot refresh action. Earlier reads cannot restore the
-old source state. Version conflicts reload current details and graph; another
-operation requires fresh review and confirmation. Unknown outcomes retain the
-actual failure and require GET-only current-state reconciliation before another
-submission. Request cancellation does not establish rollback. Late results remain
-with their original project/task identity. Withdrawal preserves execution
-timestamps and materials, does not cascade successor states, release execution
-or reopen done work. There are no Web claim, complete or metadata-edit controls.
-The [actual-component browsing fixture](tests/mockups/browsing.html) is the
-frontend-only visual and interaction owner for both actions and confirmations,
-including blocked, pending, conflict, unknown-outcome and refresh-failure cases
-in both languages.
+Permission changes are forbidden during in_progress; automatic discovery requires
+allowAgents=true, while explicitly designated execution accepts either value.
+Permission success uses a three-second toast; persistent failures and reconciliation
+remain accessible. Status does not stop a process, transfer worker ownership or
+provide delivery authority. The [status architecture](../../docs/design/daynight-task-status.md)
+owns server rules, migration and timing. The [component fixture](tests/mockups/browsing.html)
+uses production sessions/styles for frontend behavior; actual service acceptance
+separately proves HTTP, database and persistence behavior.
 
 Both lists use newest creation first, with descending IDs breaking equal-time
 ties. Presentation reverses the exact API sequence without reducing timestamp
@@ -673,11 +648,11 @@ state. A preview's neighboring Open in new tab action enters the same complete
 task details at that file, even while preview content is loading.
 
 `TaskDetailSurface` shares the full content and existing actions between dialog
-and page: description, status, relationships, PRs, metadata, approval/withdrawal,
+and page: description, status, relationships, PRs, metadata, three-state setting,
 automatic-execution permission, execution platform and attachment management.
 `TaskDetailDialog` owns only the modal portal, inertness, scroll lock, focus loop,
 Escape and focus restoration. `TaskDetailPage` provides an ordinary full-page
-container, return-to-project link and language selector. Internal approval,
+container, return-to-project link and language selector. Internal status,
 permission and file-deletion confirmations retain their own modal behavior.
 The standalone page and native frames do not install the outer dialog's keys.
 
@@ -949,8 +924,8 @@ holds its upload response across automatic reads to verify retained pending work
 the latter holds each upload, overwrite and deletion while changing language to
 verify one write and retained state. `task-description-markdown` and the other
 language scenarios remain GET/HEAD-only in the browser; fixture writes use the
-installed CLI or authenticated API request context. The three task-approval scenarios
-and `task-unapproval` separately admit only registered project/task POST approve or unapprove requests with exact expected
+installed CLI or authenticated API request context. The three task-status scenarios
+and `task-status-transitions` separately admit only registered project/task PUT status requests with exact expected
 counts. Six authentication scenarios declare only their exact expected management writes;
 unrelated browser mutations remain failures. The `project-settings` journey
 admits exactly four registered project-settings PATCHes: successful save, stale
@@ -961,48 +936,30 @@ browser PATCH. The `task-execution-time` journey keeps the browser GET/HEAD-only
 real service/API and installed CLI prepare timing, save thresholds and complete
 work while controlled browser receipt delivery isolates the local ticker.
 
-The [approval and withdrawal journeys](tests/e2e/approval.spec.ts) reuse the packed
-CLI against each target's actual authenticated service. The existing normal
-factory gives browser and installed CLI the same Alice identity through UniAuth
-session/PAT flows. CLI credentials remain in private origin-matched configuration
-and are closed/removed by their existing finally/cleanup owner. Browser request
-forwarding uses the existing redacting authenticated API wrapper, preserving the
-original Origin, method, headers and body for actual CSRF checks and forwarding
-status/headers/body unchanged. Receipt diagnostics exclude credential material.
-An ordinary graph task is created with
-a prerequisite, Markdown description, PR references and readable plan/attachment
-bytes. Its real Details control opens task details; the card body retains the
-upstream-inspection behavior and focus returns to that Details control. Web
-approval of the blocked dependent is read back through CLI show,
-ready/list/graph; its refused claim preserves the whole task. CLI approval,
-claim and completion of the prerequisite then unlock the dependent's named
-progression without changing its own version/timestamp for derived readiness.
-Full-detail descriptions, list omission of only description,
-metadata/PR/dependency preservation, exact versions, timestamps and raw attachment
-bytes remain separate assertions. The browser observes the same graph, detail,
-completion visibility and retained browsing state.
+The [status journeys](tests/e2e/status.spec.ts) reuse the packed CLI and each
+target's authenticated service with the same Alice identity. Origin, method,
+headers and body pass through the redacting authenticated wrapper unchanged;
+receipts exclude credentials. Status scenarios are task-status, task-status-conflicts,
+task-status-recovery and task-status-transitions; total functional inventory stays
+28 per target, with five additional native capacity/limit checks (61 combined).
 
-A CLI metadata update makes the reviewed Web version stale; refreshed content
-needs another deliberate click. The CLI/Web approval race uses one observed
-version and requires exactly one committed winner and one concrete version
-conflict, without automatic resubmission. Real SPA navigation holds the original
-approval response across project changes and return: pending reactivation sends
-no new POST, the other project's task stays unchanged, and the late original
-result cannot paint or trigger a read/approval in that project. Same-document
-identity and authoritative CLI reads distinguish this from a full page reload.
+The journeys exercise direct completion, reopening, all three states, current
+same-state no-op, exact stale conflicts and shared status/permission ownership.
+CLI readback verifies ready/list/graph, full materials, PRs, dependency classification,
+timing and attachment bytes. Starting/finishing blocked tasks and reopening done
+with active/done dependents are refused without changing either task. Derived
+readiness changes do not revise the dependent task.
 
-The SQL-seeded above-safe-integer/int64-limit case remains separate from the
-multi-hop journey so version overflow cannot prevent the ordinary lifecycle.
-Its approval uses real GET/POST and database state. Response-loss checks first
-forward the actual approve request and confirm a commit, then abort its browser
-response; reconciliation GET failure is a separate controlled transport fault.
-Post-success graph failure temporarily changes the existing owned dependency
-table around the real graph request and forwards its actual failure before
-restoration and CLI readback. Timing/response barriers are explicit controls,
-not fabricated status-changing responses. The
+Unknown-response scenarios forward a genuine status PUT and confirm its commit
+before dropping the browser response. GET reconciliation can fail independently;
+it never retries the PUT or attributes the observed state to the uncertain write.
+Late responses remain with the original resource across navigation. Large int64
+version cases retain exact GET/PUT/database digits. Real graph failures preserve
+the confirmed detail and restore the owned fixture table afterward. Timing barriers
+control response delivery without fabricating status-changing responses. The
 [cross-layer decision](../../.agents/notes/implemented/testing/2026-10-22-task-lifecycle-cross-layer-acceptance.md)
-owns these oracles and the distinction from deterministic service races,
-controlled client fixtures and offline mocks. No annotation, target topology,
+distinguishes installed-process races, production journeys and offline fixtures.
+No annotation, target topology,
 capacity, coverage or cleanup gate is added or removed by this extension.
 
 One packed/installed CLI is shared by the whole web run. On each target,
@@ -1090,8 +1047,10 @@ through the real service.
 The `task-detail-page` journey observes source and popup requests at the browser
 context boundary. Only one registered task may receive exactly five PATCHes
 (platform success, permission enable, platform conflict, deliberate platform
-retry and committed response loss), one approve and one unapprove POST. One exact
-attachment URL permits one PUT and one DELETE. Cancellation adds no write;
+retry and committed response loss) and three PUT `/status` requests for
+todo → in_progress → done → todo. Version increments, start/finish/reset timing,
+and running-state permission/platform locks are checked. One exact attachment
+URL permits one PUT and one DELETE. Cancellation adds no write;
 uncertain outcomes reconcile by GET without PATCH replay. The source page itself
 has no mutation allowance. A separate anonymous context exercises real
 login-return redirects while only the provider endpoint is controlled, with
@@ -1110,7 +1069,7 @@ The [graph functional scenarios](tests/e2e/workflow.spec.ts),
 [Markdown description journey](tests/e2e/markdown.spec.ts),
 [language journeys](tests/e2e/i18n.spec.ts),
 [authentication journeys](tests/e2e/auth.spec.ts),
-[approval journeys](tests/e2e/approval.spec.ts),
+[status journeys](tests/e2e/status.spec.ts),
 [permission journey](tests/e2e/task-agent-permission.spec.ts),
 [platform journey](tests/e2e/task-platform.spec.ts),
 [standalone-detail journey](tests/e2e/task-detail-page.spec.ts),
@@ -1134,9 +1093,8 @@ scenario annotations validated in each target's report.
 | W10 | Native and container functional targets, exact image identity and dev-ci cleanup receipt |
 | W11 | Strict raw Go/V8 coverage reports, validated complete browser/performance receipts and the final `checks` result |
 | W12, TI6–TI7 | `detail-navigation`, `keyboard-focus`, `narrow-layout`, `project-view-tabs`, `refresh-staleness`, `task-attachments`: centered 1440px/320px dialog geometry, independently scrolling content and persistent controls; graph/standalone entry, layered fullscreen Escape, trigger disappearance, inert/scroll release and same-origin frame keys |
-| W13 | `task-approval`, `task-approval-conflicts`, `task-approval-recovery`, `task-unapproval`: same-data packed-CLI/ordinary-graph lifecycle, ready/blocked withdrawal, metadata/attachment preservation, both title-row confirmations and tabs, cancel/Escape/focus, invalidation, stale CLI metadata, CLI/Web same-version competition, pending protection, exact int64 digits, real-commit response loss, real graph failure and task/SPA-project identity/focus/browsing preservation |
-| W14 | `task-agent-permission`: real-service bidirectional confirmation, cancellation, exact versions, in-progress locking, conflict and unknown-result reconciliation, cross-close request ownership, shared writes and bilingual narrow-screen control geometry |
-| W15 | `task-platform`: real-service explicit set/clear without selection auto-save, conflict and unknown-result readback, shared write locks, late response ownership, list/detail propagation, manual-claim lock and bilingual narrow-screen containment |
+| W13 | `task-status`, `task-status-conflicts`, `task-status-recovery`, `task-status-transitions`: same-data packed-CLI/ordinary-graph lifecycle, three-state transitions, direct completion, reopening and same-state no-op, metadata/attachment preservation, status menu and permission confirmations and tabs, cancel/Escape/focus, invalidation, stale CLI metadata, CLI/Web same-version competition, pending protection, exact int64 digits, real-commit response loss, real graph failure and task/SPA-project identity/focus/browsing preservation |
+| W15 | `task-platform`: explicit set/clear, selection without auto-save, shared status/permission gate, exact versions, stale/unknown GET-only recovery, cross-task late ownership, manual-start lock, field propagation and bilingual narrow layouts |
 | TT3 | `project-settings`: real-service direct entry/reload, administrator save and independent member read, project isolation, exact settings versions above 2^53, stale conflict and demotion, read-only member recovery, actual commit with lost response and failed-read retry without PATCH replay, bilingual 320px/390px form/control/navigation containment and unclipped text |
 | TT1–TT2, TT4–TT6 | `task-execution-time`: real PostgreSQL crossing with graph deliveries held and an incorrect client wall clock, one-second local progress, stable focus/DOM/geometry/edges/viewport, real saved-threshold changes, installed-CLI completion and frozen polling, unknown legacy starts, sub-minute/multi-day/shared/external cards and standalone rows, bilingual 320px/390px layout; browser GET/HEAD only, with fixture mutations through authenticated API or installed CLI |
 | FA1–FA12 | `task-attachments`: installed CLI and production UI share real task/files on native and container targets; exact bytes, file mutations, detail tabs, shared full attachment panel, unique preview scroll owners, rendered formats, standalone address/history and embedded-local selection. Independent real-service probes add end-of-document wheel/keyboard, native PDF final-page paint, fault/retry and unchanged task/graph proof |
@@ -1178,7 +1136,7 @@ Installed-CLI handoff, container callbacks and recovery require matching source
 commit/tree/dirty state as well as existing package/artifact ownership. A missing
 or mismatched tree field fails; no old-receipt fallback is introduced. The tree
 identifies committed source and does not fingerprint local modifications or prove
-an executed platform/gate. Lifecycle attachments to each approval scenario retain
+an executed platform/gate. Lifecycle attachments to each status scenario retain
 CLI arguments/outputs/exits, raw-byte digests, task/graph snapshots, captured Web
 requests/responses and declared controlled faults under the same run identity.
 Browser identities must agree across a target's phases; every fixed graph's five

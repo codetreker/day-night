@@ -73,7 +73,7 @@ const expectBundle = async (target: string): Promise<void> => {
   expect(await readFile(path.join(target, "references/handbook.md"), "utf8")).toContain("**Markdown descriptions.**");
   const goal = await readFile(path.join(target, "references/goal.md"), "utf8");
   expect(goal).toMatch(/self-contained Markdown\s+description/);
-  expect(goal).toMatch(/Each task starts\s+in `proposed`/);
+  expect(goal).toMatch(/Each task starts\s+in `todo`/);
 };
 const untouched = async (fixture: SkillFixture): Promise<void> => {
   await expect(readFile(fixture.agentLog)).rejects.toMatchObject({ code: "ENOENT" });

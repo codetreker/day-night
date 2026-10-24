@@ -1,33 +1,33 @@
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, approveTask, getTask, setTaskAgentPermission } from '../src/api/client';
+import { ApiError, setTaskStatus, getTask, setTaskAgentPermission } from '../src/api/client';
 import type { GraphTask, Project, TaskDetail, TaskGraph } from '../src/api/types';
 import { TaskDetailDialog, type TaskDetailDialogProps } from '../src/features/task-detail/TaskDetailDialog';
 import { buildGraphIndex } from '../src/features/task-graph/model';
 import { renderWithLocale } from './helpers/renderWithLocale';
 
-vi.mock('../src/api/client', async (original) => ({ ...await original<typeof import('../src/api/client')>(), getTask: vi.fn(), approveTask: vi.fn(), setTaskAgentPermission: vi.fn() }));
+vi.mock('../src/api/client', async (original) => ({ ...await original<typeof import('../src/api/client')>(), getTask: vi.fn(), setTaskStatus: vi.fn(), setTaskAgentPermission: vi.fn() }));
 vi.mock('../src/features/task-detail/attachments/TaskAttachments', () => ({ TaskAttachmentsPanel: () => <section><input aria-label="Attachment draft" defaultValue="" /></section> }));
 vi.mock('../src/features/task-detail/attachments/useAttachments', () => ({ useAttachments: () => ({ select: vi.fn() }) }));
 const projectId = '10000000-0000-4000-8000-000000000001';
 const taskId = '20000000-0000-4000-8000-000000000001';
 const time = '2026-10-24T00:00:00Z';
 const project: Project = { id: projectId, name: 'Automatic tasks', repoUrl: 'https://example.com/repo', settings: { version: 1n, executionWarningMinutes: 60 }, createdAt: time, updatedAt: time };
-const detail: TaskDetail = { id: taskId, projectId, title: 'Reviewed task', description: 'Keep this content', requiredPlatform: null, allowAgents: false, status: 'proposed', version: 9007199254740993n,
-  dependsOn: [], externalDependsOn: [], blockedBy: [], ready: false, properties: { pullRequests: [] }, startedAt: null, completedAt: null, createdAt: time, updatedAt: time };
+const detail: TaskDetail = { requiredPlatform: null, id: taskId, projectId, title: 'Reviewed task', description: 'Keep this content', allowAgents: false, status: 'todo', version: 9007199254740993n,
+  dependsOn: [], externalDependsOn: [], blockedBy: [], ready: true, properties: { pullRequests: [] }, startedAt: null, completedAt: null, createdAt: time, updatedAt: time };
 const graphTask = (value: TaskDetail): GraphTask => ({ id: value.id, titlePreview: value.title, titleTruncated: false, status: value.status,
   requiredPlatform: value.requiredPlatform, allowAgents: value.allowAgents, dependsOn: value.dependsOn, externalDependsOn: value.externalDependsOn, blockedBy: value.blockedBy, ready: value.ready,
   startedAt: value.startedAt, completedAt: value.completedAt, createdAt: value.createdAt, updatedAt: value.updatedAt });
 const snapshot = (value: TaskDetail, revision = 1) => {
-  const graph: TaskGraph = { observedAt: time, project, tasks: [graphTask(value)], summary: { total: 1, proposed: value.status === 'proposed' ? 1 : 0,
+  const graph: TaskGraph = { observedAt: time, project, tasks: [graphTask(value)], summary: { total: 1,
     todo: value.status === 'todo' ? 1 : 0, inProgress: value.status === 'in_progress' ? 1 : 0, done: value.status === 'done' ? 1 : 0, ready: value.ready ? 1 : 0, blocked: value.status === 'todo' && !value.ready ? 1 : 0 } };
   return { observedAt: time, graph, index: buildGraphIndex(graph), receivedMonotonic: performance.now(), receivedAt: 1, revision };
 };
 const deferred = <T,>() => { let resolve!: (value: T) => void; let reject!: (error: unknown) => void; const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; }); return { promise, resolve, reject }; };
 const writes = vi.mocked(setTaskAgentPermission);
 let root: HTMLDivElement;
-beforeEach(() => { root = document.createElement('div'); root.id = 'root'; document.body.append(root); vi.mocked(getTask).mockReset(); writes.mockReset(); vi.mocked(approveTask).mockReset(); });
+beforeEach(() => { root = document.createElement('div'); root.id = 'root'; document.body.append(root); vi.mocked(getTask).mockReset(); writes.mockReset(); vi.mocked(setTaskStatus).mockReset(); });
 afterEach(() => { cleanup(); root.remove(); });
 const open = async (value = detail, locale: 'en' | 'zh-CN' = 'en') => {
   vi.mocked(getTask).mockResolvedValue(value);
@@ -42,7 +42,7 @@ describe('confirmed automatic execution header control', () => {
     await open();
     const control = screen.getByRole('switch', { name: 'Automatic execution' });
     expect(control).not.toBeChecked();
-    expect(control.closest('.task-detail-status-row')).toContainElement(screen.getByText('Proposed', { selector: '.task-detail-status' }));
+    expect(screen.getByRole('button', { name: 'To do' }).closest('.task-detail-title-row')).not.toBeNull();
     expect(screen.getAllByRole('switch')).toHaveLength(1);
     expect(document.querySelector('.task-detail-heading .task-agent-permission')).toBeNull();
     expect(document.querySelector('.task-detail-panel-overview [role=switch]')).toBeNull();
@@ -51,7 +51,7 @@ describe('confirmed automatic execution header control', () => {
     control.focus(); fireEvent.click(control);
     const confirmation = screen.getByRole('alertdialog', { name: 'Enable automatic execution' });
     expect(within(confirmation).getByText(detail.title)).toBeVisible();
-    expect(within(confirmation).getByText(/after approval, completed prerequisites/)).toBeVisible();
+    expect(within(confirmation).getByText(/completed prerequisites/)).toBeVisible();
     expect(control).not.toBeChecked(); expect(writes).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
@@ -64,7 +64,7 @@ describe('confirmed automatic execution header control', () => {
       control.focus(); fireEvent.click(control);
       expect(screen.getByRole('alertdialog', { name: operation === 'enable' ? 'Enable automatic execution' : 'Turn off automatic execution' })).toBeVisible();
       if (cancel === 'Escape') fireEvent.keyDown(document, { key: 'Escape' });
-      else if (cancel === 'backdrop') fireEvent.click(document.querySelector('.task-approval-confirmation-backdrop')!);
+      else if (cancel === 'backdrop') fireEvent.click(document.querySelector('.task-confirmation-backdrop')!);
       else fireEvent.click(screen.getByRole('button', { name: cancel }));
       expect(screen.queryByRole('alertdialog')).toBeNull(); expect(control).toHaveFocus();
       expect(control).toHaveAttribute('aria-checked', String(operation === 'disable'));
@@ -87,14 +87,14 @@ describe('confirmed automatic execution header control', () => {
     fireEvent.click(screen.getByRole('switch')); fireEvent.click(screen.getByRole('button', { name: 'Enable automatic execution' }));
     expect(writes).toHaveBeenCalledExactlyOnceWith(projectId, taskId, true, detail.version, expect.any(AbortSignal));
     expect(screen.getByRole('switch')).toBeDisabled(); expect(screen.getByRole('switch')).not.toBeChecked();
-    expect(screen.getByRole('button', { name: 'Approve task' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'To do' })).toBeDisabled();
     await act(async () => pending.resolve({ ...detail, allowAgents: true, version: detail.version + 1n }));
     await waitFor(() => expect(screen.getByRole('switch')).toBeChecked());
     expect(draft).toHaveValue('Retained'); expect(screen.getByRole('tab', { name: 'Attachments' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByText('Automatic execution updated.')).toBeVisible();
     expect(screen.getByText('Task details differ from the current task graph. Refresh to see consistent progress and relationships.')).toBeVisible();
-    expect(screen.queryByText(/The approval operation is confirmed/)).toBeNull();
-    expect(screen.queryByRole('region', { name: 'Task approval' })).toBeNull();
+    expect(screen.queryByText(/The status operation is confirmed/)).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Task status' })).toBeNull();
   });
   it('closes a captured confirmation when an authoritative refresh changes the task version', async () => {
     const { rerender, props } = await open(); fireEvent.click(screen.getByRole('switch'));
@@ -105,14 +105,14 @@ describe('confirmed automatic execution header control', () => {
     await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
     expect(writes).not.toHaveBeenCalled();
   });
-  it.each(['proposed', 'todo', 'done'] as const)('allows explicit changes in %s while locking in-progress tasks', async (status) => {
+  it.each(['todo', 'done'] as const)('allows explicit changes in %s while locking in-progress tasks', async (status) => {
     await open({ ...detail, status, ready: status === 'todo' });
     expect(screen.getByRole('switch')).toBeEnabled();
   });
   it('preserves the checked flag and explains the execution lock', async () => {
-    await open({ ...detail, allowAgents: true, status: 'in_progress' });
+    await open({ ...detail, allowAgents: true, status: 'in_progress', ready: false });
     expect(screen.getByRole('switch')).toBeDisabled(); expect(screen.getByRole('switch')).toBeChecked();
-    expect(screen.getByText('This task is already claimed. Automatic execution is locked until execution ends or is released.')).toBeVisible();
+    expect(screen.getByText('This task is in progress. Automatic execution settings cannot change while it remains in progress.')).toBeVisible();
   });
   it('uses bilingual title-row controls and the correct disabling confirmation', async () => {
     await open({ ...detail, allowAgents: true }, 'zh-CN');

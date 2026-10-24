@@ -71,21 +71,17 @@ Open the configured public origin, `http://127.0.0.1:8787/` with the template,
 and sign in through UniAuth. The dashboard provides project creation, member and
 invitation management, personal access token management and task browsing.
 Selecting a project opens `/projects/<projectId>`, with statistics, expandable
-dependency graphs and task details. Task details place **Approve task** for
-proposed work and **Unapprove task** for todo work at the far right of the
-task-title row, on both the overview and attachment tabs. Each opens a
-confirmation naming the task and explaining the result; **Confirm approval** or
-**Confirm withdrawal** submits the selected action. Cancel and Escape send no
-request. Task details also manage attachments; use the CLI or API to create,
-claim or complete tasks and edit metadata. The HTTP API uses the same origin
-at `/api/v1`.
+dependency graphs and task details. The shared task-title header offers a
+three-item status menu on both detail tabs. Confirmation shows the task name,
+source/target and timing consequences; Cancel and Escape send no request.
+The automatic-execution switch shares the same per-task write gate. Details also
+manage attachments. Use the CLI or API to create tasks and edit metadata. The
+HTTP API uses the same origin at `/api/v1`.
 
-Users see only projects where they are members; a new project's creator becomes
-its administrator. All project members can read and write project resources,
-including approving tasks, withdrawing approval of todo tasks, claiming and
-completing tasks. Administrators additionally manage project membership and
-invitations. Existing projects need their member records prepared manually
-before users can access them.
+Users see only member projects; a new project's creator becomes its administrator.
+All members can read/write tasks and set status; administrators additionally
+manage members and invitations. Existing projects need member records prepared
+manually. Status does not grant execution, deployment or delivery authority.
 
 To select a different host port, update `DAYNIGHT_PORT`,
 `DAYNIGHT_PUBLIC_ORIGIN` and `DAYNIGHT_UNIAUTH_CALLBACK_URL` together in `.env`,
@@ -129,42 +125,35 @@ curl --fail-with-body --header "Authorization: Bearer $DAYNIGHT_TOKEN" \
   "$DAYNIGHT_BASE_URL/api/v1/projects/$PROJECT_ID/tasks"
 ```
 
-Creation always produces a `proposed` task with version `1`. Creation and
-metadata `PATCH` requests omit `status`; lifecycle changes use the dedicated
-`approve`, `unapprove`, `claim` and `complete` actions. Approval changes
-`proposed` to `todo`, claim changes ready `todo` to `in_progress`, and completion
-changes `in_progress` to `done`. Approval and withdrawal permit unfinished
-prerequisites; claim and completion require all direct prerequisites to be done.
+Creation produces todo with version 1 and nullable execution endpoints. Creation
+and metadata PATCH omit status. Status writes use only
+`PUT /api/v1/projects/{projectId}/tasks/{taskId}/status` with exact positive int64
+version and one of todo/in_progress/done. All nine pairs are supported. Version
+is checked first; matching same-state preserves version/update time/timing,
+actual change increments once. Entering active/done requires every direct
+prerequisite done; reopening done refuses direct active/done dependents, including
+external edges. Materials and unrelated fields remain unchanged.
 
-`unapprove` changes only `todo` to `proposed`, whether it was ready or blocked.
-It uses the version-only request at
-`POST /api/v1/projects/{projectId}/tasks/{taskId}/unapprove`. Each action requires
-the reviewed task's exact positive int64 `version` as a JSON number and, on
-success, increments it once and updates `updatedAt`. Withdrawal preserves the
-task identity, title, description, properties, dependency edges, execution
-timestamps and attachments. It makes `ready` false without changing successor
-states; the task needs explicit approval again before claim. It cannot withdraw
-in-progress or completed work, release execution or reopen a task.
+Entering in_progress starts a new interval, return to todo clears both endpoints,
+in-progress to done preserves a nullable start and writes the real end, and
+todo to done records only an end. Migration 014 converts legacy proposed rows to
+todo once, changing only their state/version/update time and preserving historical
+timing and other fields. Default, data, CHECK and ledger change atomically.
+Coordinate service/Web deployment and CLI upgrades; old action routes have no aliases.
 
-Copy the created task's `id` into `TASK_ID`. With no intervening task changes,
-the following sequence submits the current version for each action: approval
-returns version `2`, claim returns version `3`, and completion returns version
-`4`.
+Copy the created task ID into TASK_ID. With no intervening changes, the following
+starts execution at version 1 and completes it at version 2. Both are real changes.
 
 ```bash
 TASK_ID=YOUR_TASK_ID
-curl --fail-with-body --header "Authorization: Bearer $DAYNIGHT_TOKEN" \
+curl --fail-with-body --request PUT --header "Authorization: Bearer $DAYNIGHT_TOKEN" \
   --header 'Content-Type: application/json' \
-  --data '{"version":1}' \
-  "$DAYNIGHT_BASE_URL/api/v1/projects/$PROJECT_ID/tasks/$TASK_ID/approve"
-curl --fail-with-body --header "Authorization: Bearer $DAYNIGHT_TOKEN" \
+  --data '{"version":1,"status":"in_progress"}' \
+  "$DAYNIGHT_BASE_URL/api/v1/projects/$PROJECT_ID/tasks/$TASK_ID/status"
+curl --fail-with-body --request PUT --header "Authorization: Bearer $DAYNIGHT_TOKEN" \
   --header 'Content-Type: application/json' \
-  --data '{"version":2}' \
-  "$DAYNIGHT_BASE_URL/api/v1/projects/$PROJECT_ID/tasks/$TASK_ID/claim"
-curl --fail-with-body --header "Authorization: Bearer $DAYNIGHT_TOKEN" \
-  --header 'Content-Type: application/json' \
-  --data '{"version":3}' \
-  "$DAYNIGHT_BASE_URL/api/v1/projects/$PROJECT_ID/tasks/$TASK_ID/complete"
+  --data '{"version":2,"status":"done"}' \
+  "$DAYNIGHT_BASE_URL/api/v1/projects/$PROJECT_ID/tasks/$TASK_ID/status"
 unset DAYNIGHT_TOKEN
 ```
 

@@ -21,13 +21,16 @@ const installed = (initial?: TaskDetail) => {
   const paths = new Set(files);
   const handler = (url: string, options?: RequestInit): Response => {
     if (url === `${root}/task-graph`) return resourceResponse(graphFixture([...tasks.values()]));
-    const match = new RegExp(`^${root}/tasks/([^/]+)(?:/(approve|unapprove))?$`).exec(url);
+    const match = new RegExp(`^${root}/tasks/([^/]+)(?:/(status))?$`).exec(url);
     if (match !== null) {
       const task = tasks.get(match[1]!)!;
-      if (options?.method === 'POST' || options?.method === 'PATCH') {
+      if (options?.method === 'PUT' || options?.method === 'PATCH') {
         const body = JSON.parse(String(options.body));
         expect(BigInt(body.version)).toBe(task.version);
-        const next = { ...task, ...(match[2] === 'approve' ? { status: 'todo' as const, ready: true } : match[2] === 'unapprove' ? { status: 'proposed' as const, ready: false } : Object.hasOwn(body, 'allowAgents') ? { allowAgents: body.allowAgents as boolean } : { requiredPlatform: body.requiredPlatform as TaskDetail['requiredPlatform'] }), version: task.version + 1n };
+        const target = body.status as TaskDetail['status'];
+        const changedStatus = match[2] === 'status' && target !== task.status;
+        const timing = target === 'todo' ? { startedAt: null, completedAt: null } : target === 'in_progress' ? { startedAt: '2026-10-24T11:00:00Z', completedAt: null } : { startedAt: task.status === 'in_progress' ? task.startedAt : null, completedAt: '2026-10-24T11:05:00Z' };
+        const next = { ...task, ...(match[2] === 'status' ? changedStatus ? { status: target, ready: target === 'todo' && task.blockedBy.length === 0, ...timing } : {} : Object.hasOwn(body, 'allowAgents') ? { allowAgents: body.allowAgents as boolean } : { requiredPlatform: body.requiredPlatform as TaskDetail['requiredPlatform'] }), version: task.version + (match[2] === 'status' && !changedStatus ? 0n : 1n) };
         tasks.set(task.id, next);
         return resourceResponse(next);
       }
@@ -158,21 +161,59 @@ describe('standalone full task details', () => {
     expect(screen.queryByRole('status')).toBeNull();
   });
 
-  it('keeps page keys ordinary and uses existing nested confirmations for exact-version operations', async () => {
-    const initial = detailFixture(projectId, taskId, { title: '待审批任务', status: 'proposed', ready: false });
-    const { fetcher } = installed(initial);
+  it('keeps page keys ordinary and uses current exact-version status confirmations, including cancel and no-op', async () => {
+    const { fetcher, tasks } = installed();
     window.history.replaceState(null, '', address());
     render(<App />);
-    await screen.findByRole('heading', { name: initial.title });
+    await screen.findByRole('heading', { name: '独立任务' });
     expect(fireEvent.keyDown(document, { key: 'Escape' })).toBe(true);
     expect(screen.getByRole('main')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '批准任务' }));
-    const confirmation = screen.getByRole('alertdialog', { name: '批准任务' });
-    fireEvent.click(within(confirmation).getByRole('button', { name: '确认批准' }));
-    await screen.findByRole('button', { name: '撤回审批' });
-    expect(fetcher.mock.calls.find(([, options]) => options?.method === 'POST')?.[1]?.body).toBe('{"version":1}');
-    expect(screen.queryByRole('dialog')).toBeNull();
+    const chooseStatus = (label: string) => {
+      fireEvent.click(document.querySelector('.task-status-trigger')!);
+      fireEvent.click(screen.getByRole('menuitemradio', { name: label }));
+      return screen.getByRole('alertdialog', { name: '设置任务状态' });
+    };
+    let confirmation = chooseStatus('进行中');
+    fireEvent.click(within(confirmation).getByRole('button', { name: '取消' }));
+    expect(fetcher.mock.calls.filter(([, options]) => options?.method === 'PUT')).toHaveLength(0);
+    confirmation = chooseStatus('进行中');
+    fireEvent.click(within(confirmation).getByRole('button', { name: '确认设置' }));
+    await waitFor(() => expect(document.querySelector('.task-status-trigger')).toHaveTextContent('进行中'));
+    expect(fetcher.mock.calls.find(([, options]) => options?.method === 'PUT')?.[1]?.body).toBe('{"version":1,"status":"in_progress"}');
+    await waitFor(() => expect(document.querySelector('.task-status-trigger')).toBeEnabled());
+    const active = tasks.get(taskId)!;
+    confirmation = chooseStatus('进行中');
+    fireEvent.click(within(confirmation).getByRole('button', { name: '确认设置' }));
+    await waitFor(() => expect(fetcher.mock.calls.filter(([, options]) => options?.method === 'PUT')).toHaveLength(2));
+    await waitFor(() => expect(document.querySelector('.task-status-trigger')).toBeEnabled());
+    expect(tasks.get(taskId)).toEqual(active);
+    expect(screen.queryByRole('alertdialog')).toBeNull();
     expect(document.body.style.overflow).toBe('');
+  });
+
+  it.each(['conflict', 'unknown'] as const)('reconciles a standalone status %s without resubmitting the write', async (failure) => {
+    const fixture = installed();
+    fixture.fetcher.mockImplementation(async (url, options) => {
+      if (options?.method === 'PUT') {
+        const task = fixture.tasks.get(taskId)!;
+        fixture.tasks.set(taskId, { ...task, version: task.version + 1n });
+        if (failure === 'unknown') throw new TypeError('Lost response');
+        return new Response(JSON.stringify({ error: { code: 'version_conflict', message: 'Task changed', requestId: 'status-conflict' } }), { status: 409, headers: { 'Content-Type': 'application/json' } });
+      }
+      return fixture.handler(url, options);
+    });
+    window.history.replaceState(null, '', address());
+    render(<App />);
+    await screen.findByRole('heading', { name: '独立任务' });
+    fireEvent.click(document.querySelector('.task-status-trigger')!);
+    fireEvent.click(screen.getByRole('menuitemradio', { name: '已完成' }));
+    const confirmation = screen.getByRole('alertdialog', { name: '设置任务状态' });
+    fireEvent.click(within(confirmation).getByRole('button', { name: '确认设置' }));
+    await screen.findByText(failure === 'conflict' ? '任务已变化。请检查重新读取的内容，再次操作需要重新确认。' : '已读取当前任务状态；这不能证明先前请求的结果。');
+    await waitFor(() => expect(document.querySelector('.task-status-trigger')).toBeEnabled());
+    expect(fixture.fetcher.mock.calls.filter(([, options]) => options?.method === 'PUT')).toHaveLength(1);
+    expect(fixture.tasks.get(taskId)!.version).toBe(2n);
+    expect(document.querySelector('.task-status-trigger')).toHaveTextContent('待处理');
   });
 
   it('keeps the embedded popout bound to current tab and file without writing the project address', async () => {

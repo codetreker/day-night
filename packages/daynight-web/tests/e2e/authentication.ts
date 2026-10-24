@@ -1,4 +1,4 @@
-import type { APIRequestContext, APIResponse, BrowserContext } from '@playwright/test';
+import type { APIRequestContext, APIResponse, BrowserContext, Route } from '@playwright/test';
 import { login } from '../../scripts/acceptance/auth-fixture.mts';
 
 type RequestMethod = 'delete' | 'fetch' | 'get' | 'head' | 'patch' | 'post' | 'put';
@@ -37,6 +37,11 @@ const safeResponse = (response: APIResponse, method: string, path: string): APIR
     ok: () => response.ok(), status: () => response.status(), statusText: () => response.statusText(),
     timing: () => response.timing(), url: () => response.url(),
   };
+};
+
+// Our credential-safe wrapper has no native Playwright response identity.
+export const fulfillAuthenticatedResponse = async (route: Pick<Route, 'fulfill'>, response: APIResponse): Promise<void> => {
+  await route.fulfill({ status: response.status(), headers: response.headers(), body: await response.body() });
 };
 
 export const authenticatedAPI = (context: APIRequestContext): AuthenticatedAPI => {

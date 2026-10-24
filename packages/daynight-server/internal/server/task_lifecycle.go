@@ -1,44 +1,49 @@
 package server
 
 import (
-	"context"
 	"net/http"
 
 	"github.com/codetreker/daynight/packages/daynight-server/api"
 	"github.com/codetreker/daynight/packages/daynight-server/internal/core"
+	"github.com/codetreker/daynight/packages/daynight-server/internal/service"
 )
 
-type taskAction func(context.Context, core.Principal, string, string, int64) (core.Task, error)
-
-func (h *taskHandler) lifecycle(name string, action taskAction) AuthenticatedHandler {
-	return func(w http.ResponseWriter, request *http.Request, principal core.Principal) {
-		w.Header().Set("Cache-Control", "no-store")
-		projectID, id, logger, err := h.resource(request, principal)
-		if err != nil {
-			writeError(w, request, logger, "task", name, err)
-			return
-		}
-		if request.URL.RawQuery != "" {
-			writeError(w, request, logger, "task", name, invalidInput("task lifecycle does not accept query parameters"))
-			return
-		}
-		fields, err := decodeObject(w, request, "version")
-		if err != nil {
-			writeError(w, request, logger, "task", name, err)
-			return
-		}
-		input := api.TaskTransitionRequest{}
-		input.Version, err = versionInput(fields)
-		if err != nil {
-			writeError(w, request, logger, "task", name, err)
-			return
-		}
-		task, err := action(request.Context(), principal, projectID, id, input.Version)
-		if err != nil {
-			writeError(w, request, logger, "task", name, err)
-			return
-		}
-		logger.InfoContext(request.Context(), "task state changed", "type", "resource", "component", "task", "phase", name, "request_id", RequestID(request.Context()))
-		writeJSON(w, request, logger, http.StatusOK, taskResponse(task))
+func (h *taskHandler) setStatus(w http.ResponseWriter, request *http.Request, principal core.Principal) {
+	w.Header().Set("Cache-Control", "no-store")
+	projectID, id, logger, err := h.resource(request, principal)
+	if err != nil {
+		writeError(w, request, logger, "task", "set_status", err)
+		return
 	}
+	if request.URL.RawQuery != "" || request.URL.ForceQuery {
+		writeError(w, request, logger, "task", "set_status", invalidInput("task status does not accept query parameters"))
+		return
+	}
+	fields, err := decodeObject(w, request, "version", "status")
+	if err != nil {
+		writeError(w, request, logger, "task", "set_status", err)
+		return
+	}
+	input := api.TaskStatusUpdateRequest{}
+	input.Version, err = versionInput(fields)
+	if err != nil {
+		writeError(w, request, logger, "task", "set_status", err)
+		return
+	}
+	input.Status, err = requiredString(fields, "status")
+	if err != nil {
+		writeError(w, request, logger, "task", "set_status", err)
+		return
+	}
+	task, err := h.tasks.SetStatus(request.Context(), principal, projectID, id, service.SetTaskStatus{Version: input.Version, Status: core.TaskStatus(input.Status)})
+	if err != nil {
+		writeError(w, request, logger, "task", "set_status", err)
+		return
+	}
+	outcome := "unchanged"
+	if task.Version != input.Version {
+		outcome = "changed"
+	}
+	logger.InfoContext(request.Context(), "task status set", "type", "resource", "component", "task", "phase", "set_status", "outcome", outcome, "request_id", RequestID(request.Context()))
+	writeJSON(w, request, logger, http.StatusOK, taskResponse(task))
 }

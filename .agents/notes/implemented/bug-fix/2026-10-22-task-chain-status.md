@@ -14,9 +14,10 @@ so that badge misrepresents completion of the chain being browsed.
 `ComponentProgress` contains aggregate status alongside total and done counts.
 The ordinary-component traversal derives all three: all members done means
 done; any done or in-progress member with unfinished work means in progress;
-otherwise any todo member means pending; otherwise all members are proposed.
-The [four-state reader decision](../feature/2026-10-22-proposed-task-readers.md)
-adds the proposed-only case. The
+otherwise the chain is pending.
+The historical [reader preparation](../feature/2026-10-22-proposed-task-readers.md)
+added a proposed-only case; the [status assignment decision](../architecture/2026-10-24-task-status-assignment.md)
+removes it and restores three-state aggregation. The
 [external dependency decision](../architecture/2026-10-23-external-dependency-design.md)
 replaces the original distinct root-and-descendant main set with an exclusive
 ordinary weak component. All-edge ancestor context stays outside that count.
@@ -57,11 +58,11 @@ another graph traversal during rendering.
 
 A chain can remain in progress after its representative finishes and becomes
 completed only when every component member finishes. Chains containing pending tasks remain
-pending, and proposed-only chains remain proposed, even when an external
+pending, even when an external
 prerequisite from another chain is active. Aggregate status is a frontend snapshot
 projection, not stored task data or a new API field, so the original aggregation
-fix required no migration. Stored proposed task support has its own migration
-under the four-state reader decision. Completed-chain visibility behavior is
+fix required no migration. The later status migration removes proposed while
+preserving counted membership and progress. Completed-chain visibility behavior is
 preserved for multi-member ordinary chains while its badge agrees with that behavior.
 The task view decision changes category presentation without changing the
 aggregate status computation.

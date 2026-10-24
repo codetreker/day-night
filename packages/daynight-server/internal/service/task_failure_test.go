@@ -72,11 +72,12 @@ func TestTaskReadAndWriteDatabaseFailures(t *testing.T) {
 			_, listErr := tasks.List(context.Background(), principal, project.ID, TaskListRequest{PageRequest: PageRequest{Limit: 10}})
 			_, updateErr := tasks.Update(context.Background(), principal, project.ID, target.ID, UpdateTask{Version: target.Version, Title: pointer("Changed")})
 			_, createErr := tasks.Create(context.Background(), principal, project.ID, CreateTask{Title: "New"})
-			_, approveErr := tasks.Approve(context.Background(), principal, project.ID, target.ID, target.Version)
-			_, unapproveErr := tasks.Unapprove(context.Background(), principal, project.ID, target.ID, target.Version)
-			_, claimErr := tasks.Claim(context.Background(), principal, project.ID, target.ID, target.Version)
-			_, completeErr := tasks.Complete(context.Background(), principal, project.ID, target.ID, target.Version)
-			for _, err := range []error{getErr, listErr, updateErr, createErr, approveErr, unapproveErr, claimErr, completeErr} {
+			failures := []error{getErr, listErr, updateErr, createErr}
+			for _, status := range []core.TaskStatus{core.TaskTodo, core.TaskInProgress, core.TaskDone} {
+				_, err := tasks.SetStatus(context.Background(), principal, project.ID, target.ID, SetTaskStatus{Version: target.Version, Status: status})
+				failures = append(failures, err)
+			}
+			for _, err := range failures {
 				assertOperational(t, err)
 				var pgError *pgconn.PgError
 				if !errors.As(err, &pgError) || pgError.Code != "42P01" {
@@ -94,13 +95,11 @@ func TestTaskReadAndWriteDatabaseFailures(t *testing.T) {
 func TestTaskPolicyQueryCancellationPreservesCause(t *testing.T) {
 	tasks, _, project, databaseURL, principal := taskService(t)
 	predecessor := createTask(t, tasks, principal, project.ID, "Predecessor")
-	predecessor = approveTask(t, tasks, principal, predecessor)
-	predecessor = claimTask(t, tasks, principal, predecessor)
-	predecessor = completeTask(t, tasks, principal, predecessor)
+	predecessor = startTask(t, tasks, principal, predecessor)
+	predecessor = finishTask(t, tasks, principal, predecessor)
 	target := createTask(t, tasks, principal, project.ID, "Target", predecessor.ID)
-	target = approveTask(t, tasks, principal, target)
-	target = claimTask(t, tasks, principal, target)
-	target = completeTask(t, tasks, principal, target)
+	target = startTask(t, tasks, principal, target)
+	target = finishTask(t, tasks, principal, target)
 	for _, fragment := range []string{"t.id = ANY($2::uuid[])", "WITH RECURSIVE edges"} {
 		t.Run(fragment, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
@@ -118,25 +117,19 @@ func TestTaskPolicyQueryCancellationPreservesCause(t *testing.T) {
 	}
 }
 
-func TestTaskLifecycleQueryCancellationPreservesCauseAndState(t *testing.T) {
-	for _, action := range []string{"approve", "unapprove", "claim", "complete"} {
+func TestTaskStatusQueryCancellationPreservesCauseAndState(t *testing.T) {
+	for _, action := range []struct{ from, to core.TaskStatus }{
+		{core.TaskTodo, core.TaskInProgress}, {core.TaskInProgress, core.TaskDone}, {core.TaskDone, core.TaskTodo},
+	} {
 		for _, query := range []struct {
 			fragment string
 			after    bool
 		}{{"FROM tasks t", false}, {"UPDATE tasks SET", false}, {"UPDATE tasks SET", true}} {
-			t.Run(fmt.Sprintf("%s %s after=%t", action, query.fragment, query.after), func(t *testing.T) {
+			t.Run(fmt.Sprintf("%s_to_%s %s after=%t", action.from, action.to, query.fragment, query.after), func(t *testing.T) {
 				tasks, _, project, databaseURL, principal := taskService(t)
-				predecessor := createTask(t, tasks, principal, project.ID, "Predecessor")
-				predecessor = approveTask(t, tasks, principal, predecessor)
-				predecessor = claimTask(t, tasks, principal, predecessor)
-				predecessor = completeTask(t, tasks, principal, predecessor)
+				predecessor := finishTask(t, tasks, principal, createTask(t, tasks, principal, project.ID, "Predecessor"))
 				target := createTask(t, tasks, principal, project.ID, "Target", predecessor.ID)
-				if action != "approve" {
-					target = approveTask(t, tasks, principal, target)
-				}
-				if action == "complete" {
-					target = claimTask(t, tasks, principal, target)
-				}
+				target = setStatusTask(t, tasks, principal, target, action.from)
 				ctx, cancel := context.WithCancel(context.Background())
 				defer cancel()
 				trace := taskQueryAction{match: func(sql string) bool { return strings.Contains(sql, query.fragment) }}
@@ -146,20 +139,10 @@ func TestTaskLifecycleQueryCancellationPreservesCauseAndState(t *testing.T) {
 					trace.start = cancel
 				}
 				traced := tracedTasks(t, databaseURL, trace)
-				var err error
-				switch action {
-				case "approve":
-					_, err = traced.Approve(ctx, principal, project.ID, target.ID, target.Version)
-				case "unapprove":
-					_, err = traced.Unapprove(ctx, principal, project.ID, target.ID, target.Version)
-				case "claim":
-					_, err = traced.Claim(ctx, principal, project.ID, target.ID, target.Version)
-				case "complete":
-					_, err = traced.Complete(ctx, principal, project.ID, target.ID, target.Version)
-				}
+				_, err := traced.SetStatus(ctx, principal, project.ID, target.ID, SetTaskStatus{Version: target.Version, Status: action.to})
 				assertOperational(t, err)
 				if !errors.Is(err, context.Canceled) {
-					t.Fatalf("lifecycle cancellation lost cause: %v", err)
+					t.Fatalf("status cancellation lost cause: %v", err)
 				}
 				assertTaskUnchanged(t, tasks, principal, target)
 				assertTaskUnchanged(t, tasks, principal, predecessor)
@@ -189,16 +172,16 @@ func TestTaskTransactionCompletionFailureDominatesDomainFault(t *testing.T) {
 			_, err := s.Update(ctx, principal, project.ID, target.ID, UpdateTask{Version: 2, Title: pointer("Rejected")})
 			return err
 		}},
-		{"missing task approval", "FROM tasks t", func(ctx context.Context, s *Tasks) error {
-			_, err := s.Approve(ctx, principal, project.ID, missing, 1)
+		{"missing task status", "FROM tasks t", func(ctx context.Context, s *Tasks) error {
+			_, err := s.SetStatus(ctx, principal, project.ID, missing, SetTaskStatus{Version: 1, Status: core.TaskInProgress})
 			return err
 		}},
-		{"stale version approval", "FROM tasks t", func(ctx context.Context, s *Tasks) error {
-			_, err := s.Approve(ctx, principal, project.ID, target.ID, target.Version+1)
+		{"stale version status", "FROM tasks t", func(ctx context.Context, s *Tasks) error {
+			_, err := s.SetStatus(ctx, principal, project.ID, target.ID, SetTaskStatus{Version: target.Version + 1, Status: core.TaskTodo})
 			return err
 		}},
-		{"invalid transition claim", "FROM tasks t", func(ctx context.Context, s *Tasks) error {
-			_, err := s.Claim(ctx, principal, project.ID, target.ID, target.Version)
+		{"same-state status", "FROM tasks t", func(ctx context.Context, s *Tasks) error {
+			_, err := s.SetStatus(ctx, principal, project.ID, target.ID, SetTaskStatus{Version: target.Version, Status: core.TaskTodo})
 			return err
 		}},
 		{"invalid dependency create", "t.id = ANY($2::uuid[])", func(ctx context.Context, s *Tasks) error {
@@ -263,7 +246,6 @@ func TestTaskSnapshotKeepsProjectAndDerivedTaskStateConsistent(t *testing.T) {
 	tasks, database, project, databaseURL, principal := taskService(t)
 	predecessor := createTask(t, tasks, principal, project.ID, "Predecessor")
 	target := createTask(t, tasks, principal, project.ID, "Target", predecessor.ID)
-	target = approveTask(t, tasks, principal, target)
 	traced := tracedTasks(t, databaseURL, taskQueryAction{
 		match: func(sql string) bool { return strings.Contains(sql, "FROM project_members m") },
 		end: func() {
@@ -283,4 +265,57 @@ func TestTaskSnapshotKeepsProjectAndDerivedTaskStateConsistent(t *testing.T) {
 	if err != nil || !fresh.Ready || len(fresh.BlockedBy) != 0 || fresh.Version != target.Version || !fresh.UpdatedAt.Equal(target.UpdatedAt) {
 		t.Fatalf("fresh read/metadata: %#v, %v", fresh, err)
 	}
+}
+
+func TestTaskReopenDependentQueryCancellationPreservesCause(t *testing.T) {
+	tasks, _, project, databaseURL, principal := taskService(t)
+	target := finishTask(t, tasks, principal, createTask(t, tasks, principal, project.ID, "Completed prerequisite"))
+	dependent := startTask(t, tasks, principal, createTask(t, tasks, principal, project.ID, "Active dependent", target.ID))
+	for _, after := range []bool{false, true} {
+		t.Run(fmt.Sprintf("after=%t", after), func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			trace := taskQueryAction{match: func(sql string) bool { return strings.Contains(sql, "SELECT t.id::text FROM task_dependencies d") }}
+			if after {
+				trace.end = cancel
+			} else {
+				trace.start = cancel
+			}
+			traced := tracedTasks(t, databaseURL, trace)
+			_, err := traced.SetStatus(ctx, principal, project.ID, target.ID, SetTaskStatus{Version: target.Version, Status: core.TaskTodo})
+			assertOperational(t, err)
+			if !errors.Is(err, context.Canceled) {
+				t.Fatalf("dependent query cancellation lost cause: %v", err)
+			}
+			assertTaskUnchanged(t, tasks, principal, target)
+			assertTaskUnchanged(t, tasks, principal, dependent)
+		})
+	}
+}
+
+func TestTaskStatusPartialWriteFailureRollsBackTimingAndMaterials(t *testing.T) {
+	tasks, database, project, _, principal := taskService(t)
+	ctx := context.Background()
+	prerequisite := finishTask(t, tasks, principal, createTask(t, tasks, principal, project.ID, "Completed prerequisite"))
+	target, err := tasks.Create(ctx, principal, project.ID, CreateTask{
+		Title: "Original", Description: "Preserved Markdown", DependsOn: []string{prerequisite.ID}, ExternalDependsOn: []string{prerequisite.ID},
+		Properties: core.TaskProperties{PullRequests: []core.PullRequestProperty{{URL: "https://github.com/owner/repo/pull/1", Title: "Existing evidence"}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	target = updateTask(t, tasks, principal, target, UpdateTask{AllowAgents: pointer(true)})
+	if _, err := database.Pool.Exec(ctx, `CREATE FUNCTION reject_status_edge() RETURNS trigger LANGUAGE plpgsql AS $$
+		BEGIN RAISE EXCEPTION 'private status edge diagnostic'; END $$;
+		CREATE TRIGGER reject_status_edge BEFORE INSERT ON task_dependencies FOR EACH ROW EXECUTE FUNCTION reject_status_edge()`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = tasks.SetStatus(ctx, principal, project.ID, target.ID, SetTaskStatus{Version: target.Version, Status: core.TaskInProgress})
+	assertOperational(t, err)
+	var pgError *pgconn.PgError
+	if !errors.As(err, &pgError) || pgError.Code != "P0001" || strings.Contains(err.Error(), "private status edge") {
+		t.Fatalf("status write failure cause/redaction: %v", err)
+	}
+	assertTaskUnchanged(t, tasks, principal, target)
+	assertTaskUnchanged(t, tasks, principal, prerequisite)
 }

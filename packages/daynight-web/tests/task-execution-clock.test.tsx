@@ -16,7 +16,7 @@ const input = (warningMinutes = 60): ClockInput => ({ observedAt: start, receive
 const snapshot = (observedAt = start, receivedMonotonic = 0, warningMinutes = 60, id = projectId): GraphSnapshot => {
   const graph: TaskGraph = {
     observedAt, project: { id, name: "Project", repoUrl: "https://example.com/repo", settings: { version: 1n, executionWarningMinutes: warningMinutes }, createdAt: start, updatedAt: start },
-    tasks: [], summary: { total: 0, proposed: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 },
+    tasks: [], summary: { total: 0, todo: 0, inProgress: 0, done: 0, ready: 0, blocked: 0 },
   };
   return { graph, index: buildGraphIndex(graph), observedAt, receivedMonotonic, receivedAt: 123456, revision: 1 };
 };
@@ -58,7 +58,6 @@ describe("execution intervals", () => {
   });
 
   it.each([
-    { status: "proposed", startedAt: null, completedAt: null },
     { status: "todo", startedAt: start, completedAt: null },
     { status: "in_progress", startedAt: null, completedAt: null },
     { status: "done", startedAt: null, completedAt: start },

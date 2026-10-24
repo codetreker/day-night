@@ -83,9 +83,7 @@ func TestInstalledCLIExternalDependencyWriteAcceptance(t *testing.T) {
 			t.Fatal("installed clear did not remove both dependency sets")
 		}
 		update("--external-depends-on", c.ID)
-		cli.run(t, cli.repo, "task", "approve", target.ID, "--if-version", strconv.FormatInt(target.Version, 10))
-		target = cli.task(t, target.ID)
-		cli.refuse(t, process, "dependency_unsatisfied", c.ID, "task", "claim", target.ID, "--project", projectID, "--if-version", strconv.FormatInt(target.Version, 10))
+		cli.refuse(t, process, "dependency_unsatisfied", c.ID, "task", "set-status", target.ID, "in_progress", "--project", projectID, "--if-version", strconv.FormatInt(target.Version, 10))
 		graph := acceptanceCLIGraphResource(t, cli.run(t, cli.repo, "task", "graph", "--json"))
 		if len(graph.Tasks) != 5 || !slices.Equal(graph.Tasks[3].ExternalDependsOn, target.ExternalDependsOn) {
 			t.Fatal("installed graph did not expose newly written classification")

@@ -16,9 +16,9 @@ must still leave the dialog controls and reading panels reachable.
 The loaded task's actual title is the common header's h2 and the dialog's
 accessible name. Loading and initial failure use their corresponding state
 titles. The complete task title owns bounded native scrolling and keyboard focus;
-approval, new-tab and close controls stay accessible across supported viewport sizes.
+status, new-tab and close controls stay accessible across supported viewport sizes.
 Task details consume the current application locale through the shared
-`LocaleProvider`; the modal header contains the title, applicable approval action,
+`LocaleProvider`; the modal header contains the title, current status menu,
 current-state new-tab link and close control. The
 [standalone-detail decision](../architecture/2026-10-24-standalone-task-detail.md)
 owns that link and shares the same complete content with its page container. The body heading retains status, automation controls and actionable
@@ -42,7 +42,7 @@ continues to own the modal shell. The
 [bilingual-interface decision](../feature/2026-10-22-web-bilingual-interface.md)
 retains the shared locale runtime and the rationale for the original modal
 selector placement; this decision removes the duplicate detail-header selector.
-The [approval decision](../feature/2026-10-22-task-approval-lifecycle.md) owns versioned
+The [status assignment decision](../architecture/2026-10-24-task-status-assignment.md) owns versioned
 actions, and the
 [automation decision](../architecture/2026-10-23-task-agent-automation.md) owns
 permission semantics. The [Web requirements](../../../../docs/spec/daynight-web.md)

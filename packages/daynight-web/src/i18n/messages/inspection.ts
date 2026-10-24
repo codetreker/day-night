@@ -1,24 +1,21 @@
 export type InspectionMessages = {
-  readonly approval: {
+  readonly status: {
     readonly title: string;
-    readonly explanation: string;
-    readonly approve: string;
-    readonly unapprove: string;
-    readonly unapproveExplanation: string;
-    readonly approveQuestion: string;
-    readonly unapproveQuestion: string;
-    readonly confirmApprove: string;
-    readonly confirmUnapprove: string;
+    readonly menu: string;
+    readonly question: string;
+    readonly confirm: string;
     readonly cancel: string;
     readonly closeConfirmation: string;
-    readonly proposedState: string;
-    readonly unapproved: string;
-    readonly submitting: string;
+    readonly unchanged: string;
+    readonly resetTiming: string;
+    readonly startTiming: string;
+    readonly finishTiming: string;
+    readonly directFinishTiming: string;
     readonly pending: string;
     readonly confirmed: string;
     readonly currentState: string;
-    readonly approvedReady: string;
-    readonly approvedBlocked: string;
+    readonly readyState: string;
+    readonly blockedState: string;
     readonly confirmedSnapshot: string;
     readonly conflict: string;
     readonly unknown: string;
@@ -29,7 +26,7 @@ export type InspectionMessages = {
     readonly networkError: string;
     readonly protocolError: string;
     readonly versionConflict: string;
-    readonly invalidTransition: string;
+    readonly dependencyUnsatisfied: string;
     readonly notFound: string;
     readonly refused: string;
     readonly requestFailed: string;

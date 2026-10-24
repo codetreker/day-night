@@ -36,16 +36,15 @@ func TestTaskHTTPAgentPermissionResourcesAndStrictInputs(t *testing.T) {
 		t.Fatal("false same-value PATCH changed task")
 	}
 	task = updateHTTPTask(t, handler, task, map[string]any{"allowAgents": true})
-	if !task.AllowAgents || task.Status != "proposed" || task.Ready {
-		t.Fatalf("permission implicitly approved task: %#v", task)
+	if !task.AllowAgents || task.Status != "todo" || !task.Ready {
+		t.Fatalf("permission changed task status: %#v", task)
 	}
-	task = transitionHTTPTask(t, handler, task, "approve")
-	task = transitionHTTPTask(t, handler, task, "claim")
+	task = setHTTPTask(t, handler, task, "in_progress")
 	assertProjectError(t, projectRequest(handler, http.MethodPatch, taskPath(task), jsonBody(t, map[string]any{"version": task.Version, "allowAgents": false, "description": "Must not save"})), http.StatusConflict, "invalid_transition")
 	if !reflect.DeepEqual(readHTTPTask(t, handler, task), task) {
 		t.Fatal("locked toggle partially saved metadata")
 	}
-	task = transitionHTTPTask(t, handler, task, "complete")
+	task = setHTTPTask(t, handler, task, "done")
 	task = updateHTTPTask(t, handler, task, map[string]any{"allowAgents": false})
 	for _, path := range []string{taskPath(task), taskCollection(project.ID), "/api/v1/projects/" + project.ID + "/task-graph"} {
 		read := projectRequest(handler, http.MethodGet, path, "")
@@ -60,7 +59,7 @@ func TestTaskHTTPAgentPermissionFilteringAndCursorScopes(t *testing.T) {
 	project := taskProject(t, handler)
 	var permitted, manual []string
 	for index := range 5 {
-		task := transitionHTTPTask(t, handler, createHTTPTask(t, handler, project.ID, "Permission filter"), "approve")
+		task := createHTTPTask(t, handler, project.ID, "Permission filter")
 		if index >= 2 {
 			task = updateHTTPTask(t, handler, task, map[string]any{"allowAgents": true})
 			permitted = append(permitted, task.ID)

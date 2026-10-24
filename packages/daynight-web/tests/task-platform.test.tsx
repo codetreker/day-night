@@ -15,13 +15,13 @@ const projectId = '10000000-0000-4000-8000-000000000001';
 const taskId = '20000000-0000-4000-8000-000000000001';
 const time = '2026-10-24T00:00:00Z';
 const project: Project = { id: projectId, name: 'Platform tasks', repoUrl: 'https://example.com/repo', settings: { version: 1n, executionWarningMinutes: 60 }, createdAt: time, updatedAt: time };
-const detail: TaskDetail = { id: taskId, projectId, title: 'Reviewed task', description: 'Keep this content', allowAgents: false, requiredPlatform: null, status: 'proposed', version: 9007199254740993n,
-  dependsOn: [], externalDependsOn: [], blockedBy: [], ready: false, properties: { pullRequests: [] }, startedAt: null, completedAt: null, createdAt: time, updatedAt: time };
+const detail: TaskDetail = { id: taskId, projectId, title: 'Reviewed task', description: 'Keep this content', allowAgents: false, requiredPlatform: null, status: 'todo', version: 9007199254740993n,
+  dependsOn: [], externalDependsOn: [], blockedBy: [], ready: true, properties: { pullRequests: [] }, startedAt: null, completedAt: null, createdAt: time, updatedAt: time };
 const graphTask = (value: TaskDetail): GraphTask => ({ id: value.id, titlePreview: value.title, titleTruncated: false, status: value.status,
   requiredPlatform: value.requiredPlatform, allowAgents: value.allowAgents, dependsOn: value.dependsOn, externalDependsOn: value.externalDependsOn, blockedBy: value.blockedBy, ready: value.ready,
   startedAt: value.startedAt, completedAt: value.completedAt, createdAt: value.createdAt, updatedAt: value.updatedAt });
 const snapshot = (value: TaskDetail, revision = 1) => {
-  const graph: TaskGraph = { observedAt: time, project, tasks: [graphTask(value)], summary: { total: 1, proposed: value.status === 'proposed' ? 1 : 0,
+  const graph: TaskGraph = { observedAt: time, project, tasks: [graphTask(value)], summary: { total: 1,
     todo: value.status === 'todo' ? 1 : 0, inProgress: value.status === 'in_progress' ? 1 : 0, done: value.status === 'done' ? 1 : 0, ready: value.ready ? 1 : 0, blocked: value.status === 'todo' && !value.ready ? 1 : 0 } };
   return { observedAt: time, graph, index: buildGraphIndex(graph), receivedMonotonic: performance.now(), receivedAt: 1, revision };
 };
@@ -50,12 +50,12 @@ describe('explicit platform editor', () => {
     fireEvent.click(save());
     expect(writes).toHaveBeenCalledExactlyOnceWith(projectId, taskId, 'linux', detail.version, expect.any(AbortSignal));
     expect(select()).toBeDisabled(); expect(save()).toBeDisabled(); expect(screen.getByRole('switch')).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Approve task' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'To do' })).toBeDisabled();
     await act(async () => pending.resolve({ ...detail, requiredPlatform: 'linux', version: detail.version + 1n }));
     await screen.findByText('Execution platform updated.');
     expect(select()).toHaveValue('linux'); expect(save()).toBeDisabled(); expect(screen.getByRole('switch')).toBeEnabled();
     expect(document.querySelector('.task-detail-badges .task-platform')).toHaveTextContent('Linux');
-    expect(screen.queryByRole('region', { name: 'Task approval' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Task status' })).toBeNull();
   });
   it('clears with Any platform and sends null', async () => {
     await open({ ...detail, requiredPlatform: 'windows' });
@@ -104,17 +104,17 @@ describe('explicit platform editor', () => {
     const check = await screen.findByRole('button', { name: 'Check actual task' });
     await waitFor(() => expect(check).toBeEnabled());
     expect(select()).toBeDisabled(); expect(screen.getByRole('switch')).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Approve task' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'To do' })).toBeDisabled();
     vi.mocked(getTask).mockResolvedValueOnce({ ...detail, requiredPlatform: 'linux', version: detail.version + 1n }); fireEvent.click(check);
     await screen.findByText('The actual task has been read. The displayed platform is confirmed.');
     expect(select()).toHaveValue('linux'); expect(select()).toBeEnabled(); expect(writes).toHaveBeenCalledTimes(1);
   });
   it('locks an executing task and renders all Chinese platform labels', async () => {
-    await open({ ...detail, status: 'in_progress', requiredPlatform: 'windows' }, 'zh-CN');
+    await open({ ...detail, status: 'in_progress', ready: false, requiredPlatform: 'windows' }, 'zh-CN');
     const platform = screen.getByRole('combobox', { name: '执行平台' });
     expect(platform).toBeDisabled(); expect(platform).toHaveValue('windows'); expect(screen.getByRole('button', { name: '保存平台' })).toBeDisabled();
     expect(within(platform).getAllByRole('option').map((option) => option.textContent)).toEqual(['不限平台', 'Windows', 'Linux', 'macOS']);
-    expect(screen.getByText('任务已被领取，执行结束或解除领取前无法修改执行平台。')).toBeVisible();
+    expect(screen.getByText('任务正在进行中，保持此状态时无法修改执行平台。')).toBeVisible();
   });
   it('localizes badges and ignores platform feedback for other operation kinds', () => {
     const idle: TaskMutationState = { operation: null, phase: 'idle', error: null, reconciling: false, reconciliationError: null };

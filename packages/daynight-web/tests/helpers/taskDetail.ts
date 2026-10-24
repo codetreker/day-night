@@ -11,16 +11,19 @@ export const detailFixture = (projectId: string, taskId: string, changes: Partia
 });
 export const graphFixture = (details: readonly TaskDetail[]): TaskGraph => {
   const projectId = details[0]!.projectId;
+  const current = details.map((task) => {
+    const blockedBy = task.dependsOn.filter((id) => details.find((item) => item.id === id)!.status !== 'done');
+    return { ...task, blockedBy, ready: task.status === 'todo' && blockedBy.length === 0 };
+  });
   return {
     observedAt: timestamp,
     project: { id: projectId, name: '任务项目', repoUrl: 'https://github.com/example/project', settings: { version: 1n, executionWarningMinutes: 60 }, createdAt: timestamp, updatedAt: timestamp },
-    tasks: details.map((task) => ({ id: task.id, titlePreview: task.title, titleTruncated: false, status: task.status,
+    tasks: current.map((task) => ({ id: task.id, titlePreview: task.title, titleTruncated: false, status: task.status,
       allowAgents: task.allowAgents, requiredPlatform: task.requiredPlatform, dependsOn: task.dependsOn, externalDependsOn: task.externalDependsOn,
       blockedBy: task.blockedBy, ready: task.ready, startedAt: task.startedAt, completedAt: task.completedAt, createdAt: task.createdAt, updatedAt: task.updatedAt })),
-    summary: { total: details.length, proposed: details.filter((task) => task.status === 'proposed').length,
-      todo: details.filter((task) => task.status === 'todo').length, inProgress: details.filter((task) => task.status === 'in_progress').length,
-      done: details.filter((task) => task.status === 'done').length, ready: details.filter((task) => task.ready).length,
-      blocked: details.filter((task) => task.status === 'todo' && !task.ready).length },
+    summary: { total: details.length, todo: current.filter((task) => task.status === 'todo').length, inProgress: current.filter((task) => task.status === 'in_progress').length,
+      done: current.filter((task) => task.status === 'done').length, ready: current.filter((task) => task.ready).length,
+      blocked: current.filter((task) => task.status === 'todo' && !task.ready).length },
   };
 };
 export const snapshotFixture = (details: readonly TaskDetail[], revision = 1): GraphSnapshot => {

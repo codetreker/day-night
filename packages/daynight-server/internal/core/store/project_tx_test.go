@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -11,6 +12,37 @@ import (
 	"github.com/codetreker/daynight/packages/daynight-server/internal/core"
 	"github.com/jackc/pgx/v5"
 )
+
+func TestActiveDependentIDsUseOnlyDirectScopedOrdinaryAndExternalEdges(t *testing.T) {
+	database := isolatedStore(t)
+	ctx := context.Background()
+	project, foreign := queryProject(t, database, 1), queryProject(t, database, 2)
+	predecessor := queryTask(t, database, project.ID, 10, core.TaskDone)
+	active := queryTask(t, database, project.ID, 11, core.TaskInProgress, predecessor.ID)
+	done := queryTask(t, database, project.ID, 12, core.TaskDone, predecessor.ID)
+	queryTask(t, database, project.ID, 13, core.TaskTodo, predecessor.ID)
+	queryTask(t, database, project.ID, 14, core.TaskDone, active.ID)
+	queryTask(t, database, foreign.ID, 15, core.TaskInProgress, predecessor.ID)
+	mustQueryExec(t, database, `UPDATE task_dependencies SET external=true WHERE task_id=$1`, done.ID)
+	mustQueryExec(t, database, `CREATE FUNCTION reject_dependent_materials() RETURNS text LANGUAGE plpgsql STABLE AS $$
+		BEGIN RAISE EXCEPTION 'dependent materials must not be selected'; END $$;
+		ALTER TABLE tasks RENAME TO task_source;
+		CREATE VIEW tasks AS SELECT id, project_id, status, reject_dependent_materials() AS title,
+		reject_dependent_materials() AS description FROM task_source`)
+	if err := database.WriteProject(ctx, project.ID, func(tx *ProjectTx) error {
+		ids, err := tx.ActiveDependentIDs(ctx, predecessor.ID)
+		if err != nil || !reflect.DeepEqual(ids, []string{active.ID, done.ID}) {
+			t.Fatalf("direct active dependents lost scope, order, classification or ID-only projection: %#v %v", ids, err)
+		}
+		empty, err := tx.ActiveDependentIDs(ctx, queryID(99))
+		if err != nil || len(empty) != 0 {
+			t.Fatalf("empty active dependent lookup failed: %#v %v", empty, err)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func waitForQueryLock(t *testing.T, s *Store, prefix string) {
 	t.Helper()
@@ -210,6 +242,7 @@ func TestQueriesFailuresPreserveCauses(t *testing.T) {
 			return err
 		},
 		func() error { _, err := expiredProject.TasksByID(ctx, []string{task.ID}); return err },
+		func() error { _, err := expiredProject.ActiveDependentIDs(ctx, task.ID); return err },
 		func() error { _, err := expiredProject.Project(ctx); return err },
 		func() error { _, err := expiredProject.UpdateProjectSettings(ctx, 90); return err },
 		func() error {

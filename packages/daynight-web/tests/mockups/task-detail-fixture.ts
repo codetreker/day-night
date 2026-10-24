@@ -17,13 +17,17 @@ const task = (id: string, title: string, status: TaskDetail['status']): TaskDeta
 export const createTaskDetailFixture = () => {
   const priorId = '00000000-0000-4000-8000-000000000002';
   const nextId = '00000000-0000-4000-8000-000000000003';
-  const first = task(detailTaskId, '在新标签页阅读完整任务详情', 'proposed');
+  const first = task(detailTaskId, '在新标签页阅读完整任务详情', 'todo');
   const prior = task(priorId, '完成资料准备与需求确认', 'done');
   const next = task(nextId, '验证任务详情与附件交互', 'todo');
   const tasks = new Map([[first.id, { ...first, dependsOn: [priorId] }], [prior.id, prior], [next.id, { ...next, dependsOn: [first.id], blockedBy: [first.id], ready: false }]]);
   const listeners = new Set<() => void>();
   let revision = 0;
   const build = (): GraphSnapshot => {
+    for (const [id, item] of tasks) {
+      const blockedBy = item.dependsOn.filter((dependency) => tasks.get(dependency)!.status !== 'done');
+      tasks.set(id, { ...item, blockedBy, ready: item.status === 'todo' && blockedBy.length === 0 });
+    }
     const details = [...tasks.values()];
     const graph: TaskGraph = {
       observedAt: timestamp,
@@ -31,8 +35,8 @@ export const createTaskDetailFixture = () => {
       tasks: details.map((item) => ({ id: item.id, titlePreview: item.title, titleTruncated: false, status: item.status,
         allowAgents: item.allowAgents, requiredPlatform: item.requiredPlatform, dependsOn: item.dependsOn, externalDependsOn: item.externalDependsOn,
         blockedBy: item.blockedBy, ready: item.ready, startedAt: item.startedAt, completedAt: item.completedAt, createdAt: item.createdAt, updatedAt: item.updatedAt })),
-      summary: { total: details.length, proposed: details.filter((item) => item.status === 'proposed').length, todo: details.filter((item) => item.status === 'todo').length,
-        inProgress: 0, done: details.filter((item) => item.status === 'done').length, ready: details.filter((item) => item.ready).length,
+      summary: { total: details.length, todo: details.filter((item) => item.status === 'todo').length,
+        inProgress: details.filter((item) => item.status === 'in_progress').length, done: details.filter((item) => item.status === 'done').length, ready: details.filter((item) => item.ready).length,
         blocked: details.filter((item) => item.status === 'todo' && !item.ready).length },
     };
     return { graph, index: buildGraphIndex(graph), revision: ++revision, receivedAt: Date.now(), receivedMonotonic: performance.now(), observedAt: graph.observedAt };
@@ -44,13 +48,17 @@ export const createTaskDetailFixture = () => {
   const fetcher: typeof window.fetch = async (input, options) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     if (!url.startsWith('/api/v1/')) return originalFetch(input, options);
-    const match = /^\/api\/v1\/projects\/[^/]+\/tasks\/([^/]+)(?:\/(approve|unapprove))?$/.exec(url);
+    const match = /^\/api\/v1\/projects\/[^/]+\/tasks\/([^/]+)(?:\/(status))?$/.exec(url);
     const current = match === null ? undefined : tasks.get(match[1]!);
     if (current === undefined) return json({ error: { code: 'not_found', message: 'Fixture task unavailable.', requestId: 'fixture-task' } }, 404);
-    if (options?.method === 'POST' || options?.method === 'PATCH') {
+    if (options?.method === 'PUT' || options?.method === 'PATCH') {
       const patch = JSON.parse(String(options.body));
       if (BigInt(patch.version) !== current.version) return json({ error: { code: 'version_conflict', message: 'Fixture version changed.', requestId: 'fixture-version' } }, 409);
-      const updated = { ...current, ...(match![2] === 'approve' ? { status: 'todo' as const, ready: true } : match![2] === 'unapprove' ? { status: 'proposed' as const, ready: false } : Object.hasOwn(patch, 'allowAgents') ? { allowAgents: patch.allowAgents as boolean } : { requiredPlatform: patch.requiredPlatform as TaskDetail['requiredPlatform'] }), version: current.version + 1n, updatedAt: new Date().toISOString() };
+      const status = patch.status as TaskDetail['status'];
+      const changedStatus = match![2] === 'status' && status !== current.status;
+      if (changedStatus && (status !== 'todo' && current.dependsOn.some((id) => tasks.get(id)!.status !== 'done') || current.status === 'done' && [...tasks.values()].some((item) => item.dependsOn.includes(current.id) && item.status !== 'todo'))) return json({ error: { code: 'dependency_unsatisfied', message: 'Fixture dependencies prevent this status.', requestId: 'fixture-dependencies' } }, 409);
+      const timing = status === 'todo' ? { startedAt: null, completedAt: null } : status === 'in_progress' ? { startedAt: new Date().toISOString(), completedAt: null } : { startedAt: current.status === 'in_progress' ? current.startedAt : null, completedAt: new Date().toISOString() };
+      const updated = { ...current, ...(match![2] === 'status' ? changedStatus ? { status, ready: status === 'todo' && current.blockedBy.length === 0, ...timing } : {} : Object.hasOwn(patch, 'allowAgents') ? { allowAgents: patch.allowAgents as boolean } : { requiredPlatform: patch.requiredPlatform as TaskDetail['requiredPlatform'] }), version: current.version + (match![2] === 'status' && !changedStatus ? 0n : 1n), updatedAt: match![2] === 'status' && !changedStatus ? current.updatedAt : new Date().toISOString() };
       tasks.set(updated.id, updated); refresh();
       return json(updated);
     }
