@@ -18,6 +18,14 @@ That predates the CI optimizations. The
 requires bounded termination and an explicit unconfirmed result when cleanup
 cannot be established; wrapper closure alone does not prove descendant exit.
 
+The controlled descendant publishes readiness before starting its heartbeat.
+A ready marker and live PID do not establish that the descendant's timer has
+run. Its former fixed 50ms heartbeat observation could therefore fail without
+proving that the descendant stopped; the
+[release preparation failure](https://github.com/codetreker/daynight/actions/runs/40053873708/job/120752443773)
+reported no observed heartbeat growth in that window. Positive evidence of
+continued execution requires observing actual progress within a bounded period.
+
 ## Decision
 
 The real Git-alias cancellation test transparently observes the actual system
@@ -45,6 +53,15 @@ must preserve the exact cleanup error and cancellation cause. The confirmed case
 requires actual descendant exit and stable ticks. Every path reaps the owned
 wrapper and descendant in `finally`.
 
+After confirming wrapper closure and the uncertain descendant's live PID, the
+controlled suite captures a heartbeat baseline. It polls every 10ms for at most
+1,000ms for the tick file to grow beyond that baseline. A descendant that makes
+no progress still fails. Immediate heartbeat cases cover both termination
+outcomes; an additional uncertain case delays heartbeat startup by 250ms after
+readiness, exercising the observation independently of the former 50ms window.
+The unchanged 2,500ms cancellation assertion precedes heartbeat observation, so
+waiting for progress does not expand the cancellation budget.
+
 The [native alias test](../../../../packages/daynight/test/repository/git.test.ts)
 retains the real platform operation; the controlled suite establishes why root
 closure cannot substitute for tree confirmation. Their evidence scopes remain
@@ -62,6 +79,11 @@ ignored stdio can survive after the wrapper closes and all its pipes finish.
 The controlled fixture makes that survival observable, so root closure cannot
 supply the missing tree evidence.
 
+**Lengthen the fixed heartbeat sleep.** A larger delay still assumes when the
+other process receives execution time and spends the full delay even when
+progress is already observable. Bounded polling requires the same positive
+heartbeat evidence and ends as soon as that evidence is available.
+
 **Replace cancellation with a native Windows Job Object integration.** This
 would change runtime ownership, dependencies and platform support beyond the CI
 test-contract repair. The existing runtime already preserves uncertain cleanup;
@@ -73,6 +95,12 @@ The test accepts only the exact diagnostic corresponding to the observed native
 tool outcome and still proves that its own alias child stopped. Genuine tool
 launch failures, timeouts, signals and additional cleanup failures remain test
 failures. No arbitrary aggregate error or silent native failure is accepted.
+
+Controlled liveness evidence now depends on observed heartbeat progress, with a
+one-second upper bound, rather than the descendant receiving execution time
+within 50ms. Delayed heartbeat startup exercises that distinction while the
+confirmed case still requires actual exit and stable ticks. A stalled or stopped
+uncertain descendant remains a test failure.
 
 Controlled Node-process evidence does not establish a successful native Windows
 run. Hosted results remain tied to the tested head and actual platform, and

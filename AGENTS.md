@@ -10,18 +10,45 @@ take precedence.
 - Write new or revised specifications in `docs/spec/` and design documents in
   `docs/design/` in Chinese, including headings and explanatory prose. Preserve
   the required spelling of code, commands, identifiers, paths, and API names.
+- Always write specifications, solution proposals, architecture, design, and
+  related documents stored in Daynight task descriptions or attachments in
+  Chinese. Preserve the required spelling of code, commands, identifiers, paths,
+  and API names.
 - Write other repository documents, skills, code, comments, and commit messages
   in English unless explicitly instructed otherwise.
 - Use the user's confirmed task and existing requirements to establish scope.
   A request to investigate or discuss remains read-only unless edits are
   authorized. Skills describe workflows and grant no additional permission.
 - Manage this repository's tasks in Daynight, including task breakdowns,
-  dependencies, execution status and task-specific plans and attachments. Do not
-  commit task-management files, including `*-tasks.md`, or add execution
+  dependencies, execution status and task-specific plans and attachments. When
+  `using-daynight` and Daynight are available, use Daynight to manage concrete
+  work with a defined objective and completion conditions: features, bug fixes,
+  architecture/design work, and actual work items produced by their breakdown.
+  An agent's transient execution steps, such as reading files, running commands,
+  and routine checks, belong in its execution plan; their presence in a plan does
+  not make them Daynight tasks.
+  All solution, architecture, and design reviews must use the owning Daynight
+  task. Before requesting user review of such a discussion, save the complete
+  current material in that task's description or
+  attachments, read it back, and provide the task and resource reference.
+  Synchronize revisions and review decisions there; chat summaries and repository
+  or PR links supplement the saved material. This instruction authorizes creation
+  of required tasks within the user's confirmed scope, without granting approval,
+  execution, or delivery permission. Report actual availability or upload failures.
+  Do not commit task-management files, including `*-tasks.md`, or add execution
   bookkeeping and task-tracking pointers to repository documents. Keep durable
   product requirements, architecture, decisions and validation methods in their
   document owners. Load the `using-daynight` skill before executing any task and
   follow its applicable workflow.
+- For a Goal, first create or reuse only its requirements-discussion task and
+  enter `in_progress` when the user requests that discussion. After the user
+  confirms the requirements and asks to proceed, complete that task, then create
+  and start the solution or architecture discussion task. Create the actual
+  delivery subtasks and their dependencies only after the user confirms the
+  solution. A request to start or advance a discussion authorizes approval and
+  claim of that discussion task; it grants no delivery-task approval or execution
+  permission. Discussion completion follows the confirmed Daynight material and
+  phase acceptance. Repository delivery retains its own PR and merge requirements.
 - Complete authorized work and its verification. Report observed results and
   material limitations; keep unverified assumptions distinct from evidence.
 - Mainline pushes and PR merges require explicit user authorization. Follow the
@@ -137,4 +164,10 @@ authorized PR merge, require real successful checks and a linear mainline.
 `.agents/skills/` is canonical. `CLAUDE.md` links to this file;
 `.claude/skills` and `.claude/worktrees` link to the shared skill and worktree
 directories. Keep these relative links intact so tools use the same workflow.
+When updating `using-daynight`, modify only its source under
+`packages/daynight/src/commands/skill/skills/using-daynight/`. Do not edit installed
+copies. `daynight update` refreshes existing User and current-worktree Project
+copies automatically. For first installation or copies in other projects, run
+`daynight skill install` for the relevant Agents and scopes, then follow the
+reload instructions.
 

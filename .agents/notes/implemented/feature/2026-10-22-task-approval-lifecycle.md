@@ -86,18 +86,24 @@ and the attachment panel. Same-task retained reads keep that composition mounted
 
 Packaged using-daynight creates proposed tasks and verifies current stage-owned
 artifacts and real shared inputs before reporting complete registration. The
-[Goal protocol](../process/2026-10-22-goal-workflow-design.md) registers two starting
-tasks from stage briefs; complete requirements, prototypes and architecture are
-outputs of their respective stages, not prerequisites for registering their
-producers. Goal-creation permission covers that pair and in-scope later breakdown,
-but approval remains a separate explicit task or stated Goal-task-scope decision. Creation permission, execution requests,
-run-task, Goal/design completion and autopilot never imply approval permission. Explicit user approval
+[original Goal protocol](../process/2026-10-22-goal-workflow-design.md) registered two
+starting tasks from stage briefs; complete requirements, prototypes and architecture
+remained outputs of their respective stages. Its
+[user-confirmed successor](../process/2026-10-24-user-confirmed-goal-discussions.md)
+now creates requirements discussion first, solution discussion after confirmed
+requirements and a user-requested transition, and delivery tasks after solution
+confirmation. An explicit request to begin or advance a discussion authorizes
+approval and claim for that discussion task only. Ordinary creation permission,
+execution requests, run-task, stage completion and autopilot alone do not imply
+approval permission. Explicit user approval
 of the task or stated scope permits a versioned approve, or the user can approve
 directly through CLI/Web. Ready todo work is claimed at its reviewed version;
 in-progress work can resume after checking actual work and authorization. Claim
 is a transition, not an assignee lock or lease. Completion uses the observed
-version only after acceptance and all required authorized delivery PR merges.
-An open PR retained for user review remains in-progress. Approval grants no
+version only after acceptance and all required authorized delivery PR merges for
+actual delivery work. Discussion completion follows user-confirmed Daynight
+materials and its phase acceptance. An open delivery PR retained for user review
+remains in-progress. Approval grants no
 implementation, publication, deployment, external communication or merge right.
 
 The original [service baseline](../architecture/2026-10-19-daynight-server-task-design.md)

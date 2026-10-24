@@ -128,10 +128,10 @@ describe("packaged skill resource copy", () => {
     expect(run).toContain("is merged");
     expect(autopilot).toContain("never auto-approves proposed");
     const goal = readFileSync(path.join(destination, "references/goal.md"), "utf8");
-    expect(goal).toContain("two starting tasks");
+    expect(goal).toContain("only the requirements discussion task");
     expect(goal).toMatch(/Each task starts\s+in `proposed`/);
-    expect(goal).toContain("stage briefs");
-    expect(goal).toContain("Completion satisfies dependencies but never approves the next stage");
+    expect(goal).toContain("stage brief");
+    expect(goal).toContain("Completion satisfies dependencies but never approves delivery tasks");
     expect(goal).toContain("actual registered delivery tasks");
     expect(goal).not.toMatch(/starts\s+in `todo`/);
   });
