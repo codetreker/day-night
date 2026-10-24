@@ -39,7 +39,7 @@ test('rejects retries, flaky tests, global errors, and invalid result evidence',
 });
 
 const functionalNames = ['project-list', 'project-graph', 'detail-navigation', 'refresh-staleness',
-  'failure-recovery', 'deep-links', 'keyboard-focus', 'narrow-layout', 'task-attachments', 'project-view-tabs',
+  'failure-recovery', 'deep-links', 'keyboard-focus', 'narrow-layout', 'task-attachments', 'task-detail-page', 'project-view-tabs',
   'language-startup-preferences', 'language-state-preservation', 'language-errors-and-narrow',
   'task-description-markdown', 'task-approval', 'task-approval-conflicts', 'task-approval-recovery', 'task-unapproval', 'task-agent-permission', 'task-platform',
   'auth-login-session', 'auth-project-isolation', 'auth-project-members', 'auth-personal-tokens', 'auth-invitations', 'auth-resource-session', 'project-settings', 'task-execution-time'] as const;
@@ -47,21 +47,21 @@ const capacityNames = ['capacity-chain', 'capacity-merge', 'capacity-shared', 'c
 const nativeNames = [...functionalNames, ...capacityNames];
 const scenario = (name: string): Scenario => ({ name, title: name, durationMs: 12, screenshots: [`/owned/${name}.png`] });
 
-test('verifies exactly twenty-eight functional scenarios for the container target', () => {
+test('verifies exactly twenty-nine functional scenarios for the container target', () => {
   const scenarios = readReport(report([...functionalNames]), functionalNames);
-  assert.equal(scenarios.length, 28);
+  assert.equal(scenarios.length, 29);
   assert.deepEqual(scenarios.map(({ name }) => name), functionalNames);
 });
 
-test('aggregates native functional and capacity reports into exactly thirty-three scenarios', () => {
+test('aggregates native functional and capacity reports into exactly thirty-four scenarios', () => {
   const functional = readReport(report([...functionalNames]), functionalNames);
   const capacity = readReport(report([...capacityNames]), capacityNames);
   const phases: readonly (readonly Scenario[])[] = [functional, capacity];
   const scenarios = aggregateScenarios(phases, nativeNames);
-  assert.equal(scenarios.length, 33);
+  assert.equal(scenarios.length, 34);
   assert.deepEqual(scenarios.map(({ name }) => name), nativeNames);
   assert.equal(scenarios[0], functional[0]);
-  assert.equal(scenarios[28], capacity[0]);
+  assert.equal(scenarios[29], capacity[0]);
 });
 
 test('requires the automatic-execution journey in each complete target report', () => {
@@ -76,6 +76,12 @@ test('requires the platform journey in each complete target report', () => {
   const withoutPlatform = functionalNames.filter((name) => name !== 'task-platform');
   assert.throws(() => readReport(report(withoutPlatform), functionalNames), /Required acceptance scenario missing: task-platform/);
   assert.throws(() => aggregateScenarios([withoutPlatform.map(scenario), capacityNames.map(scenario)], nativeNames), /Required acceptance scenario missing: task-platform/);
+});
+
+test('requires the standalone task detail journey in each complete target report', () => {
+  const withoutPage = functionalNames.filter((name) => name !== 'task-detail-page');
+  assert.throws(() => readReport(report(withoutPage), functionalNames), /Required acceptance scenario missing: task-detail-page/);
+  assert.throws(() => aggregateScenarios([withoutPage.map(scenario), capacityNames.map(scenario)], nativeNames), /Required acceptance scenario missing: task-detail-page/);
 });
 
 test('rejects missing and unexpected scenarios across phases', () => {

@@ -8,7 +8,7 @@ export const workspace: WorkspaceMessages = {
     skipToContent: "Skip to main content", workspaceNavigation: "Workspace navigation", projectHome: "Daynight project home", mainNavigation: "Main navigation",
     workspace: "Workspace", projects: "Projects", projectTasks: "Project tasks", localWorkspace: "Local workspace", localWorkspaceDetail: "Tasks and dependencies at a glance",
     localLabel: "Workspace · Local", breadcrumb: "Breadcrumb", notFound: "Page not found", notFoundDetail: "Check the page address or return to the project list.", returnToProjects: "Back to projects",
-    documentTitle: { attachment: "Attachment preview · Daynight", projects: "Projects · Daynight", project: "Project tasks · Daynight", notFound: "Page not found · Daynight" },
+    documentTitle: { task: "Task details · Daynight", attachment: "Task details · Daynight", projects: "Projects · Daynight", project: "Project tasks · Daynight", notFound: "Page not found · Daynight" },
   },
   projects: {
     subtitle: "Explore task progress and dependencies by project.", refresh: "Refresh", retry: "Retry", loading: "Loading projects", loadingDetail: "Reading projects in this workspace.",

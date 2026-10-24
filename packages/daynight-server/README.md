@@ -160,16 +160,19 @@ records include method, route template, status, and duration. A supplied
 The response returns `X-Request-ID`. An unmatched route has an empty route template.
 UI and API requests use the same logging wrapper. Exact `/`,
 `/projects/{projectId}`, `/projects/{projectId}/members`,
-`/projects/{projectId}/settings` and
+`/projects/{projectId}/settings`, `/projects/{projectId}/tasks/{taskId}` and
 `/projects/{projectId}/tasks/{taskId}/attachments/{path...}` page shapes return
-the index; the last route opens the standalone attachment reader. Invalid page
+the index. The task routes open complete standalone details, with the attachment
+path selecting its file and defaulting to the Attachments tab. Invalid page
 IDs retain the existing index response and frontend not-found behavior. The
 raw attachment path guard also protects this page namespace before ServeMux
 normalization, rejecting invalid segments without redirecting or repairing the
-address. File reads still use the existing scoped attachment APIs; no new
+address. Task, graph and file reads use the existing scoped APIs; no new
 metadata, authorization or storage format is introduced. The
+[detail design](../../docs/design/daynight-task-inspection.md#独立完整任务详情) owns
+the complete page, and the
 [attachment design](../../docs/design/daynight-task-attachments.md#独立附件阅读页)
-owns reader composition. Unknown page shapes return JSON 404; `/assets/` serves actual generated
+owns file rendering. Unknown page shapes return JSON 404; `/assets/` serves actual generated
 files without directory listings or an HTML fallback. Unknown API routes retain
 JSON 404 responses. GET routes support HEAD; other methods receive 405 with
 `Allow`. HTML, complete graphs and latest task details use

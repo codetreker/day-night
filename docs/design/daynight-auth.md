@@ -181,7 +181,9 @@ HTTP 认证逐请求读取当前会话/PAT 并产生 Principal。资源服务在
 requestId。非成员与不存在项目均 not_found；错误类别不能落入 internal_error。
 
 正式 main.tsx 在常驻 LocaleProvider 下挂载 AuthenticatedApp；语言机制和现有图、
-任务/附件页签及居中 TaskDetailDialog 保持同一实例与状态规则。
+任务/附件页签及完整详情的弹窗/独立展示保持同一实例与状态规则。独立详情导航同时
+包含 pathname 与 search；登录返回路径保留任务、页签和附件的相关查询参数，构造
+登录入口时移除临时 `authError`，避免一次旧登录失败随成功返回再次呈现。
 TaskDetailSessionProvider 位于当前 user/generation 的身份域内，跨详情关闭/重开
 保持 project/task 的批准操作身份与结果，401 或身份变化时丢弃旧用户状态；同一
 用户核验与语言切换不重建 Provider。批准依赖当前完整详情的精确版本，冲突与未知

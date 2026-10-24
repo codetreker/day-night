@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { navigate, parseRoute } from "../src/app/router";
+import { navigate, parseRoute, taskDetailUrl } from "../src/app/router";
 
 const taskId = "b0000000-0000-0000-0000-000000000002";
 const projectId = "a0000000-0000-0000-0000-000000000001";
@@ -14,8 +14,20 @@ describe("route parsing", () => {
   });
 
   it("parses complete attachment identities without normalizing filename case or literal percent escapes", () => {
-    expect(parseRoute(`/projects/${projectId.toUpperCase()}/tasks/${taskId.toUpperCase()}/attachments/Docs/%E8%AE%BE%E8%AE%A1%20%3F%23%25.md`)).toEqual({ kind: "attachment", projectId, taskId, path: "Docs/设计 ?#%.md" });
-    expect(parseRoute(`/projects/${projectId}/tasks/${taskId}/attachments/%252F`)).toEqual({ kind: "attachment", projectId, taskId, path: "%2F" });
+    expect(parseRoute(`/projects/${projectId.toUpperCase()}/tasks/${taskId.toUpperCase()}/attachments/Docs/%E8%AE%BE%E8%AE%A1%20%3F%23%25.md`)).toEqual({ kind: "attachment", projectId, taskId, tab: "attachments", path: "Docs/设计 ?#%.md" });
+    expect(parseRoute(`/projects/${projectId}/tasks/${taskId}/attachments/%252F`)).toEqual({ kind: "attachment", projectId, taskId, tab: "attachments", path: "%2F" });
+  });
+
+  it("parses task entries and explicit tabs while retaining a hidden file selection", () => {
+    const task = `/projects/${projectId}/tasks/${taskId}`;
+    expect(parseRoute(task)).toEqual({ kind: "task", projectId, taskId, tab: "overview", path: null });
+    expect(parseRoute(task, "?tab=attachments")).toEqual({ kind: "task", projectId, taskId, tab: "attachments", path: null });
+    expect(parseRoute(`${task}/attachments/docs/a.md`, "?tab=overview")).toEqual({ kind: "attachment", projectId, taskId, tab: "overview", path: "docs/a.md" });
+    for (const search of ["?tab=", "?tab=invalid", "?tab=overview&tab=attachments", "?tab=%ZZ"]) expect(parseRoute(task, search)).toEqual({ kind: "notFound" });
+    expect(taskDetailUrl(projectId, taskId, { tab: "overview", path: null })).toBe(task);
+    expect(taskDetailUrl(projectId, taskId, { tab: "attachments", path: null })).toBe(`${task}?tab=attachments`);
+    expect(taskDetailUrl(projectId, taskId, { tab: "overview", path: "设计 %2F #?.md" })).toBe(`${task}/attachments/%E8%AE%BE%E8%AE%A1%20%252F%20%23%3F.md?tab=overview`);
+    expect(() => taskDetailUrl("bad", taskId, { tab: "overview", path: null })).toThrow();
   });
 
   it.each(["", "/", "a//b", "a/", "%2F", "a%2fb", "a%5Cb", ".", "..", "a/%2E%2E/b", "%00", "%7F", "C%3A/absolute", "%ED%A0%80", "%ZZ"])("rejects invalid attachment route path %s", (path) => {

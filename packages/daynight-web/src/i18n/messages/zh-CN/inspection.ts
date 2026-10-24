@@ -37,6 +37,7 @@ export const inspection: InspectionMessages = {
     requestFailed: "审批操作失败。",
   },
   detail: {
+    openInNewTab: "在新标签页打开", returnToProject: "返回任务所在项目",
     overview: "概览",
     title: "任务详情", close: "关闭任务详情", loading: "正在加载任务详情", failed: "任务详情加载失败",
     refreshFailed: "任务详情更新失败",

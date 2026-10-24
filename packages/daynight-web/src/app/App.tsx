@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from 'react';
-import { AttachmentPage } from '../features/task-detail/attachments/AttachmentPage';
+import { TaskDetailPage } from '../features/task-detail/TaskDetailPage';
 import { ProjectsPage } from '../features/projects/ProjectsPage';
 import { ProjectPage } from '../features/projects/ProjectPage';
 import { navigate, parseRoute } from './router';
@@ -15,13 +15,14 @@ const goToProjects = (event: MouseEvent<HTMLAnchorElement>) => {
 
 const AppView = () => {
   const { locale, messages: { workspace: { app: m } } } = useI18n();
-  const [pathname, setPathname] = useState(window.location.pathname);
+  const [location, setLocation] = useState(() => ({ pathname: window.location.pathname, search: window.location.search }));
+  const { pathname, search } = location;
   const content = useRef<HTMLElement>(null);
-  const route = parseRoute(pathname);
+  const route = parseRoute(pathname, search);
 
   useEffect(() => {
     const onNavigate = () => {
-      setPathname(window.location.pathname);
+      setLocation({ pathname: window.location.pathname, search: window.location.search });
     };
     window.addEventListener('popstate', onNavigate);
     return () => { window.removeEventListener('popstate', onNavigate); };
@@ -34,7 +35,7 @@ const AppView = () => {
     document.title = m.documentTitle[route.kind];
   }, [locale, m, route.kind]);
 
-  if (route.kind === 'attachment') return <AttachmentPage key={`${route.projectId}/${route.taskId}`} projectId={route.projectId} taskId={route.taskId} path={route.path} />;
+  if (route.kind === 'attachment' || route.kind === 'task') return <TaskDetailPage key={route.projectId} projectId={route.projectId} taskId={route.taskId} navigation={{ tab: route.tab, path: route.path }} />;
 
   return (
     <div className="shell">

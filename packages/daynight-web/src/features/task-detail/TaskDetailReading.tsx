@@ -1,4 +1,5 @@
-import { useState, type ReactNode } from 'react';
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import type { TaskDetailNavigation } from '../../app/router';
 import { attachmentPreviewRoot } from '../../api/client';
 import { useI18n } from '../../i18n/LocaleProvider';
 import { MarkdownContent } from './MarkdownContent';
@@ -12,27 +13,42 @@ type TaskDetailReadingProps = {
   readonly taskId: string;
   readonly description: string;
   readonly overview: (description: ReactNode) => ReactNode;
-  readonly onClose: () => void;
+  readonly onClose?: () => void;
+  readonly selection?: TaskDetailNavigation;
+  readonly onSelectionChange?: (selection: TaskDetailNavigation) => void;
+  readonly requireCompleteInventory?: boolean;
   readonly api?: AttachmentApi;
   readonly urls?: AttachmentUrls;
 };
 
-export const TaskDetailReading = ({ projectId, taskId, description, overview, onClose, api, urls }: TaskDetailReadingProps) => {
+export const TaskDetailReading = ({ projectId, taskId, description, overview, onClose, api, urls, selection: controlledSelection, onSelectionChange, requireCompleteInventory = false }: TaskDetailReadingProps) => {
   const { messages } = useI18n();
-  const attachments = useAttachments(projectId, taskId, api);
-  const [navigation, setNavigation] = useState<AttachmentNavigation | null>(null);
+  const attachments = useAttachments(projectId, taskId, api, { requireCompleteInventory });
+  const [localSelection, setLocalSelection] = useState<TaskDetailNavigation>({ tab: 'overview', path: null });
+  const selection = controlledSelection === undefined ? localSelection : controlledSelection;
+  const select = (next: TaskDetailNavigation) => { setLocalSelection(next); onSelectionChange?.(next); };
+  const currentSelection = useRef(selection);
+  currentSelection.current = selection;
+  const unselected = attachments.selectedPath === null;
+  useLayoutEffect(() => { attachments.select(selection.path); }, [attachments.select, selection.path, requireCompleteInventory && unselected]);
+  // Link feedback belongs to its resulting selection, not later history entries.
+  const [reference, setReference] = useState<(AttachmentNavigation & { readonly selection: TaskDetailNavigation }) | null>(null);
+  const ownsReference = reference !== null && reference.selection.tab === selection.tab && reference.selection.path === selection.path;
+  useLayoutEffect(() => { if (reference !== null && !ownsReference) setReference(null); }, [reference, ownsReference]);
   const previewRoot = urls === undefined ? attachmentPreviewRoot(projectId, taskId) : urls.previewRoot;
   const base = { kind: 'root' } as const;
 
-  return <TaskDetailPanels overview={(showAttachments) => overview(description === ''
+  return <TaskDetailPanels active={selection.tab} onChange={(tab) => select({ ...selection, tab })} overview={() => overview(description === ''
     ? <p className="task-detail-description">{messages.inspection.detail.noDescription}</p>
     : <MarkdownContent className="task-description" text={description} resolveUrl={(value) => resolveMarkdownAttachmentUrl(value, base, previewRoot)} onLinkClick={(value, event) => {
       if (event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.currentTarget.hasAttribute('download') || event.currentTarget.target !== '' || /[?#]/.test(value)) return;
-      const reference = resolveAttachmentReference(value, base);
-      if (reference.kind === 'native') return;
+      const resolved = resolveAttachmentReference(value, base);
+      if (resolved.kind === 'native') return;
       event.preventDefault();
-      attachments.select(reference.kind === 'relative' ? reference.path : null);
-      setNavigation({ invalid: reference.kind !== 'relative' });
-      showAttachments();
-    }} />)} attachments={(active) => <TaskAttachmentsPanel active={active} projectId={projectId} taskId={taskId} attachments={attachments} navigation={navigation} onInteract={() => setNavigation(null)} onClose={onClose} {...(urls === undefined ? {} : { urls })} />} />;
+      const path = resolved.kind === 'relative' ? resolved.path : null;
+      attachments.select(path);
+      const next = { tab: 'attachments', path } as const;
+      select(next);
+      setReference({ invalid: resolved.kind !== 'relative', selection: next });
+    }} />)} attachments={(active) => <TaskAttachmentsPanel active={active} projectId={projectId} taskId={taskId} attachments={attachments} navigation={ownsReference ? reference : null} onInteract={() => setReference(null)} onSelect={(path) => select({ tab: 'attachments', path })} onRemove={(path) => { if (!requireCompleteInventory && currentSelection.current.path === path) select({ ...currentSelection.current, path: null }); }} {...(onClose === undefined ? {} : { onClose })} {...(urls === undefined ? {} : { urls })} />} />;
 };

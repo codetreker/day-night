@@ -1,9 +1,14 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import userEvent from '@testing-library/user-event';
 import { ApiError, attachmentPageUrl } from '../src/api/client';
 import type { Attachment, AttachmentPage as Page } from '../src/api/types';
-import { AttachmentPage } from '../src/features/task-detail/attachments/AttachmentPage';
+import { useLayoutEffect, useState } from 'react';
+import { navigateTaskDetail, type TaskDetailNavigation } from '../src/app/router';
+import { TaskDetailSurface } from '../src/features/task-detail/TaskDetailSurface';
+import { TaskDetailSessionBoundary } from '../src/features/task-detail/TaskDetailSession';
+import { detailFixture, resourceResponse, snapshotFixture } from './helpers/taskDetail';
+import type { AttachmentUrls } from '../src/features/task-detail/attachments/TaskAttachments';
 import type { AttachmentApi } from '../src/features/task-detail/attachments/useAttachments';
 import { createLocaleRender } from './helpers/renderWithLocale';
 
@@ -29,9 +34,17 @@ const fixture = (items: readonly Attachment[]): AttachmentApi => {
   };
 };
 const preview = () => within(screen.getByRole('group', { name: '附件预览' }));
-const page = (api: AttachmentApi, path = 'docs/readme.md', id = taskId) => <AttachmentPage projectId={projectId} taskId={id} path={path} api={api} />;
+const readyPreview = async () => within(await screen.findByRole('group', { name: '附件预览' }));
+const Reader = ({ api, path, id, urls }: { readonly api: AttachmentApi; readonly path: string; readonly id: string; readonly urls?: AttachmentUrls }) => {
+  const [selection, setSelection] = useState<TaskDetailNavigation>({ tab: 'attachments', path });
+  useLayoutEffect(() => { setSelection({ tab: 'attachments', path }); }, [path]);
+  return <TaskDetailSessionBoundary><TaskDetailSurface presentation="page" projectId={projectId} taskId={id} snapshot={snapshotFixture([detailFixture(projectId, id)])} navigation={selection}
+    attachmentApi={api} {...(urls === undefined ? {} : { attachmentUrls: urls })} onNavigate={(next) => { setSelection(next); navigateTaskDetail(projectId, id, next); }} onSelectTask={vi.fn()} onRefreshGraph={vi.fn()} /></TaskDetailSessionBoundary>;
+};
+const page = (api: AttachmentApi, path = 'docs/readme.md', id = taskId) => <Reader key={id} api={api} path={path} id={id} />;
+beforeEach(() => { vi.stubGlobal('fetch', vi.fn(async (url: string) => resourceResponse(detailFixture(projectId, url.split('/').at(-1)!)))); });
 
-describe('standalone attachment reader', () => {
+describe('full-detail attachment surface', () => {
   it('uses the complete shared file panel and synchronizes explicit selections without duplicate history entries', async () => {
     const special = '资料/设计 %2F #?.txt';
     window.history.replaceState(null, '', attachmentPageUrl(projectId, taskId, 'docs/readme.md'));
@@ -99,7 +112,7 @@ describe('standalone attachment reader', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: '删除' }));
     const dialog = screen.getByRole('dialog', { name: '删除附件？' });
     fireEvent.click(within(dialog).getByRole('button', { name: '删除附件' }));
-    expect(await preview().findByRole('alert')).toHaveTextContent('找不到此附件');
+    expect(await (await readyPreview()).findByRole('alert')).toHaveTextContent('找不到此附件');
     expect(window.location.pathname).toBe(address);
     expect(window.history.length).toBe(historyLength);
     expect(screen.queryByText('Contents of docs/readme.md')).toBeNull();
@@ -117,7 +130,7 @@ describe('standalone attachment reader', () => {
     render(page(api));
     expect(screen.getByRole('main')).toHaveFocus();
     await waitFor(() => expect(api.list).toHaveBeenCalledTimes(2));
-    expect(preview().getByRole('status')).toHaveTextContent('正在加载附件');
+    expect((await readyPreview()).getByRole('status')).toHaveTextContent('正在加载附件');
     expect(api.readText).not.toHaveBeenCalled();
     expect(screen.queryByText('找不到此附件，文件可能已被删除。')).toBeNull();
     await act(async () => next.resolve({ items: [], nextCursor: null }));
@@ -137,11 +150,11 @@ describe('standalone attachment reader', () => {
     const failure = new ApiError('server', 500, 'server_error', 'inventory-7');
     vi.mocked(api.list).mockResolvedValueOnce({ items: [file('other.txt')], nextCursor: 'next' }).mockRejectedValueOnce(failure);
     render(page(api));
-    expect(await preview().findByRole('alert')).toHaveTextContent('附件列表尚未完整加载');
+    expect(await (await readyPreview()).findByRole('alert')).toHaveTextContent('附件列表尚未完整加载');
     expect(preview().getByRole('alert')).toHaveTextContent('inventory-7');
     expect(screen.queryByText('找不到此附件，文件可能已被删除。')).toBeNull();
     fireEvent.click(preview().getByRole('button', { name: '重试附件' }));
-    expect(await preview().findByRole('alert')).toHaveTextContent('找不到此附件');
+    expect(await (await readyPreview()).findByRole('alert')).toHaveTextContent('找不到此附件');
     expect(vi.mocked(api.list).mock.calls[2]?.[2]).toEqual({ limit: 100 });
     vi.mocked(api.list).mockResolvedValueOnce({ items: [file('docs/readme.md')], nextCursor: null });
     fireEvent.click(preview().getByRole('button', { name: '重试附件' }));
@@ -153,7 +166,7 @@ describe('standalone attachment reader', () => {
     vi.mocked(api.list).mockRejectedValueOnce(new Error('private inventory error'));
     vi.mocked(api.readText).mockRejectedValueOnce(new ApiError('server', 500, 'server_error', 'preview-7'));
     render(page(api));
-    expect(await preview().findByRole('alert')).toHaveTextContent('附件列表加载失败');
+    expect(await (await readyPreview()).findByRole('alert')).toHaveTextContent('附件列表加载失败');
     expect(preview().getByRole('alert')).not.toHaveTextContent('private');
     fireEvent.click(preview().getByRole('button', { name: '重试附件' }));
     await screen.findByRole('button', { name: '重试预览' });
@@ -182,7 +195,7 @@ describe('standalone attachment reader', () => {
     vi.mocked(api.list).mockReturnValueOnce(pending.promise);
     view.rerender(page(api, 'next.txt', '00000000-0000-4000-8000-000000000002'));
     expect(screen.queryByText('Contents of next.txt')).toBeNull();
-    expect(preview().getByRole('status')).toHaveTextContent('正在加载附件');
+    expect(await (await readyPreview()).findByRole('status')).toHaveTextContent('正在加载附件');
     const request = vi.mocked(api.list).mock.calls.at(-1)![3];
     view.unmount();
     expect(request.aborted).toBe(true);
@@ -195,7 +208,7 @@ describe('standalone attachment reader', () => {
   ])('uses the shared renderer and injected URLs for %s', async (path, contentType, kind) => {
     const api = fixture([file(path, contentType)]);
     const urls = { previewRoot: '/fixtures/', preview: (name: string) => `/fixtures/${name}`, download: (name: string) => `/downloads/${name}`, page: (name: string) => `/reader/${name}` };
-    render(<AttachmentPage projectId={projectId} taskId={taskId} path={path} api={api} urls={urls} />);
+    render(<Reader id={taskId} path={path} api={api} urls={urls} />);
     if (kind === 'text') await screen.findByText(`Contents of ${path}`);
     else if (kind === 'image') expect(await screen.findByRole('img')).toHaveAttribute('src', `/fixtures/${path}`);
     else if (kind === 'unsupported') await screen.findByText('此文件暂不支持预览，请下载后打开。');

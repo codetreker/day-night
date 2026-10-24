@@ -15,7 +15,8 @@ preview actions and the dialog close control remain reachable.
 
 `TaskDetailDialog` composes `TaskDetailPanels` through `TaskDetailReading` beneath
 the common task heading.
-Every project/task identity starts on Overview. Overview retains descriptions,
+Embedded task selection starts on Overview; standalone initialization follows
+the [complete-detail URL](2026-10-24-standalone-task-detail.md). Overview retains descriptions,
 pull requests, relationships and metadata; Attachments owns file management and
 preview. Stable tab/panel relationships, roving tabindex and automatic arrow and
 Home/End activation provide keyboard navigation. Both panels stay mounted and

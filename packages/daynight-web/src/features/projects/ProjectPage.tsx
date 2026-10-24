@@ -1,16 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import type { Project } from "../../api/types";
-import { ApiError } from "../../api/client";
 import { navigate } from "../../app/router";
 import { useI18n } from "../../i18n/LocaleProvider";
-import type { WorkspaceMessages } from "../../i18n/messages/workspace";
 import { TaskDetailSessionBoundary, useTaskDetailSessions } from "../task-detail/TaskDetailSession";
 import { TaskDetailDialog } from "../task-detail/TaskDetailDialog";
 import { ChainList } from "../task-graph/ChainList";
-import { GraphDataError } from "../task-graph/model";
 import { ProjectTaskTabs } from "./ProjectTaskTabs";
 import { StandaloneList } from "./StandaloneList";
 import { useCompletedChainVisibility, useProjectViewPreferences, useStandaloneVisibility, useTaskView, useTaskViewScroll, type TaskView } from "./useProjectViewPreferences";
+import { ProjectGraphErrorDetail, projectGraphErrorTitle } from "./ProjectGraphError";
 import { useTaskGraph } from "./useTaskGraph";
 import { TaskExecutionClockProvider } from "../task-execution/TaskExecutionClock";
 import "../../styles/project.css";
@@ -19,35 +17,6 @@ const backToProjects = (event: MouseEvent<HTMLAnchorElement>) => {
   if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
   event.preventDefault();
   navigate("/");
-};
-
-const errorTitle = (error: unknown, m: WorkspaceMessages["project"]): string => {
-  if (error instanceof ApiError && error.code === "not_found") return m.notFound;
-  if (error instanceof ApiError && error.code === "graph_limit_exceeded") return m.graphLimit;
-  if (error instanceof GraphDataError || error instanceof ApiError && error.kind === "protocol") return m.incomplete;
-  return m.loadingFailed;
-};
-
-const ErrorDetail = ({ error }: { readonly error: unknown }) => {
-  const { messages: { workspace: { project: m }, common } } = useI18n();
-  return <>
-    <p>{error instanceof ApiError && error.kind === "network"
-      ? m.networkError
-      : error instanceof GraphDataError || error instanceof ApiError && error.kind === "protocol"
-        ? m.protocolError
-        : error instanceof ApiError && error.code === "not_found"
-          ? m.notFoundDetail
-          : error instanceof ApiError && error.code === "graph_limit_exceeded"
-            ? m.graphLimitDetail
-            : m.readError}</p>
-    {error instanceof ApiError && error.graphLimit !== undefined && (
-      <p>{m.graphLimitCounts({ nodes: error.graphLimit.nodeCount, edges: error.graphLimit.edgeCount,
-        maxNodes: error.graphLimit.maxNodes, maxEdges: error.graphLimit.maxEdges })}</p>
-    )}
-    {error instanceof ApiError && error.requestId !== null && (
-      <p className="request-id">{common.requestId}<code>{error.requestId}</code></p>
-    )}
-  </>;
 };
 
 type ProjectNotice = { readonly kind: "selected-task-removed" };
@@ -169,7 +138,7 @@ const ProjectView = ({ projectId, renderActions }: { readonly projectId: string;
       )}
       {graph.status === "error" && (
         <section className="state-box" role="alert">
-          <h2>{errorTitle(graph.error, m)}</h2><ErrorDetail error={graph.error} />
+          <h2>{projectGraphErrorTitle(graph.error, m)}</h2><ProjectGraphErrorDetail error={graph.error} />
           <button className="button primary" type="button" onClick={graph.refresh}>{projects.retry}</button>
           <a className="back-link" href="/" onClick={backToProjects}>{app.returnToProjects}</a>
         </section>
@@ -177,7 +146,7 @@ const ProjectView = ({ projectId, renderActions }: { readonly projectId: string;
       {snapshot !== null && summary !== undefined && (
         <>
           {graph.error !== null && (
-            <section className="snapshot-error" role="alert"><h2>{m.refreshFailed}</h2><p>{m.showingSnapshot}</p><ErrorDetail error={graph.error} />
+            <section className="snapshot-error" role="alert"><h2>{m.refreshFailed}</h2><p>{m.showingSnapshot}</p><ProjectGraphErrorDetail error={graph.error} />
               <button className="button" type="button" onClick={graph.refresh}>{m.retryRefresh}</button>
             </section>
           )}

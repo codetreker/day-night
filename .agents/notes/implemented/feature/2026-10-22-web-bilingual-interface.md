@@ -27,8 +27,8 @@ language while the underlying application was inert. The
 removes the duplicate task-detail selector; details consume the same current
 application locale through the persistent Provider. Navigation and fullscreen
 graphs continue to expose `LanguageSelector`. The
-[standalone attachment reader](../architecture/2026-10-22-task-attachment-full-reader.md)
-uses that same Provider and selector outside the workspace shell, with its own
+[standalone complete details](../architecture/2026-10-24-standalone-task-detail.md)
+use that same Provider and selector outside the workspace shell, with its own
 localized route title and ordinary browser keyboard behavior.
 
 The two typed catalogs cover all shipped first-party components. `common`

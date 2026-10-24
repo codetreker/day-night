@@ -29,6 +29,7 @@ type TaskAttachmentsPanelProps = Omit<TaskAttachmentsProps, 'api'> & {
   readonly onInteract?: () => void;
   readonly active?: boolean;
   readonly onSelect?: (path: string) => void;
+  readonly onRemove?: (path: string) => void;
 };
 
 const ErrorMessage = ({ error, message }: { readonly error: unknown; readonly message: string }) => {
@@ -66,7 +67,7 @@ const FileTree = ({ nodes, selectedPath, onSelect, onActions, actionPath, busy }
   </ul>;
 };
 
-export const TaskAttachmentsPanel = ({ projectId, taskId, attachments, urls, navigation, onInteract, onClose, onSelect, active = true }: TaskAttachmentsPanelProps) => {
+export const TaskAttachmentsPanel = ({ projectId, taskId, attachments, urls, navigation, onInteract, onClose, onSelect, onRemove, active = true }: TaskAttachmentsPanelProps) => {
   const { messages, format } = useI18n();
   const m = messages.inspection.attachments;
   const headingId = useId();
@@ -93,7 +94,7 @@ export const TaskAttachmentsPanel = ({ projectId, taskId, attachments, urls, nav
     if (action === null || action.scope !== scope || submitting.current) return;
     submitting.current = true;
     onInteract?.();
-    if (await attachments.remove(action.path)) setAction(null);
+    if (await attachments.remove(action.path)) { onRemove?.(action.path); setAction(null); }
     submitting.current = false;
   };
   useLayoutEffect(() => {

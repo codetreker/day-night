@@ -6,7 +6,7 @@ const { number } = getFormats("zh-CN");
 export const workspace: WorkspaceMessages = {
   app: {
     skipToContent: "跳到主要内容", workspaceNavigation: "工作空间导航", projectHome: "Daynight 项目首页", mainNavigation: "主导航", workspace: "工作空间", projects: "项目", projectTasks: "项目任务", localWorkspace: "本地工作空间", localWorkspaceDetail: "任务与依赖，一处看清", localLabel: "工作空间 · 本地", breadcrumb: "面包屑", notFound: "页面不存在", notFoundDetail: "请检查页面地址，或返回项目列表。", returnToProjects: "返回项目列表",
-    documentTitle: { attachment: "附件预览 · Daynight", projects: "项目 · Daynight", project: "项目任务 · Daynight", notFound: "页面不存在 · Daynight" },
+    documentTitle: { task: "任务详情 · Daynight", attachment: "任务详情 · Daynight", projects: "项目 · Daynight", project: "项目任务 · Daynight", notFound: "页面不存在 · Daynight" },
   },
   projects: {
     subtitle: "从项目出发，查看任务进度与执行依赖。", refresh: "刷新", retry: "重试", loading: "正在加载项目", loadingDetail: "正在读取工作空间中的项目。", loadingFailed: "项目加载失败", networkError: "无法连接服务，请检查本地服务后重试。", readError: "暂时无法读取项目，请重试。", empty: "还没有项目", emptyDetail: "通过 API 创建项目后，点击刷新即可在这里查看。", list: "项目列表", createdOn: ({ date }) => `创建于 ${date}`, viewTasks: "查看任务", moreFailed: "更多项目加载失败，已加载的项目仍可查看。", loadingMore: "正在加载更多…", retryMore: "重试加载更多", loadMore: "加载更多", allLoaded: "已加载全部项目",

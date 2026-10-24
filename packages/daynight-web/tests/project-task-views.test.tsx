@@ -17,8 +17,9 @@ vi.mock('../src/features/task-graph/TaskGraph', () => ({ TaskGraph: ({ index, ro
   index: GraphIndex; rootId: string; onOpenTask: (id: string, trigger: HTMLElement) => void;
 }) => <button data-testid="graph-node" onClick={(event) => { onOpenTask(rootId, event.currentTarget); }}>图节点 {index.nodes.get(rootId)!.titlePreview}</button> }));
 
-const project = 'project-one';
-const otherProject = 'project-two';
+const project = '00000000-0000-4000-8000-000000000100';
+const otherProject = '00000000-0000-4000-8000-000000000200';
+const canonicalTask = (value: number) => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
 const timestamp = '2026-10-20T12:00:00.123456Z';
 const seed = (id: string, status: GraphTask['status'] = 'todo', dependsOn: string[] = [], externalDependsOn: string[] = []): GraphTask => ({ requiredPlatform: null, allowAgents: false, externalDependsOn, startedAt: null, completedAt: null,
   id, titlePreview: `任务 ${id}`, titleTruncated: false, status, dependsOn, blockedBy: [], ready: false,
@@ -204,8 +205,9 @@ describe('project task views', () => {
   });
 
   it('opens the real dialog directly and returns focus to its standalone row', async () => {
+    graphRequest.mockResolvedValue(snapshot([seed(canonicalTask(3))]));
     mount(); await screen.findByRole('tab', { name: '独立任务' });
-    const { trigger, dialog } = await openStandalone('C');
+    const { trigger, dialog } = await openStandalone(canonicalTask(3));
     expect(screen.queryByTestId('graph-node')).toBeNull();
     expect(root).toHaveAttribute('inert');
     expect(within(dialog).getByRole('button', { name: '关闭任务详情' })).toHaveFocus();
@@ -277,8 +279,8 @@ describe('project task views', () => {
   });
 
   it('keeps details when refresh adds an edge and returns focus to the active category tab when its row vanishes', async () => {
-    graphRequest.mockResolvedValueOnce(snapshot([seed('C')])).mockResolvedValueOnce(snapshot([seed('C'), seed('child', 'todo', ['C'])]));
-    mount(); await screen.findByRole('tab', { name: '独立任务' }); const { trigger, dialog } = await openStandalone('C');
+    graphRequest.mockResolvedValueOnce(snapshot([seed(canonicalTask(3))])).mockResolvedValueOnce(snapshot([seed(canonicalTask(3)), seed(canonicalTask(4), 'todo', [canonicalTask(3)])]));
+    mount(); await screen.findByRole('tab', { name: '独立任务' }); const { trigger, dialog } = await openStandalone(canonicalTask(3));
     fireEvent.click(within(dialog).getByRole('button', { name: '刷新任务图' }));
     await screen.findByRole('heading', { name: '暂无独立任务' });
     expectUnfinishedCounts(2, 0);
@@ -286,18 +288,18 @@ describe('project task views', () => {
     await waitFor(() => expect(getTask).toHaveBeenCalledTimes(2));
     fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
     await waitFor(() => expect(tab('standalone')).toHaveFocus());
-    fireEvent.click(tab('chains')); expect(document.getElementById('task-root-C')).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(tab('chains')); expect(document.getElementById(`task-root-${canonicalTask(3)}`)).toHaveAttribute('aria-expanded', 'true');
   });
 
   it('keeps details while refresh removes an edge and falls back to the still-active chain tab', async () => {
-    graphRequest.mockResolvedValueOnce(snapshot([seed('A'), seed('B', 'todo', ['A'])])).mockResolvedValueOnce(snapshot([seed('A'), seed('B')]));
+    graphRequest.mockResolvedValueOnce(snapshot([seed(canonicalTask(1)), seed(canonicalTask(2), 'todo', [canonicalTask(1)])])).mockResolvedValueOnce(snapshot([seed(canonicalTask(1)), seed(canonicalTask(2))]));
     mount(); fireEvent.click(await screen.findByTestId('graph-node'));
-    const dialog = await screen.findByRole('dialog'); await within(dialog).findByRole('heading', { name: '详情 A' });
+    const dialog = await screen.findByRole('dialog'); await within(dialog).findByRole('heading', { name: `详情 ${canonicalTask(1)}` });
     fireEvent.click(within(dialog).getByRole('button', { name: '刷新任务图' }));
     await screen.findByRole('heading', { name: '暂无任务链' }); expect(dialog).toBeVisible();
     expectUnfinishedCounts(0, 2);
     fireEvent.keyDown(document.activeElement!, { key: 'Escape' }); await waitFor(() => expect(tab('chains')).toHaveFocus());
-    fireEvent.click(tab('standalone')); expect(row('A')).toBeVisible(); expect(row('B')).toBeVisible();
+    fireEvent.click(tab('standalone')); expect(row(canonicalTask(1))).toBeVisible(); expect(row(canonicalTask(2))).toBeVisible();
   });
 });
 

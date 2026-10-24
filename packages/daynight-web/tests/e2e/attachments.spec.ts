@@ -252,6 +252,8 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
     });
     await expect(reader).toHaveURL(new URL(readerUrl, origin).href);
     expect(await reader.evaluate(() => window.opener === null)).toBe(true);
+    await expect(reader.locator('.task-detail-title')).toHaveText(task.title);
+    await expect(reader.getByRole('tab', { name: '附件', exact: true })).toHaveAttribute('aria-selected', 'true');
     await expect(reader.getByRole('table').first()).toContainText('Web已连接');
     await expect(reader.getByRole('navigation', { name: '工作空间导航' })).toHaveCount(0);
     await expect(reader.getByRole('dialog')).toHaveCount(0);
@@ -537,6 +539,8 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
     await expect(dialog.locator('.task-detail-title')).toBeFocused();
     await page.keyboard.press('Tab');
     await expect(dialog.getByRole('button', { name: '撤回审批', exact: true })).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(dialog.locator('.task-detail-popout')).toBeFocused();
     await page.keyboard.press('Tab');
     await expect(dialog.getByRole('button', { name: '关闭任务详情', exact: true })).toBeFocused();
     await innerButton.focus();

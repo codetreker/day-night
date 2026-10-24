@@ -1,3 +1,4 @@
+import { withDetailResources } from './helpers/taskDetail';
 import { stringifyWireJson } from "./helpers/wireJson";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -35,7 +36,7 @@ const defaults = (url: string): Response => {
   if (url.startsWith("/api/v1/projects")) return json({ items: [project()], nextCursor: null });
   throw new Error(`Unexpected request ${url}`);
 };
-const install = (handler = defaults) => {
+const install = (handler: (url: string) => Response | Promise<Response> = defaults) => {
   const fetcher = vi.fn((url: string, _options?: RequestInit) => Promise.resolve(handler(url)));
   vi.stubGlobal("fetch", fetcher);
   return fetcher;
@@ -751,8 +752,8 @@ describe("authenticated standalone attachment reader", () => {
   it("checks the session before opening a deep link outside workspace chrome and keeps the reader on a locale change", async () => {
     window.history.replaceState(null, "", location("docs/guide.md"));
     let identify!: (response: Response) => void;
-    const fetcher = vi.fn((url: string) => url === "/api/v1/me" ? new Promise<Response>((done) => { identify = done; })
-      : Promise.resolve(url.includes("/attachments?") ? inventory("docs/guide.md") : new Response("# Authenticated document")));
+    const fetcher = vi.fn(withDetailResources(projectId, taskId, (url: string) => url === "/api/v1/me" ? new Promise<Response>((done) => { identify = done; })
+      : Promise.resolve(url.includes("/attachments?") ? inventory("docs/guide.md") : new Response("# Authenticated document"))));
     vi.stubGlobal("fetch", fetcher);
     render(<AuthenticatedApp />);
     expect(fetcher).toHaveBeenCalledTimes(1);
@@ -760,19 +761,19 @@ describe("authenticated standalone attachment reader", () => {
     await screen.findByRole("heading", { name: "Authenticated document" });
     expect(document.querySelector(".shell")).toBeNull();
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(document.title).toBe("附件预览 · Daynight");
+    expect(document.title).toBe("任务详情 · Daynight");
     const reader = screen.getByRole("main");
     fireEvent.change(screen.getByRole("combobox", { name: "语言 / Language" }), { target: { value: "en" } });
-    expect(document.title).toBe("Attachment preview · Daynight");
+    expect(document.title).toBe("Task details · Daynight");
     expect(screen.getByRole("main")).toBe(reader);
     expect(screen.getByRole("link", { name: "Download" })).toHaveAttribute("href", `/api/v1/projects/${projectId}/tasks/${taskId}/attachments/files/docs/guide.md`);
-    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(fetcher).toHaveBeenCalledTimes(5);
   });
 
   it("keeps the authenticated attachment controller and panel mounted through same-task history", async () => {
     window.history.replaceState(null, "", location("docs/guide.md"));
     const items = ["docs/guide.md", "next.txt"].map((path) => ({ path, contentType: "text/plain", sizeBytes: 12, createdAt: now, updatedAt: now }));
-    const fetcher = install((url) => url.includes("/attachments?") ? json({ items, nextCursor: null }) : url.endsWith("/attachments/files/docs/guide.md") ? new Response("First authenticated file") : url.endsWith("/attachments/files/next.txt") ? new Response("Next authenticated file") : defaults(url));
+    const fetcher = install(withDetailResources(projectId, taskId, (url) => url.includes("/attachments?") ? json({ items, nextCursor: null }) : url.endsWith("/attachments/files/docs/guide.md") ? new Response("First authenticated file") : url.endsWith("/attachments/files/next.txt") ? new Response("Next authenticated file") : defaults(url)));
     render(<AuthenticatedApp />);
     await screen.findByText("First authenticated file");
     const panel = document.querySelector(".task-attachments");
@@ -792,12 +793,12 @@ describe("authenticated standalone attachment reader", () => {
     let identify!: (response: Response) => void;
     let meCalls = 0;
     let bob = false;
-    const fetcher = vi.fn((url: string, options?: RequestInit) => {
+    const fetcher = vi.fn(withDetailResources(projectId, taskId, (url: string, options?: RequestInit) => {
       if (url === "/api/v1/me") return ++meCalls === 1 ? Promise.resolve(json(user())) : new Promise<Response>((done) => { identify = done; });
       if (url.includes("/attachments?")) return Promise.resolve(bob ? fail(404, "not_found") : inventory("site/index.html", "text/html"));
       if (options?.method === "HEAD") return Promise.resolve(new Response(null));
       throw new Error(`Unexpected request ${url}`);
-    });
+    }));
     vi.stubGlobal("fetch", fetcher);
     render(<AuthenticatedApp />);
     const frame = await screen.findByTitle("HTML 预览：site/index.html");
@@ -822,17 +823,17 @@ describe("authenticated standalone attachment reader", () => {
 
   it.each([404, 401])("keeps resource404 local and applies the global boundary to resource401 (%i)", async (status) => {
     window.history.replaceState(null, "", location("docs/guide.md"));
-    install((url) => url.includes("/attachments?") ? fail(status, status === 401 ? "unauthenticated" : "not_found") : defaults(url));
+    install(withDetailResources(projectId, taskId, (url) => url.includes("/attachments?") ? fail(status, status === 401 ? "unauthenticated" : "not_found") : defaults(url)));
     render(<AuthenticatedApp />);
     if (status === 401) {
       await screen.findByRole("heading", { name: "登录你的工作空间" });
       expect(screen.queryByRole("heading", { name: "docs/guide.md" })).toBeNull();
-      expect(document.querySelector(".attachment-page")).toBeNull();
+      expect(document.querySelector(".task-detail-page")).toBeNull();
     } else {
       await within(await screen.findByRole("group", { name: "附件预览" })).findByRole("alert");
-      expect(screen.getByRole("heading", { name: "docs/guide.md" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "完整任务详情" })).toBeInTheDocument();
       expect(screen.queryByRole("heading", { name: "登录你的工作空间" })).toBeNull();
-      expect(document.title).toBe("附件预览 · Daynight");
+      expect(document.title).toBe("任务详情 · Daynight");
     }
   });
 });

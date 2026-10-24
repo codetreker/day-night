@@ -1,0 +1,61 @@
+import type { TaskDetail, TaskGraph } from '../../src/api/types';
+import { stringifyApiJson } from '../../src/api/json';
+import type { GraphSnapshot } from '../../src/features/projects/useTaskGraph';
+import { buildGraphIndex } from '../../src/features/task-graph/model';
+
+export const detailProjectId = '00000000-0000-4000-8000-000000000100';
+export const detailTaskId = '00000000-0000-4000-8000-000000000001';
+const timestamp = '2026-10-24T10:00:00Z';
+const task = (id: string, title: string, status: TaskDetail['status']): TaskDetail => ({
+  id, projectId: detailProjectId, title, description: '# 任务交付\n\n使用同一套完整任务详情查看资料与操作。\n\n- [方案与验收](docs/guide.md)\n- [交互原型](site/index.html)\n- [长文档](docs/tall.md)',
+  status, version: 1n, allowAgents: false, requiredPlatform: null, dependsOn: [], externalDependsOn: [], blockedBy: [],
+  ready: status === 'todo', startedAt: null, completedAt: status === 'done' ? timestamp : null,
+  properties: { pullRequests: [{ title: 'Share complete task details between dialog and page', url: 'https://github.com/example/project/pull/42' }] },
+  createdAt: timestamp, updatedAt: timestamp,
+});
+
+export const createTaskDetailFixture = () => {
+  const priorId = '00000000-0000-4000-8000-000000000002';
+  const nextId = '00000000-0000-4000-8000-000000000003';
+  const first = task(detailTaskId, '在新标签页阅读完整任务详情', 'proposed');
+  const prior = task(priorId, '完成资料准备与需求确认', 'done');
+  const next = task(nextId, '验证任务详情与附件交互', 'todo');
+  const tasks = new Map([[first.id, { ...first, dependsOn: [priorId] }], [prior.id, prior], [next.id, { ...next, dependsOn: [first.id], blockedBy: [first.id], ready: false }]]);
+  const listeners = new Set<() => void>();
+  let revision = 0;
+  const build = (): GraphSnapshot => {
+    const details = [...tasks.values()];
+    const graph: TaskGraph = {
+      observedAt: timestamp,
+      project: { id: detailProjectId, name: '任务详情交互示例', repoUrl: 'https://github.com/example/project', settings: { version: 1n, executionWarningMinutes: 60 }, createdAt: timestamp, updatedAt: timestamp },
+      tasks: details.map((item) => ({ id: item.id, titlePreview: item.title, titleTruncated: false, status: item.status,
+        allowAgents: item.allowAgents, requiredPlatform: item.requiredPlatform, dependsOn: item.dependsOn, externalDependsOn: item.externalDependsOn,
+        blockedBy: item.blockedBy, ready: item.ready, startedAt: item.startedAt, completedAt: item.completedAt, createdAt: item.createdAt, updatedAt: item.updatedAt })),
+      summary: { total: details.length, proposed: details.filter((item) => item.status === 'proposed').length, todo: details.filter((item) => item.status === 'todo').length,
+        inProgress: 0, done: details.filter((item) => item.status === 'done').length, ready: details.filter((item) => item.ready).length,
+        blocked: details.filter((item) => item.status === 'todo' && !item.ready).length },
+    };
+    return { graph, index: buildGraphIndex(graph), revision: ++revision, receivedAt: Date.now(), receivedMonotonic: performance.now(), observedAt: graph.observedAt };
+  };
+  let snapshot = build();
+  const refresh = () => { snapshot = build(); listeners.forEach((listener) => listener()); };
+  const originalFetch = window.fetch;
+  const json = (value: unknown, status = 200) => new Response(stringifyApiJson(value), { status, headers: { 'Content-Type': 'application/json' } });
+  const fetcher: typeof window.fetch = async (input, options) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    if (!url.startsWith('/api/v1/')) return originalFetch(input, options);
+    const match = /^\/api\/v1\/projects\/[^/]+\/tasks\/([^/]+)(?:\/(approve|unapprove))?$/.exec(url);
+    const current = match === null ? undefined : tasks.get(match[1]!);
+    if (current === undefined) return json({ error: { code: 'not_found', message: 'Fixture task unavailable.', requestId: 'fixture-task' } }, 404);
+    if (options?.method === 'POST' || options?.method === 'PATCH') {
+      const patch = JSON.parse(String(options.body));
+      if (BigInt(patch.version) !== current.version) return json({ error: { code: 'version_conflict', message: 'Fixture version changed.', requestId: 'fixture-version' } }, 409);
+      const updated = { ...current, ...(match![2] === 'approve' ? { status: 'todo' as const, ready: true } : match![2] === 'unapprove' ? { status: 'proposed' as const, ready: false } : Object.hasOwn(patch, 'allowAgents') ? { allowAgents: patch.allowAgents as boolean } : { requiredPlatform: patch.requiredPlatform as TaskDetail['requiredPlatform'] }), version: current.version + 1n, updatedAt: new Date().toISOString() };
+      tasks.set(updated.id, updated); refresh();
+      return json(updated);
+    }
+    return json(current);
+  };
+  window.fetch = fetcher;
+  return { refresh, snapshot: () => snapshot, subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; }, dispose: () => { if (window.fetch === fetcher) window.fetch = originalFetch; } };
+};
