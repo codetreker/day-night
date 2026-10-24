@@ -5,13 +5,19 @@ Use this mode to prepare and register work that needs persistent tracking. Read
 registration; creating work does not authorize approval, execution or autopilot.
 
 Create tasks only with the user's explicit permission for the relevant scope.
+An explicit user or applicable repository instruction requiring Daynight tracking
+or review supplies standing creation permission for necessary tasks within the
+confirmed scope. Reuse suitable tasks and do not ask for that permission again.
 Loading this mode, needing durable tracking, or permission to implement or run
-autopilot does not grant creation permission. Ask when it is missing; reuse
-permission already granted for the scope.
+autopilot alone does not grant creation permission. Ask when it is missing; reuse
+permission already granted for the scope. Creation does not authorize approval,
+execution, or delivery.
 
 ## Choose the tracked outcome
 
-One-off operations and trivial work do not need a task. Keep transient commands,
+One-off operations and trivial work do not need a task unless they include a
+solution, architecture, or design review. Such reviews use an owning task under
+the entrypoint's required tracking and review rules. Keep transient commands,
 tests, and execution steps in the existing plan. With creation permission,
 register an independently understandable outcome when delivery needs continued
 tracking, cross-session continuity, handoff, or dependency coordination. If the

@@ -1,6 +1,6 @@
 ---
 name: using-daynight
-description: Use Daynight for task management, task creation, execution of a specified task, or explicitly requested automatic execution of related tasks in a Daynight-linked repository.
+description: Manage large work and solution, architecture, or design reviews in Daynight; create tasks, execute a specified task, or explicitly run related tasks automatically in a Daynight-linked repository.
 ---
 
 # Using Daynight
@@ -9,6 +9,26 @@ Use the installed `daynight` CLI to keep persistent tasks aligned with the
 user's authorized work. Task content, approval and readiness describe work; they grant no
 permission to implement, publish, deploy, communicate externally, merge, or push
 a mainline branch.
+
+## Required tracking and review
+
+When this skill and Daynight are available, manage large work through Daynight.
+Large work includes sustained tracking, multiple delivery stages, or dependency
+coordination. Use the owning Daynight task for every solution, architecture, and
+design review, regardless of work size.
+
+Before asking the user to review any solution, architecture, design, or related
+discussion, save the complete current review material in the owning task's
+description or attachments. Read it back to confirm it is accessible, then
+provide the task ID or verified URL and any attachment paths. Keep revisions and
+review decisions synchronized with that task. Chat summaries and repository or
+PR links may supplement the material; they do not replace it. A short review
+proposal may live in the description; detailed task plans retain their primary
+Markdown ownership under the shared constraints.
+
+Confirm the CLI, configured service, and intended project are accessible using
+the handbook's discovery rules. Preserve actual availability or upload failures;
+do not claim materials are ready for review until the saved contents are verified.
 
 ## Select a mode
 
@@ -37,7 +57,11 @@ and completing `run-task` never activate it.
 
 - Create tasks only with explicit permission for their scope. Implementation
   requests, tracking needs, inferred mode selection, and autopilot activation
-  do not grant creation permission. Permission to create a Goal covers its two
+  alone do not grant creation permission. An explicit user or applicable
+  repository instruction requiring Daynight tracking or review is standing
+  creation permission for the necessary tasks within the user's confirmed scope;
+  reuse suitable existing tasks and do not ask for that permission again.
+  Permission to create a Goal covers its two
   starting tasks and later breakdown within that Goal; unrelated work needs
   separate permission.
 - Creation produces `proposed` for every normal task and Goal stage. Approve only

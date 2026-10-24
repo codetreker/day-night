@@ -10,14 +10,28 @@ take precedence.
 - Write new or revised specifications in `docs/spec/` and design documents in
   `docs/design/` in Chinese, including headings and explanatory prose. Preserve
   the required spelling of code, commands, identifiers, paths, and API names.
+- Always write specifications, solution proposals, architecture, design, and
+  related documents stored in Daynight task descriptions or attachments in
+  Chinese. Preserve the required spelling of code, commands, identifiers, paths,
+  and API names.
 - Write other repository documents, skills, code, comments, and commit messages
   in English unless explicitly instructed otherwise.
 - Use the user's confirmed task and existing requirements to establish scope.
   A request to investigate or discuss remains read-only unless edits are
   authorized. Skills describe workflows and grant no additional permission.
 - Manage this repository's tasks in Daynight, including task breakdowns,
-  dependencies, execution status and task-specific plans and attachments. Do not
-  commit task-management files, including `*-tasks.md`, or add execution
+  dependencies, execution status and task-specific plans and attachments. When
+  `using-daynight` and Daynight are available, large work requiring sustained
+  tracking, multiple stages, or dependency coordination must use Daynight.
+  All solution, architecture, and design reviews must use the owning Daynight
+  task, regardless of work size. Before requesting user review of such a
+  discussion, save the complete current material in that task's description or
+  attachments, read it back, and provide the task and resource reference.
+  Synchronize revisions and review decisions there; chat summaries and repository
+  or PR links supplement the saved material. This instruction authorizes creation
+  of required tasks within the user's confirmed scope, without granting approval,
+  execution, or delivery permission. Report actual availability or upload failures.
+  Do not commit task-management files, including `*-tasks.md`, or add execution
   bookkeeping and task-tracking pointers to repository documents. Keep durable
   product requirements, architecture, decisions and validation methods in their
   document owners. Load the `using-daynight` skill before executing any task and
@@ -137,4 +151,6 @@ authorized PR merge, require real successful checks and a linear mainline.
 `.agents/skills/` is canonical. `CLAUDE.md` links to this file;
 `.claude/skills` and `.claude/worktrees` link to the shared skill and worktree
 directories. Keep these relative links intact so tools use the same workflow.
+Update skills in their owning source repository. Never modify globally installed
+skill copies.
 

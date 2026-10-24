@@ -54,8 +54,10 @@ ongoing work, and insufficient
 candidates. Do not take unrelated work to stay busy or report completion from an
 empty or unrelated bounded page.
 
-Autopilot permission covers execution of existing tasks, not creation of new
-ones. If the confirmed Goal requires missing tracked work, use explicit creation
+Autopilot permission alone covers execution of existing tasks, not creation of
+new ones. An explicit user or applicable repository instruction requiring
+Daynight tracking or review supplies standing creation permission within the
+confirmed scope. If the confirmed Goal requires missing tracked work, use explicit creation
 permission already granted for that scope or obtain it, then use
 [create-task](create-task.md). Permission to create a Goal already covers both
 starting tasks and its later in-scope breakdown; do not ask again for each one.

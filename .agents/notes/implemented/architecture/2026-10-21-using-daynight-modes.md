@@ -43,12 +43,15 @@ remain, while the public name and workflow ownership change. The
 continues to own query cost and candidate semantics; autopilot owns next-work
 selection, and run-task owns one task's delivery.
 
-Every task creation requires explicit user permission to create tasks. A direct
-creation request or existing explicit permission applies within its stated scope
-without repeated confirmation. Implementation requests, inferred routing,
-tracking needs and autopilot activation do not imply this permission. Missing
-creation permission requires asking before creating a task, including during
-autopilot. This keeps the persistent backlog under the user's control.
+The original creation rule required explicit user permission for every task to
+keep the persistent backlog under the user's control. A direct creation request
+or existing scoped permission avoided repeated confirmation; implementation
+requests, inferred routing, tracking needs and autopilot activation alone supplied
+none. The later [mandatory tracking and review decision](../process/2026-10-24-daynight-tracking-and-design-review.md)
+recognizes an explicit user or applicable repository tracking/review instruction
+as standing permission for necessary tasks within the confirmed scope. Missing
+permission still requires asking, and approval, execution and delivery remain
+separate.
 
 Create-task checks creation permission, skips one-off and trivial work, matches
 existing problem/scope and acceptance, and registers ordinary single-outcome work
@@ -151,9 +154,10 @@ shared Goal protocol.
 Command usage stays with the installed CLI, and the compact handbook explains
 the operational facts needed to choose and combine commands. Task execution and
 repeated selection share one completion gate. Explicit autopilot entry prevents ordinary skill use
-from silently becoming a continuous work queue. Explicit task creation permission
-prevents autonomous execution from expanding the persistent backlog; missing
-permission requires user input before registration. Task attachments become required
+from silently becoming a continuous work queue. Scoped task creation permission,
+including applicable standing tracking/review instructions, prevents autonomous
+execution from expanding the persistent backlog beyond the confirmed scope;
+missing permission requires user input before registration. Task attachments become required
 inputs to execution; create-task must reconcile partial registration and cannot
 claim readiness from an existing task ID alone.
 

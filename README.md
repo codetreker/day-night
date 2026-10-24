@@ -164,8 +164,9 @@ outstanding.
 The [public Agent skill design](docs/design/daynight-agent-skill.md) defines one
 npm-bundled `using-daynight` skill and interactive installation for Codex, Copilot
 CLI and Claude Code. Its [requirements](docs/spec/daynight-agent-skill.md) cover
-context-based routing, explicit continuous-execution intent, attachment-backed
-planning and complete replacement on reinstall. The entrypoint, four mode
+context-based routing, explicit continuous-execution intent, Daynight-backed large
+work and design reviews, attachment-backed planning and complete replacement on
+reinstall. The entrypoint, four mode
 references and shared `goal.md` protocol are published under
 `dist/commands/skill/skills/using-daynight/`. The
 [Goal workflow requirements](docs/spec/daynight-goal-workflow.md) and
@@ -185,8 +186,16 @@ inputs; completed requirements, prototypes and architecture are their outputs.
 
 Calling `using-daynight` without input uses the actual context; unclear intent is
 resolved with the user. Autopilot requires an explicit request for continuous
-execution. Creating tasks requires explicit user permission to create them;
-implementation requests and autopilot activation do not supply that permission.
+execution. When the skill and Daynight are available, large work uses Daynight;
+every solution, architecture, and design review uses its owning task regardless
+of size. Before requesting user review, save the complete current material in
+the task description or attachments, read it back, and provide the task/resource
+reference. Keep revisions and review decisions synchronized there; chat and
+repository or PR links supplement the saved material. Creating tasks requires
+explicit scoped permission. A user or applicable repository instruction requiring
+Daynight tracking or review supplies standing creation permission for necessary
+tasks in the confirmed scope. Implementation requests and autopilot activation
+alone do not supply that permission.
 Existing explicit permission applies within its stated scope without repeated
 confirmation. Goal creation covers its two starting tasks and later in-scope
 breakdown; task approval needs a separate explicit task or Goal-task scope.

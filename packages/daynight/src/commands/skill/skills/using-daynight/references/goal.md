@@ -20,6 +20,9 @@ breakdown within that Goal. It covers no unrelated tasks and grants no execution
 publication, deployment, external communication, merge, or mainline push
 permission. Existing explicit authorization continues to apply within its scope.
 Implementation or autopilot permission alone does not grant creation permission.
+An explicit user or applicable repository instruction requiring Daynight tracking
+or review is standing creation permission for necessary tasks within the confirmed
+scope; reuse suitable tasks without asking for that permission again.
 Goal-creation permission does not authorize approval. Approve only tasks or a
 Goal-task scope explicitly approved by the user, using each reviewed task's exact
 version; CLI and Web approval are available. Goal creation, requirements/prototype
@@ -131,7 +134,10 @@ Upload each successor's own primary Markdown and needed resources, referencing
 shared Goal and design inputs at their verified source. The design task owns its
 architecture and breakdown outputs. Read back every registered task, required
 attachment, source reference, and dependency. Verify the full breakdown before
-handing over the design PR. When review changes the design, update its owning
+handing over the design PR. Conduct solution, architecture, and design reviews
+through this owning task. Before requesting user review, save the complete current
+review material in its description or attachments, read it back, and provide the
+task and resource reference. When review changes the design, update its owning
 artifacts and affected task summaries, plans, and references coherently, then
 reread them before completion.
 
