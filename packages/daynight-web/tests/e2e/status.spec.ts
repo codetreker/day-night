@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import type { APIResponse, Locator, Page, Route, TestInfo } from '@playwright/test';
 import { createAcceptanceCli } from '../../scripts/acceptance/installed-cli.mts';
 import { parseApiJson, stringifyApiJson } from '../../src/api/json';
-import { parseTaskDetail, parseTaskGraph } from '../../src/api/parse';
+import { parseServerError, parseTaskDetail, parseTaskGraph } from '../../src/api/parse';
 import { decodeTaskGraphJson } from '../../src/api/project-json';
 import { buildGraphIndex } from '../../src/features/task-graph/model';
 import type { TaskDetail, TaskStatus } from '../../src/api/types';
@@ -179,8 +179,11 @@ test('task-status-conflicts', { annotation: { type: 'scenario', description: 'ta
     await open(page, project.id, task.id); await select(page, 'in_progress'); await confirm(page);
     await expect(trigger(page)).toBeEnabled(); await expect(detail(page)).toContainText('CLI 在确认后修改了正文。');
     expect(lifecycle.evidence.writes).toHaveLength(1); expect(lifecycle.evidence.writes[0]!.status).toBe(409);
-    expect(lifecycle.evidence.writes[0]!.responseBody).toContain('version_conflict');
-    expect(lifecycle.evidence.writes[0]!.requestId).toMatch(/^[0-9a-f-]{36}$/);
+    const conflict = lifecycle.evidence.writes[0]!;
+    const refusal = parseServerError(parseApiJson(conflict.responseBody));
+    expect(refusal.code).toBe('version_conflict');
+    expect(conflict.requestId).toBe(refusal.requestId);
+    await expect(detail(page)).toContainText(refusal.requestId);
     const changed = await lifecycle.show(project.id, task.id, 'conflict-readback'); expect(changed.status).toBe('todo');
     await select(page, 'in_progress'); await confirm(page); await expect(trigger(page)).toHaveText(/进行中/);
     const running = await lifecycle.show(project.id, task.id, 'new-reviewed-submission'); expect(running.version).toBe(changed.version + 1n);
@@ -290,7 +293,7 @@ test('task-status-transitions', { annotation: { type: 'scenario', description: '
     expect(graph.summary.total).toBe(graph.summary.todo + graph.summary.inProgress + graph.summary.done);
     expect(graph.summary.todo).toBe(graph.summary.ready + graph.summary.blocked);
     const rejected = await lifecycle.run(['task', 'set-status', cases[0]!.task.id, 'proposed', '--project', project.id]);
-    expect(rejected.exitCode).toBe(1); expect(rejected.stderr).toContain('proposed');
+    expect(rejected.exitCode).toBe(2); expect(rejected.stderr).toContain('Unknown status "proposed". Expected todo or in_progress or done.');
     await screenshot(page, info, 'status-nine-transitions');
   } finally { await lifecycle.attach(); await lifecycle.cli.close(); }
 });

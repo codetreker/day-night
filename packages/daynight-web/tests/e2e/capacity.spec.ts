@@ -557,7 +557,8 @@ test.describe('fixed capacity and performance @capacity', () => {
           await assertVisibleTopology(page, overview, full);
           const total = page.locator('.stat').filter({ has: page.locator('.stat-label', { hasText: /^任务总数$/ }) }).locator('.stat-number');
           await expect(total).toHaveText(count(1000));
-          await expect(page.locator('.stat').filter({ has: page.locator('.stat-label', { hasText: /^待审批$/ }) }).locator('.stat-number')).toHaveText(count(0));
+          await expect(page.locator('.stats .stat')).toHaveCount(6);
+          await expect(page.locator('.stats .stat-label').filter({ hasText: /^待审批$/ })).toHaveCount(0);
           await expect(page.locator('.stat').filter({ has: page.locator('.stat-label', { hasText: /^待处理$/ }) }).locator('.stat-number')).toHaveText(count(1000));
           const externalIds = new Set(full.nodes.filter((node) => !full.memberIds.includes(node.id)).map((node) => node.id));
           await expect(page.locator(`#task-root-${fixture.root.id} .root-progress-label`)).toHaveText(`0/${count(1000 - externalIds.size)} 已完成`);
