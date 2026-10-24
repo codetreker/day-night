@@ -83,10 +83,10 @@ func TestTaskHTTPLifecycleDefaultsAndUpdateSemantics(t *testing.T) {
 		t.Fatalf("invalid task location: %s", response.Header().Get("Location"))
 	}
 	var fields map[string]any
-	if err := json.Unmarshal(response.Body.Bytes(), &fields); err != nil || len(fields) != 16 {
+	if err := json.Unmarshal(response.Body.Bytes(), &fields); err != nil || len(fields) != 17 {
 		t.Fatalf("task DTO fields: %s %v", response.Body, err)
 	}
-	for _, key := range []string{"id", "projectId", "title", "description", "status", "version", "createdAt", "updatedAt", "dependsOn", "externalDependsOn", "blockedBy", "ready", "properties", "allowAgents"} {
+	for _, key := range []string{"id", "projectId", "title", "description", "status", "version", "createdAt", "updatedAt", "dependsOn", "externalDependsOn", "blockedBy", "ready", "properties", "allowAgents", "requiredPlatform"} {
 		if _, exists := fields[key]; !exists {
 			t.Fatalf("missing task DTO field %s", key)
 		}

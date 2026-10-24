@@ -604,7 +604,7 @@ func acceptanceConcurrentStartup(t *testing.T, scenario *acceptanceScenario) {
 	first = first.started(t)
 	second = second.started(t)
 	var versions []int64
-	if err := fixture.admin.QueryRow(ctx, "SELECT array_agg(version ORDER BY version) FROM schema_migrations").Scan(&versions); err != nil || !slices.Equal(versions, []int64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}) {
+	if err := fixture.admin.QueryRow(ctx, "SELECT array_agg(version ORDER BY version) FROM schema_migrations").Scan(&versions); err != nil || !slices.Equal(versions, []int64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13}) {
 		t.Fatal("concurrent processes did not share exactly one migration ledger")
 	}
 	project := first.project(t, "Shared process state")
