@@ -684,7 +684,19 @@ administrator privileges automatically. npm owns replacement and recovery; a
 failed installation is not a promise that every original file remains unchanged.
 
 The command verifies the installed manifest, launcher and a fresh invocation's
-version before reporting success. It requires no review configuration and does
+version, then refreshes existing `using-daynight` skills from that installed
+package. It checks User destinations and the current Git worktree's Project
+destinations, including calls from subdirectories and linked worktrees. Outside
+Git it checks User destinations only. It does not search other projects or need
+agent launchers on PATH. Missing skills remain uninstalled. The same refresh
+runs when the CLI is already current or ahead, using its installed bundle.
+
+Refresh replaces complete skill directories, including local edits and obsolete
+files. Shared physical destinations are written once. Each result identifies
+its agents, scope, path and package version. A skill failure exits nonzero and
+reports the package outcome separately; a successfully installed npm package is
+retained, and rerunning `update` retries the skill refresh. All phases must
+succeed before the command reports success. It requires no review configuration and does
 not open SQLite, modify sessions or restart a running reviewer. The next CLI
 invocation uses the installed version. Restart any running reviewer to use it;
 on Windows, a reviewer holding a native addon open can prevent npm from replacing
@@ -757,6 +769,11 @@ starting them or checking login. Select one or more detected Agents with Space,
 then Enter; the initial selection is empty. Next select User or Project,
 with User initially selected. Installation starts after the scope is submitted.
 Repeating the command refreshes the full bundle from the running package.
+`daynight update` automatically refreshes existing User and current-worktree
+Project copies with the same replacement semantics; it also repairs existing
+skill directories whose entrypoint was removed and replaces dangling leaf links.
+A regular file at the expected skill-directory path is an error. See
+[CLI updates](#install-and-update) for package ownership and failure handling.
 
 | Agent | User destination | Project destination |
 |---|---|---|

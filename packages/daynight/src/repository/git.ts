@@ -48,18 +48,24 @@ export class RepositoryGitError extends Error {
   }
 }
 
+export type RepositoryGitOptions = {
+  readonly allowExitOne?: boolean;
+  /** Inherited groups require an outer supervisor to terminate descendants after this operation exits. */
+  readonly processGroup?: "own" | "inherit";
+};
+
 export const runRepositoryGit = async (
   cwd: string,
   args: readonly string[],
   operation: Operation,
-  options: { readonly allowExitOne?: boolean } = {},
+  options: RepositoryGitOptions = {},
 ): Promise<RepositoryGitResult> => {
   operation.check();
   const timeoutMs = Math.max(1, Math.ceil(Math.min(maxGitMs, operation.remainingMs())));
   return new Promise((resolve, reject) => {
     // Index reads do not need an external fsmonitor; its inherited pipes can outlive Git.
     const child = spawn("git", ["--no-pager", "-c", "core.fsmonitor=false", ...args], {
-      cwd, env: gitEnvironment(), windowsHide: true, detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe"],
+      cwd, env: gitEnvironment(), windowsHide: true, detached: process.platform !== "win32" && options.processGroup !== "inherit", stdio: ["ignore", "pipe", "pipe"],
     });
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
@@ -111,7 +117,8 @@ export const runRepositoryGit = async (
           execFileSync(path.win32.join(systemRoot, "System32", "taskkill.exe"), ["/PID", String(child.pid), "/T", "/F"], {
             windowsHide: true, timeout: cleanupMs, maxBuffer: 64 * 1024, stdio: "pipe",
           });
-        } else process.kill(-child.pid, "SIGKILL");
+        } else if (options.processGroup === "inherit") child.kill("SIGKILL");
+        else process.kill(-child.pid, "SIGKILL");
       } catch (error) {
         if (!(process.platform !== "win32" && error instanceof Error && "code" in error && error.code === "ESRCH")) cleanupErrors.push(error);
         child.kill("SIGKILL");
@@ -168,16 +175,17 @@ const finalLine = (value: string): string => value.replace(/\r?\n$/, "");
 export const discoverWorktreeRoot = async (
   cwd: string,
   operation: Operation,
+  options: Pick<RepositoryGitOptions, "processGroup"> = {},
 ): Promise<string> => {
   let bare: RepositoryGitResult;
-  try { bare = await runRepositoryGit(cwd, ["rev-parse", "--is-bare-repository"], operation); }
+  try { bare = await runRepositoryGit(cwd, ["rev-parse", "--is-bare-repository"], operation, options); }
   catch (cause) {
     if (cause === operation.signal.reason) throw cause;
     throw new Error("Cannot locate a Git repository from the current working directory.", { cause });
   }
   if (finalLine(bare.stdout) === "true") throw new Error("This operation requires a Git worktree; the current repository is bare.");
   if (finalLine(bare.stdout) !== "false") throw new Error("Git returned an invalid bare-repository result.");
-  const gitRoot = finalLine((await runRepositoryGit(cwd, ["rev-parse", "--show-toplevel"], operation)).stdout);
+  const gitRoot = finalLine((await runRepositoryGit(cwd, ["rev-parse", "--show-toplevel"], operation, options)).stdout);
   if (gitRoot === "") throw new Error("Git returned an empty worktree root.");
   if (!path.isAbsolute(gitRoot)) throw new Error("Git returned a worktree root that is not an absolute path.");
   return path.normalize(gitRoot);

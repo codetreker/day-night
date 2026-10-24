@@ -360,7 +360,8 @@ Git worktree 根目录 `.daynight/project.yml` 保存 server、仓库身份和 p
 配置加载和 review 运行时加载。review 各操作的依赖只在对应操作中动态导入，因此更新
 进程不会加载 SQLite 原生模块，避免它自身占用待替换的 addon。帮助和参数错误同样
 无需进入运行时；更新不接触配置、SQLite、实例锁或 Copilot 会话。`updateSelf` 返回
-`current`、`ahead` 或 `updated`，携带原版本和查询目标版本；CLI 据此打印单行结果，更新成功时提示重启运行中的 reviewer。
+`current`、`ahead` 或 `updated`，携带原版本和查询目标版本；这些结果要求已安装
+skill 同步成功。CLI 据此打印包结果，更新成功时提示重启运行中的 reviewer。
 
 更新模块使用稳定入口 `main.ts` 传入的包目录，通过 `realpath` 和包清单确认
 `@codetreker/daynight` 及 `dist/main.js` bin，再按平台推导实际全局 prefix。POSIX 的包路径必须为
@@ -382,7 +383,7 @@ registry 和认证沿用该全局安装上下文；不读取调用目录的项�
 明确全局模式排除项目配置。
 
 `npm view @codetreker/daynight@latest version --json` 的标量或单元素数组输出必须
-解析出唯一的规范 SemVer。用 `semver` 比较优先级，当前或领先版本直接成功返回；更新时将已解析的确切版本传给
+解析出唯一的规范 SemVer。用 `semver` 比较优先级，当前或领先版本保留安装包；更新时将已解析的确切版本传给
 `npm install`，不会再次让可变的 `latest` 选择目标。需要安装前检查调用目录的实际路径，
 位于当前包内时要求从外部目录重试，避免替换使调用进程的工作目录失效。安装显式使用
 `--engine-strict --force=false`，沿用 npm 的权限和错误，不调用 sudo，也不改变 Node.js
@@ -391,7 +392,12 @@ registry 和认证沿用该全局安装上下文；不读取调用目录的项�
 安装输出直接转发，查询输出受限且用于解析；查询、安装和新进程版本验证均有时间上限。
 npm 成功退出后，重新读取安装包的身份、bin 和确切版本，重新验证启动器，最后使用同一
 Node.js 和新安装 CLI 的绝对路径执行 `--version`。该新进程报告的版本必须与目标严格
-相同，才能返回 `updated`。任一阶段失败都保留错误原因并以非零状态退出。
+相同，才完成 npm 更新验证。接着由同一 Node.js 启动已安装包中的
+`commands/skill/refresh-installed.js`，以原调用目录定位当前 worktree，在新进程中
+捕获 bundle 并刷新已有 skill。当前或领先版本也运行该同步步骤。
+[公开 skill 设计](daynight-agent-skill.md#cli-更新时的自动同步)拥有检测、去重和替换机制。
+同步输出实时转发并设置时限；所有目标成功才能返回包结果。任一阶段失败保留错误原因
+并非零退出；skill 失败明确说明 npm 包实际状态，不回滚已成功的包更新。
 
 npm 管理替换、安装恢复和并发安装行为，模块不引入另一套包替换或回滚机制。更新失败
 不承诺原安装文件完整保留；需要按 npm 的错误处理安装。命令不控制已运行的 reviewer，

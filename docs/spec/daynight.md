@@ -139,7 +139,8 @@ review 的目录 `--path` 保留原有拒绝规则。`project create` 接受一�
 `daynight update` 查询当前 npm 配置的 registry 中 `@codetreker/daynight` 的 `latest`
 版本，并在该版本的 SemVer 优先级高于当前版本时更新正在执行的 npm 全局安装。
 安装使用已查询到的确切版本；查询后的 `latest` 变化不能改变本次目标。已安装版本与
-`latest` 相同或优先级更高时成功退出，不执行安装，也不降级。
+`latest` 相同或优先级更高时保留已安装包，不执行 npm 安装，也不降级；仍需执行
+已安装 skill 的同步，全部成功后退出。
 
 命令必须确认当前包的真实路径符合 npm 全局目录结构，且该安装的 `daynight` 启动器
 确实指向当前包。使用该安装的实际 prefix 进行查询与安装，不能因当前 npm 默认 prefix
@@ -154,10 +155,18 @@ review 的目录 `--path` 保留原有拒绝规则。`project create` 接受一�
 检查 `--version`，全部匹配目标版本后才能报告更新成功。npm 负责文件替换和安装恢复；
 命令不承诺原子回滚，失败也不保证原安装的全部字节保持不变。
 
+npm 更新及版本验证成功后，命令使用已安装包中的新进程同步 `using-daynight`。
+CLI 已是当前或领先版本时，同样从保留的已安装包同步。检测范围为 User 与调用目录
+所属 Git worktree 的 Project skill 位置；仓库外只检测 User，不扫描其他项目，也不以
+Agent launcher 是否在 PATH 判断已有安装。同步遵循
+[skill 自动更新要求](daynight-agent-skill.md#as10-cli-更新时同步已安装-skill)。
+
 `daynight update --help` 和 `daynight update -h` 显示帮助且不执行更新；其他参数以
-状态码 2 拒绝。查询、权限、网络、engine、安装或验证失败以状态码 1 退出并保留错误
-原因。命令无需配置文件，不解析用户主目录、不加载 review 配置或运行时、不打开
-SQLite、不获取实例锁、不修改审查会话，也不调用 Git、GitHub CLI 或 Copilot。
+状态码 2 拒绝。查询、权限、网络、engine、安装、验证或 skill 同步失败以状态码 1
+退出并保留错误原因。skill 失败须区分 npm 包已更新或被保留及各 skill 目标的结果；
+不能宣称整体成功，也不回滚已安装包。命令无需配置文件，不加载 review 配置或运行时、
+不打开 SQLite、不获取实例锁、不修改审查会话，也不启动 GitHub CLI 或 Agent。
+只有发现当前目录的 Git worktree 标记时才调用 Git 定位根目录；读取失败明确报错。
 
 更新成功后，下一次 CLI 调用使用新版本；正在运行的 reviewer 必须由操作者重启。
 命令不自动停止或重启它。Windows 上运行中的 reviewer 可能占用原生 addon 文件，导致
@@ -287,7 +296,7 @@ shell 的内存状态；输出对应的既有 `source <(daynight completion bash
 | 非 TTY 缺配置、已有配置损坏、读取失败，或在引导期间取消及 EOF。 | 缺配置给出脚本配置命令；损坏及读取错误保留原因；取消不保存部分值且不执行业务。 | C6 |
 | 引导期间另一配置命令已写入，或配置锁被占用。 | 保存前重读并保留无关字段修改；所选字段已变更或占锁时明确失败且不执行业务。 | C6 |
 | 执行 review 的配置、列表和运行操作。 | 按操作加载其依赖，复用原有 YAML 和 SQLite；审查保证见 review 的 R1–R15。 | C3 |
-| 执行 `daynight update`，registry 的 `latest` 比当前版本更新。 | 只更新当前 npm 全局安装，安装已查询到的确切版本，重新验证清单、启动器和新进程版本后报告成功；保留配置及审查状态。 | C4 |
+| 执行 `daynight update`，registry 的 `latest` 比当前版本更新。 | 更新当前 npm 全局安装至已查询的确切版本，验证清单、启动器和新进程版本，再同步 User 与当前 worktree 已安装的 skill；全部成功才报告成功，保留配置及审查状态。 | C4 |
 | npm 默认全局 prefix 已变化，或调用目录包含项目 `.npmrc`。 | 仍使用当前安装的实际 prefix，保留用户/全局 registry 与认证配置，不更新其他 prefix，也不使用调用目录的项目配置。 | C4 |
 | 当前版本等于或高于 `latest`，或从安装目录内部执行命令。 | 当前或领先版本不安装、不降级；需要安装且调用目录在包内时明确拒绝。 | C4 |
 | 从源码、本地依赖、`npx`、pnpm 或 `npm link` 安装调用更新。 | 拒绝并给出原包管理器指引，不创建另一份全局安装。 | C4 |

@@ -362,7 +362,7 @@ describe("repository Git discovery", () => {
     }
   }, 10_000);
 
-  it("retains the original operation failure after a real blocked Git child closes", async () => {
+  it.each(["own", "inherit"] as const)("retains the original operation failure after a real blocked Git child closes in its %s group", async (processGroup) => {
     if (process.platform === "win32") return;
     const root = await repository();
     const fifo = path.join(root, "blocked config");
@@ -376,14 +376,14 @@ describe("repository Git discovery", () => {
     expect(op.signal.reason).toBeInstanceOf(OperationError);
   });
 
-  it("stops a blocked child when the shared operation deadline expires", async () => {
+  it.each(["own", "inherit"] as const)("stops a blocked child in its %s group when the shared operation deadline expires", async (processGroup) => {
     if (process.platform === "win32") return;
     const root = await repository();
     const fifo = path.join(root, "blocked config");
     execFileSync("mkfifo", [fifo], { timeout: 10_000 });
     vi.stubEnv("GIT_CONFIG_SYSTEM", fifo);
     const op = operation({ limits: { totalMs: 30 } });
-    const error: unknown = await runRepositoryGit(root, ["config", "--get", "remote.origin.url"], op).catch((failure: unknown) => failure);
+    const error: unknown = await runRepositoryGit(root, ["config", "--get", "remote.origin.url"], op, { processGroup }).catch((failure: unknown) => failure);
     expect(error).toBe(op.signal.reason);
     expect(error).toMatchObject({ kind: "deadline" });
   });

@@ -14,7 +14,9 @@ layouts and replacement behavior.
 ## Decision
 
 `daynight update` updates only the npm global installation containing the running
-package. The stable `main.ts` entry supplies the package directory to the nested
+package. Existing user and current-worktree skill copies are synchronized under
+the later [installed-skill update decision](2026-10-24-update-installed-agent-skills.md).
+The stable `main.ts` entry supplies the package directory to the nested
 updater; it resolves that physical directory, confirms the package name and bin,
 derives the platform's global prefix and verifies that prefix's npm-owned
 launcher points to the package's `dist/main.js`. A mismatched layout or launcher
@@ -39,11 +41,14 @@ the command must be rerun from an external directory.
 After npm succeeds, the updater rereads the manifest, verifies package identity,
 bin and target version, rechecks launcher ownership, then executes the installed
 absolute CLI in a new process and requires an exact `--version` match. Only those
-checks permit an update-success result. Help and argument validation precede the
-operation; update dispatch precedes home resolution, configuration and review
-runtime loading. Review operation implementations load only when their selected operations run,
-so the updater itself does not load the SQLite native addon it may replace. No
-review state, sessions or locks are opened.
+checks complete package-update verification. The verified installation then runs
+its skill refresh in a new process, also used when the package is current or
+ahead. Only successful package handling and skill synchronization permit overall
+success. Help and argument validation precede the operation; update dispatch
+precedes configuration and review runtime loading. Review operation dependencies
+load only when their selected operations run, so the updater itself does not load
+the SQLite native addon it may replace. No review state, sessions or locks are
+opened.
 
 The [requirements](../../../../docs/spec/daynight.md#c4-自更新) own observable
 behavior, and the [design](../../../../docs/design/daynight.md#npm-全局自更新)
@@ -76,8 +81,10 @@ needed to accept another installation type.
 
 ## Consequences
 
-Operators can update the installed npm CLI without review configuration, Git,
-GitHub CLI or Copilot. A changed default prefix and caller-directory project
+Operators can update the installed npm CLI without review configuration,
+GitHub CLI or an Agent launcher. The original package-only update required no
+Git; automatic skill synchronization now uses Git only when a worktree marker is
+found, and works outside repositories without invoking Git. A changed default prefix and caller-directory project
 configuration cannot silently redirect the operation. SemVer comparison prevents
 downgrades, and fresh process verification tests the new executable rather than
 an already loaded version value. Native acceptance uses isolated real npm global

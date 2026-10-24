@@ -244,9 +244,29 @@ Claude Code personal 优先于 project，选择 Project 不修改 User。目录�
 | AS.V9 | 独立情境演练覆盖裸调用有/无上下文、创建许可、Goal 范围内双起始任务及后续拆分、autopilot 不隐含创建或审批许可、trivial、proposed 各阶段登记、无审批授权的 run、显式 Goal-task 范围审批、精确版本 claim/complete、in-progress 恢复、冲突与不确定写入、阶段输入/产出、真实拆分、部分登记恢复、Markdown 更新保留有效引用、资料所有权、前端 mock UI、开放 PR 等待、单任务返回、autopilot 阻塞与有界候选及整体验收。 |
 | AS.V10 | 新名称发布后才清理所选根旧入口，覆盖旧叶节点链接、清理失败保留新 bundle、准确部分结果及重载提示。 |
 | AS.V11 | CLI typecheck、test、build、安装验收通过；Linux/macOS/Windows 分别提供适用检测、定位、取消、覆盖和链接的原生证据。 |
+| AS.V12 | 真实 npm 更新后已有 User/Project skill 与新包全文件字节一致，移除旧文件并保留缺失目标、无关 skill；当前或领先版本仍同步，失败非零且保留真实包状态；共享路径和叶链接符合 AS10。 |
 
 安装测试使用隔离目录与启动即写 sentinel 并失败的模拟 launcher，不安装或运行真实
 Agent、不读取账号、不调用模型、不启动 Daynight 服务或数据库。真实 PTY/ConPTY
 证明终端行为，全文件字节比较证明复制与覆盖。静态检查及独立情境演练与安装证据
 分别报告；字符串或文件检查不能证明模型遵循语义。模型自动选择和任务实际执行结果
 不属于安装器保证。验收记录源码版本、平台、场景和资源清理结果。
+
+## AS10. CLI 更新时同步已安装 skill
+
+`daynight update` 在 npm 包更新及新进程版本验证完成后，自动从已安装包同步
+`using-daynight`；CLI 已是当前或领先版本时也执行同步，以便重试上次 skill 失败。
+检测 User 和调用目录所属 Git worktree 的 Project 位置，Agent 路径沿用 AS7。
+子目录、linked worktree、submodule 均定位自身根；仓库外只检测 User，不搜索其他
+仓库、不登记安装 registry，也不要求 Agent launcher 可用或运行 Agent。
+
+存在的 `using-daynight` 目录或叶节点符号链接视为已有安装，包括入口丢失的目录及
+悬空叶链接；缺失叶节点保持缺失。普通文件或其他非目录叶节点、父目录损坏及权限错误
+必须暴露。先完成全部目标规划和破坏性嵌套检查，再写入；同物理目标跨 Agent、跨 scope
+只替换一次。采用 AS8 的完整替换、旧名称清理、父链接保留和部分失败语义，输出保留
+所有相关 Agent、scope、路径、实际包版本及重载说明。
+
+新进程使用已验证安装中的代码和 bundle，不能复制更新前缓存在内存中的资源。整体成功
+要求包处理与全部已有 skill 同步成功。skill 失败以非零退出，保留已完成目标，标明
+失败及未执行目标，并说明 npm 包已更新或保留；不对已更新 npm 包回滚。帮助及参数错误
+不得触发检测或同步。自动同步没有交互选择，也不能首次安装缺失 skill。

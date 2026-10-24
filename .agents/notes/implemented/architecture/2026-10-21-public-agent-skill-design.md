@@ -28,7 +28,11 @@ The installer detects Codex, Copilot CLI and Claude Code launchers, asks which
 agents to install for, then asks for user or project scope. It replaces the whole
 selected using-daynight directory with packaged bytes, then removes the legacy
 daynight leaf in the same selected physical root. It does not preserve local
-edits or introduce an installation registry. Codex and Copilot share their
+edits or introduce an installation registry. The later
+[installed-skill update decision](../feature/2026-10-24-update-installed-agent-skills.md)
+adds automatic refresh during `daynight update` for existing User and
+current-worktree Project copies, while preserving interactive first installation.
+Codex and Copilot share their
 `.agents/skills` destination; Claude uses `.claude/skills`. Parent links are
 preserved, physical targets are deduplicated and destructive nested targets are
 rejected before writes. Selected agents can share discovery with unselected
@@ -118,8 +122,11 @@ Whole-directory replacement can discard local customization. Without backups,
 a filesystem failure after removal can leave a target absent; completed earlier
 targets remain installed and the command reports the partial result. Legacy-name
 cleanup failure preserves the newly published bundle and reports migration as
-incomplete. Re-running restores current packaged content. This deliberately avoids cross-target
-transactions, rollback, automatic npm-to-skill synchronization and edit merging.
+incomplete. Re-running restores current packaged content. The original
+distribution decision left npm-to-skill synchronization manual; the later
+installed-skill update decision adds bounded automatic synchronization.
+Cross-target transactions, rollback and edit merging remain outside the
+replacement mechanism.
 
 An open delivery PR keeps its task in progress and its implementation successors
 blocked. Installer acceptance does not require real Agent installation, account
