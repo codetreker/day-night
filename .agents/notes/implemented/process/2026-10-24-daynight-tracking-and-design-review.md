@@ -4,9 +4,11 @@ Status: implemented
 
 ## Problem
 
-Large work loses durable scope and dependency context when tracked only in a
-conversation. Solution, architecture, and design discussions also need readable
-current material before a user can review them. A repository or PR link alone
+Concrete work loses durable scope and dependency context when tracked only in a
+conversation. Treating every agent-generated execution step as a separate task
+obscures the actual work and its completion conditions. Solution, architecture,
+and design discussions also need readable current material before a user can
+review them. A repository or PR link alone
 does not place that material with its owning task. Requiring separate creation
 permission after an explicit instruction to use Daynight leaves required tracking
 dependent on a redundant authorization request. Editing an installed
@@ -14,10 +16,16 @@ dependent on a redundant authorization request. Editing an installed
 
 ## Decision
 
-The repository instructions and public skill require Daynight for large work when
-the skill and Daynight are available. Every solution, architecture, and design
-review uses its owning task, including small discussions. Before requesting user
-review, the complete current material is saved in its description or attachments,
+When the skill and Daynight are available, the repository instructions and public
+skill use Daynight to manage concrete work with a defined objective and completion
+conditions: features, bug fixes, architecture/design assignments, and actual work
+items produced by their breakdown. Agent-generated file reads, commands, and
+routine checks stay in the owning task's execution plan. A distinct acceptance or
+validation assignment may still be a task when it has its own outcome; routine
+checks within another task remain execution steps.
+
+Every solution, architecture, and design review uses its owning task. Before
+requesting user review, the complete current material is saved in its description or attachments,
 read back, and identified by task and resource reference. Revisions and review
 decisions stay synchronized there. Short review proposals may use the description;
 detailed task plans retain their primary Markdown owner.
@@ -26,8 +34,9 @@ An explicit user or applicable repository tracking/review instruction supplies
 standing creation permission for necessary tasks within the user's confirmed
 scope. Existing suitable tasks are reused. This partially supersedes the
 [mode decision](../architecture/2026-10-21-using-daynight-modes.md)'s creation
-permission rule while preserving its rationale and separate approval, execution,
-autopilot and delivery gates. Availability is established through the actual CLI,
+permission and task eligibility rules while preserving their rationale and
+separate approval, execution, autopilot and delivery gates. Availability is
+established through the actual CLI,
 configured service and intended project; failed writes retain their actual cause
 and do not establish readable review material.
 

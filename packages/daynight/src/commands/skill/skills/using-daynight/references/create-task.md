@@ -15,13 +15,19 @@ execution, or delivery.
 
 ## Choose the tracked outcome
 
-One-off operations and trivial work do not need a task unless they include a
-solution, architecture, or design review. Such reviews use an owning task under
-the entrypoint's required tracking and review rules. Keep transient commands,
-tests, and execution steps in the existing plan. With creation permission,
-register an independently understandable outcome when delivery needs continued
-tracking, cross-session continuity, handoff, or dependency coordination. If the
-request does not merit a task, explain that conclusion and return.
+With creation permission, register or reuse a task for concrete work such as a
+feature, bug fix, architecture/design assignment, or actual work item produced by
+its breakdown. Each task has its own objective, scope, and observable completion
+conditions. Solution, architecture, and design reviews use their owning task
+under the entrypoint's required tracking and review rules.
+
+Keep an agent's transient execution steps, such as reading files, running
+commands, and routine checks, in the existing execution plan. Do not turn these
+steps into Daynight tasks merely because an agent generated them. A distinct
+acceptance or validation assignment with its own outcome can still be a task;
+running a check while delivering an existing task is an execution step. If the
+request contains only execution steps for existing work, keep them with that
+work and return without registering additional tasks.
 
 For multiple independently tracked delivery stages, follow
 [the Goal protocol](goal.md). Register its Goal description task and dependent

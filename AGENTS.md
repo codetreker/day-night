@@ -21,11 +21,15 @@ take precedence.
   authorized. Skills describe workflows and grant no additional permission.
 - Manage this repository's tasks in Daynight, including task breakdowns,
   dependencies, execution status and task-specific plans and attachments. When
-  `using-daynight` and Daynight are available, large work requiring sustained
-  tracking, multiple stages, or dependency coordination must use Daynight.
+  `using-daynight` and Daynight are available, use Daynight to manage concrete
+  work with a defined objective and completion conditions: features, bug fixes,
+  architecture/design work, and actual work items produced by their breakdown.
+  An agent's transient execution steps, such as reading files, running commands,
+  and routine checks, belong in its execution plan; their presence in a plan does
+  not make them Daynight tasks.
   All solution, architecture, and design reviews must use the owning Daynight
-  task, regardless of work size. Before requesting user review of such a
-  discussion, save the complete current material in that task's description or
+  task. Before requesting user review of such a discussion, save the complete
+  current material in that task's description or
   attachments, read it back, and provide the task and resource reference.
   Synchronize revisions and review decisions there; chat summaries and repository
   or PR links supplement the saved material. This instruction authorizes creation

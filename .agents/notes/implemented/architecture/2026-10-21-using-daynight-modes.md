@@ -53,7 +53,10 @@ as standing permission for necessary tasks within the confirmed scope. Missing
 permission still requires asking, and approval, execution and delivery remain
 separate.
 
-Create-task checks creation permission, skips one-off and trivial work, matches
+The original registration flow skipped one-off and trivial work to avoid treating
+execution steps as tasks. The [tracking and review decision](../process/2026-10-24-daynight-tracking-and-design-review.md)
+now defines eligibility by concrete outcomes, keeping agent-generated execution
+steps in the owning task's plan. Create-task checks creation permission, matches
 existing problem/scope and acceptance, and registers ordinary single-outcome work
 or a staged Goal. Every description is a self-contained Markdown brief with a
 concrete problem, scope/actions, deliverables, constraints, an observable completion

@@ -1,6 +1,6 @@
 ---
 name: using-daynight
-description: Manage large work and solution, architecture, or design reviews in Daynight; create tasks, execute a specified task, or explicitly run related tasks automatically in a Daynight-linked repository.
+description: Manage concrete work (features, bug fixes, architecture, and their breakdown) and design reviews in Daynight; create or execute tasks, and automatically execute related tasks only when explicitly requested.
 ---
 
 # Using Daynight
@@ -12,10 +12,13 @@ a mainline branch.
 
 ## Required tracking and review
 
-When this skill and Daynight are available, manage large work through Daynight.
-Large work includes sustained tracking, multiple delivery stages, or dependency
-coordination. Use the owning Daynight task for every solution, architecture, and
-design review, regardless of work size.
+When this skill and Daynight are available, use Daynight to manage concrete work
+with a defined objective and completion conditions: features, bug fixes,
+architecture/design work, and actual work items produced by their breakdown.
+An agent's transient execution steps, such as reading files, running commands,
+and routine checks, belong in its execution plan; their presence in a plan does
+not make them Daynight tasks. Use the owning Daynight task for every solution,
+architecture, and design review.
 
 Before asking the user to review any solution, architecture, design, or related
 discussion, save the complete current review material in the owning task's

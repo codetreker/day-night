@@ -164,10 +164,10 @@ outstanding.
 The [public Agent skill design](docs/design/daynight-agent-skill.md) defines one
 npm-bundled `using-daynight` skill and interactive installation for Codex, Copilot
 CLI and Claude Code. Its [requirements](docs/spec/daynight-agent-skill.md) cover
-context-based routing, explicit continuous-execution intent, Daynight-backed large
-work and design reviews, attachment-backed planning and complete replacement on
-reinstall. The entrypoint, four mode
-references and shared `goal.md` protocol are published under
+context-based routing, explicit continuous-execution intent, Daynight-backed
+concrete work and design reviews, attachment-backed planning and complete
+replacement on reinstall. The entrypoint, four mode references and shared
+`goal.md` protocol are published under
 `dist/commands/skill/skills/using-daynight/`. The
 [Goal workflow requirements](docs/spec/daynight-goal-workflow.md) and
 [design](docs/design/daynight-goal-workflow.md) define staged persistent work:
@@ -186,10 +186,14 @@ inputs; completed requirements, prototypes and architecture are their outputs.
 
 Calling `using-daynight` without input uses the actual context; unclear intent is
 resolved with the user. Autopilot requires an explicit request for continuous
-execution. When the skill and Daynight are available, large work uses Daynight;
-every solution, architecture, and design review uses its owning task regardless
-of size. Before requesting user review, save the complete current material in
-the task description or attachments, read it back, and provide the task/resource
+execution. When the skill and Daynight are available, Daynight manages concrete
+work with a defined objective and completion conditions: features, bug fixes,
+architecture/design assignments, and actual work items from their breakdown.
+Agent-generated execution steps, such as reading files, running commands, and
+routine checks, stay in the execution plan. Every solution, architecture, and
+design review uses its owning task. Before requesting user review, save the
+complete current material in the task description or attachments, read it back,
+and provide the task/resource
 reference. Keep revisions and review decisions synchronized there; chat and
 repository or PR links supplement the saved material. Creating tasks requires
 explicit scoped permission. A user or applicable repository instruction requiring
