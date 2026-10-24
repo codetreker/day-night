@@ -1,10 +1,10 @@
 import { waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, getTask, setTaskStatus, setTaskAgentPermission } from '../src/api/client';
+import { ApiError, getTask, setTaskStatus, setTaskAgentPermission, setTaskRequiredPlatform } from '../src/api/client';
 import type { TaskDetail, TaskStatus } from '../src/api/types';
-import { canSetStatus, canSetAgentPermission, TaskDetailSessions } from '../src/features/task-detail/TaskDetailSession';
+import { canSetStatus, canSetAgentPermission, canSetRequiredPlatform, TaskDetailSessions } from '../src/features/task-detail/TaskDetailSession';
 
-vi.mock('../src/api/client', async (original) => ({ ...await original<typeof import('../src/api/client')>(), setTaskStatus: vi.fn(), setTaskAgentPermission: vi.fn(), getTask: vi.fn() }));
+vi.mock('../src/api/client', async (original) => ({ ...await original<typeof import('../src/api/client')>(), setTaskStatus: vi.fn(), setTaskAgentPermission: vi.fn(), setTaskRequiredPlatform: vi.fn(), getTask: vi.fn() }));
 const project = '10000000-0000-4000-8000-000000000001';
 const otherProject = '10000000-0000-4000-8000-000000000002';
 const task = '20000000-0000-4000-8000-000000000001';
@@ -12,7 +12,7 @@ const otherTask = '20000000-0000-4000-8000-000000000002';
 const dependency = '20000000-0000-4000-8000-000000000003';
 const version = 9007199254740993n;
 const stamp = '2026-10-22T00:00:00Z'; const nextStamp = '2026-10-22T00:01:00Z';
-const initial: TaskDetail = { allowAgents: false, externalDependsOn: [dependency], startedAt: null, completedAt: null, id: task, projectId: project, version,
+const initial: TaskDetail = { requiredPlatform: 'linux', allowAgents: false, externalDependsOn: [dependency], startedAt: null, completedAt: null, id: task, projectId: project, version,
   title: 'Reviewed task', description: 'Complete original description', properties: { pullRequests: [{ title: 'Original PR', url: 'https://example.com/pr/1' }] },
   status: 'todo', dependsOn: [dependency], blockedBy: [], ready: true, createdAt: stamp, updatedAt: stamp };
 const source = (status: TaskStatus): TaskDetail => ({ ...initial, status, ready: status === 'todo', startedAt: status === 'todo' ? null : stamp, completedAt: status === 'done' ? stamp : null });
@@ -23,7 +23,7 @@ const reads = vi.mocked(getTask); const writes = vi.mocked(setTaskStatus); const
 const deferred = <T,>() => { let resolve!: (value: T) => void; let reject!: (error: unknown) => void; const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; }); return { promise, resolve, reject }; };
 const open = async (sessions: TaskDetailSessions, projectId = project, taskId = task) => { sessions.load(projectId, taskId, 1); await waitFor(() => expect(sessions.snapshot(projectId, taskId).status).toBe('ready')); };
 const submit = (sessions: TaskDetailSessions, target: TaskStatus = 'in_progress', expected = sessions.snapshot(project, task).detail!.version) => sessions.setStatus(project, task, target, expected);
-beforeEach(() => { reads.mockReset().mockResolvedValue(initial); writes.mockReset(); permissions.mockReset(); });
+beforeEach(() => { reads.mockReset().mockResolvedValue(initial); writes.mockReset(); permissions.mockReset(); vi.mocked(setTaskRequiredPlatform).mockReset(); });
 
 describe('versioned status session', () => {
   it.each((['todo', 'in_progress', 'done'] as const).flatMap((from) => (['todo', 'in_progress', 'done'] as const).map((to) => ({ from, to }))))('confirms $from → $to using its exact delta and complete persisted material', async ({ from, to }) => {
@@ -50,7 +50,7 @@ describe('versioned status session', () => {
     expect(sessions.snapshot(project, task).mutation.error).toMatchObject({ kind: 'protocol' }); expect(writes).toHaveBeenCalledOnce(); expect(reads).toHaveBeenCalledTimes(2);
   });
   it.each([
-    { id: otherTask }, { projectId: otherProject }, { title: 'Unreviewed title' }, { description: 'Unreviewed content' }, { allowAgents: true },
+    { id: otherTask }, { projectId: otherProject }, { title: 'Unreviewed title' }, { description: 'Unreviewed content' }, { allowAgents: true }, { requiredPlatform: 'windows' as const },
     { externalDependsOn: [] }, { dependsOn: [] }, { properties: { pullRequests: [] } }, { createdAt: nextStamp },
   ])('rejects a confirmed status write that changes unrelated material %#', async (changed) => {
     const saved = result(initial, 'in_progress'); reads.mockResolvedValueOnce(initial).mockResolvedValueOnce(saved); writes.mockResolvedValueOnce({ ...saved, ...changed });
@@ -93,8 +93,8 @@ describe('versioned status session', () => {
   });
   it('keeps status and permission mutually exclusive while one status request is pending', async () => {
     const sessions = new TaskDetailSessions(); const pending = deferred<TaskDetail>(); writes.mockReturnValueOnce(pending.promise); await open(sessions); submit(sessions);
-    submit(sessions, 'done'); sessions.setAgentPermission(project, task, true, version);
-    expect(writes).toHaveBeenCalledOnce(); expect(permissions).not.toHaveBeenCalled(); expect(canSetStatus(sessions.snapshot(project, task))).toBe(false); expect(canSetAgentPermission(sessions.snapshot(project, task))).toBe(false);
+    submit(sessions, 'done'); sessions.setAgentPermission(project, task, true, version); sessions.setRequiredPlatform(project, task, 'macos', version);
+    expect(setTaskRequiredPlatform).not.toHaveBeenCalled(); expect(writes).toHaveBeenCalledOnce(); expect(permissions).not.toHaveBeenCalled(); expect(canSetStatus(sessions.snapshot(project, task))).toBe(false); expect(canSetAgentPermission(sessions.snapshot(project, task))).toBe(false); expect(canSetRequiredPlatform(sessions.snapshot(project, task))).toBe(false);
     pending.resolve(result(initial, 'in_progress')); await waitFor(() => expect(sessions.snapshot(project, task).mutation.phase).toBe('confirmed'));
   });
   it('retains a refusal and only retries on another deliberate operation', async () => {
@@ -118,7 +118,7 @@ describe('versioned status session', () => {
   it.each([new ApiError('network'), new DOMException('Cancelled', 'AbortError')])('preserves both failures and blocks both writes until an explicit successful GET %#', async (readError) => {
     const writeError = new ApiError('protocol'); const saved = result(initial, 'in_progress'); reads.mockResolvedValueOnce(initial).mockRejectedValueOnce(readError).mockResolvedValueOnce(saved); writes.mockRejectedValueOnce(writeError);
     const sessions = new TaskDetailSessions(); await open(sessions); submit(sessions); await waitFor(() => expect(sessions.snapshot(project, task).mutation.reconciliationError).toBe(readError));
-    expect(sessions.snapshot(project, task).mutation.error).toBe(writeError); expect(canSetStatus(sessions.snapshot(project, task))).toBe(false); expect(canSetAgentPermission(sessions.snapshot(project, task))).toBe(false);
+    expect(sessions.snapshot(project, task).mutation.error).toBe(writeError); expect(canSetStatus(sessions.snapshot(project, task))).toBe(false); expect(canSetAgentPermission(sessions.snapshot(project, task))).toBe(false); expect(canSetRequiredPlatform(sessions.snapshot(project, task))).toBe(false);
     sessions.load(project, task, 2); submit(sessions); sessions.setAgentPermission(project, task, true, version); expect(reads).toHaveBeenCalledTimes(2); expect(writes).toHaveBeenCalledOnce(); expect(permissions).not.toHaveBeenCalled();
     sessions.reconcile(project, task); await waitFor(() => expect(sessions.snapshot(project, task).mutation.phase).toBe('reconciled')); expect(sessions.snapshot(project, task).detail).toEqual(saved);
   });

@@ -32,7 +32,9 @@ authorization bypass or production transition is added.
 
 `installed_cli_v12_status_migration_restart` prepares a genuine isolated v12
 schema using checked-in migrations 001–012 and records raw rows and checksum
-ledgers before starting the built service. Production startup applies 013.
+ledgers before starting the built service. Production startup applies 013 platform followed by 014 status. A separate prefix13→14
+status-only fixture preserves non-null platform values; v12 rows acquire the
+expected nullable platform column before state conversion.
 Only proposed rows become todo with version/update-time advancement; all other
 fields, timing, permission, properties, ordinary/external edges and attachment
 bytes survive. Non-proposed rows remain unchanged. Default/CHECK conversion,
@@ -74,8 +76,8 @@ cases use actual GET/PUT digits and database results independently of multi-hop
 version growth. Graph failures use owned real failure paths. Redacting request
 forwarding preserves original method, headers, body and Origin validation.
 
-Production inventory remains 27 functional scenarios per target plus five native
-capacity/limit cases (32 native, 27 container). Source-bound runtime receipts,
+Production inventory remains 28 functional scenarios per target plus five native
+capacity/limit cases (33 native, 28 container). Source-bound runtime receipts,
 strict coverage, performance, one-worker/no-retry and cleanup gates are unchanged.
 Transport barriers and offline fixtures establish their declared boundaries;
 they do not replace actual status-changing database requests.

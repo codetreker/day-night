@@ -5,6 +5,13 @@ import { renderZshCompletion } from "../../../src/commands/completion/zsh.js";
 import { taskDefinition } from "../../../src/commands/task/definition.js";
 
 describe("native zsh completion", () => {
+  it.each(["create", "update", "list", "ready"])("completes public platform values for %s", (name) => {
+    const script = renderZshCompletion(taskDefinition.commands!.find((command) => command.name === name)!);
+    expect(script).toContain(name === "create" || name === "update" ? "--required-platform=" : "--compatible-platform=");
+    expect(script).toContain("('\\''windows'\\'' '\\''linux'\\'' '\\''macos'\\'')");
+    expect(script.includes("--clear-required-platform[")).toBe(name === "update");
+  });
+
   it.each(["update", "list", "ready"])("completes explicit automatic-execution booleans for %s", (name) => {
     const script = renderZshCompletion(taskDefinition.commands!.find((command) => command.name === name)!);
     expect(script).toContain("--allow-agents");

@@ -30,13 +30,13 @@ const returnFromAnotherWindow = () => {
   topLevelFocused = false; fireEvent(window, new Event('blur'));
   topLevelFocused = true; fireEvent(window, new Event('focus'));
 };
-const initial = (projectId = project): TaskDetail => ({ allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null, id: projectId === project ? task : otherTask, projectId,
+const initial = (projectId = project): TaskDetail => ({ requiredPlatform: null, allowAgents: false, externalDependsOn: [], startedAt: null, completedAt: null, id: projectId === project ? task : otherTask, projectId,
   version: 9007199254740993n, title: `${currentUser.name} task ${projectId === project ? 'P' : 'Q'}`, description: `${currentUser.name} reviewed content`,
   properties: { pullRequests: [] }, status: 'todo', dependsOn: [], blockedBy: [], ready: true, createdAt: stamp, updatedAt: stamp });
 const graph = (projectId: string): TaskGraph => {
   const detail = initial(projectId);
   return { observedAt: "2026-10-20T12:00:00Z", project: { settings: { version: 1n, executionWarningMinutes: 60 }, id: projectId, name: `${currentUser.name} project ${projectId === project ? 'P' : 'Q'}`, repoUrl: 'https://example.com/repo', createdAt: stamp, updatedAt: stamp },
-    tasks: [{ allowAgents: detail.allowAgents, externalDependsOn: detail.externalDependsOn, startedAt: null, completedAt: null, id: detail.id, titlePreview: detail.title, titleTruncated: false, status: detail.status, dependsOn: [], blockedBy: [], ready: true, createdAt: stamp, updatedAt: stamp }],
+    tasks: [{ requiredPlatform: detail.requiredPlatform, allowAgents: detail.allowAgents, externalDependsOn: detail.externalDependsOn, startedAt: null, completedAt: null, id: detail.id, titlePreview: detail.title, titleTruncated: false, status: detail.status, dependsOn: [], blockedBy: [], ready: true, createdAt: stamp, updatedAt: stamp }],
     summary: { total: 1, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 } };
 };
 const deferred = <T,>() => {

@@ -165,6 +165,12 @@ new decision. Readiness and `in_progress` provide no ownership lock or lease.
 
 ## Advance and accept the whole Goal
 
+Automatic delivery discovery requires actual-runtime platform compatibility.
+Use autopilot's platform-filtered queries and preserve automatic-selection context
+for run-task's full-task recheck before setting in_progress. A user-specified fixed
+Goal queue keeps its manual path and existing execution scope across ready successors;
+it does not enable automatic discovery permission or bypass stage confirmation.
+
 A user-directed requirements-to-solution transition follows the confirmation
 protocol above. Ordinary `run-task` otherwise returns after its specified task
 completes or needs external intervention. Neither discussion completion nor

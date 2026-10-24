@@ -13,14 +13,17 @@ rules, and removing a stored state requires a genuine data migration.
 
 The [three-state requirements](../../../../docs/spec/daynight-task-status.md) and
 [architecture](../../../../docs/design/daynight-task-status.md) specify todo,
-in_progress and done with one versioned setter and todo creation. A new migration
+in_progress and done with one versioned setter and todo creation. Migration 014
 converts every legacy proposed row to todo, advancing its version/update time
 while preserving all other stored facts; default and CHECK switch atomically.
 Existing applied migrations remain unchanged, and runtime readers do not accept
 the deleted state as an alias.
 
 The implementation reuses project-lock transactions, complete mutation plans,
-CLI choices and the shared Web status/permission owner. It compares exact versions
+CLI choices and the shared Web status/permission owner. Platform saves are a third operation under
+that same owner, without adding another confirmation or mutation controller.
+Status changes and migration retain requiredPlatform; immutable migration 013
+adds platform first, while 014 performs state conversion. It compares exact versions
 before same-state no-op, preserves all-edge forward/reverse dependency protection,
 and resets only actual runtime execution attempts when returning to todo. Migration reclassification
 preserves historical timing rather than invoking that runtime reset.

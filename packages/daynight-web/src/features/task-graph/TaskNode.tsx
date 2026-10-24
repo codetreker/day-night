@@ -2,6 +2,7 @@ import { memo, useCallback, useId, useLayoutEffect, useRef, type FocusEvent, typ
 import { useReactFlow, type Node, type NodeProps } from '@xyflow/react';
 import { useTaskExecution } from '../task-execution/TaskExecutionClock';
 import { TaskExecutionDescription, TaskExecutionDuration, TaskExecutionWarning, type TaskExecution } from '../task-execution/TaskExecutionPresentation';
+import { TaskPlatformBadge } from '../task-detail/TaskPlatform';
 import { TaskAgentPermissionBadge } from '../task-detail/TaskAgentPermissionBadge';
 import { useI18n } from '../../i18n/LocaleProvider';
 import { useTaskInspectionState } from './inspection';
@@ -29,7 +30,7 @@ const TaskNodeContent = memo(({ task, kind, execution }: Pick<TaskNodeData, 'tas
   return <>
     <span className="task-node-meta">
       <span className="task-node-id">{task.id.slice(0, 8)}</span>
-      <span className="task-node-meta-labels"><TaskAgentPermissionBadge allowAgents={task.allowAgents} compact />{execution?.overdue && <TaskExecutionWarning />}</span>
+      <span className="task-node-meta-labels"><TaskAgentPermissionBadge allowAgents={task.allowAgents} compact /><TaskPlatformBadge requiredPlatform={task.requiredPlatform} compact />{execution?.overdue && <TaskExecutionWarning />}</span>
     </span>
     <span className="task-node-title">{title}</span>
     <span className="task-node-bottom">

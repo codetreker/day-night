@@ -163,7 +163,7 @@ func snapshotTaskBeforeTiming(t *testing.T, database *Store, projectID, id strin
 	t.Helper()
 	task, err := scanHistoricalTask(database.Pool.QueryRow(context.Background(), `SELECT
 		t.id::text, t.project_id::text, t.title, t.description, t.status, t.version,
-		t.created_at, t.updated_at, NULL::timestamptz, NULL::timestamptz, true, t.properties, `+
+		t.created_at, t.updated_at, NULL::timestamptz, NULL::timestamptz, true, NULL::text, t.properties, `+
 		taskDependsOn+`, ARRAY[]::text[], `+taskBlockedBy+`, `+taskReady+`
 		FROM tasks t WHERE t.project_id = $1 AND t.id = $2`, projectID, id))
 	if err != nil {
@@ -177,7 +177,7 @@ func scanHistoricalTask(row pgx.Row) (core.Task, error) {
 	var task core.Task
 	var properties string
 	err := row.Scan(&task.ID, &task.ProjectID, &task.Title, &task.Description, &task.Status,
-		&task.Version, &task.CreatedAt, &task.UpdatedAt, &task.StartedAt, &task.CompletedAt, &task.AllowAgents, &properties, &task.DependsOn, &task.ExternalDependsOn, &task.BlockedBy, &task.Ready)
+		&task.Version, &task.CreatedAt, &task.UpdatedAt, &task.StartedAt, &task.CompletedAt, &task.AllowAgents, &task.RequiredPlatform, &properties, &task.DependsOn, &task.ExternalDependsOn, &task.BlockedBy, &task.Ready)
 	if err != nil {
 		return core.Task{}, err
 	}
@@ -187,9 +187,12 @@ func scanHistoricalTask(row pgx.Row) (core.Task, error) {
 	return task, err
 }
 
+const historicalTaskProjection = `t.id::text, t.project_id::text, t.title, t.description,
+ t.status, t.version, t.created_at, t.updated_at, t.started_at, t.completed_at, t.allow_agents, NULL::text, t.properties, ` + taskDependsOn + `, ` + taskExternalDependsOn + `, ` + taskBlockedBy + `, ` + taskReady
+
 func snapshotHistoricalTask(t *testing.T, database *Store, projectID, id string) core.Task {
 	t.Helper()
-	task, err := scanHistoricalTask(database.Pool.QueryRow(context.Background(), `SELECT `+taskProjection+` FROM tasks t WHERE t.project_id=$1 AND t.id=$2`, projectID, id))
+	task, err := scanHistoricalTask(database.Pool.QueryRow(context.Background(), `SELECT `+historicalTaskProjection+` FROM tasks t WHERE t.project_id=$1 AND t.id=$2`, projectID, id))
 	if err != nil {
 		t.Fatal(err)
 	}

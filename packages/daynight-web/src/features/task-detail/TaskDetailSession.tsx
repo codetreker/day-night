@@ -1,9 +1,9 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { ApiError, getTask, isAbortError, setTaskAgentPermission, setTaskStatus } from "../../api/client";
+import { ApiError, getTask, isAbortError, setTaskAgentPermission, setTaskRequiredPlatform, setTaskStatus } from "../../api/client";
 import { isTaskStale, taskDescriptor } from "./freshness";
-import type { GraphTask, TaskDetail, TaskStatus } from "../../api/types";
+import type { ExecutionPlatform, GraphTask, TaskDetail, TaskStatus } from "../../api/types";
 
-export type TaskMutationOperation = { readonly action: "status"; readonly status: TaskStatus; readonly version: bigint } | { readonly action: "allowAgents"; readonly allowAgents: boolean; readonly version: bigint };
+export type TaskMutationOperation = { readonly action: "status"; readonly status: TaskStatus; readonly version: bigint } | { readonly action: "allowAgents"; readonly allowAgents: boolean; readonly version: bigint } | { readonly action: "requiredPlatform"; readonly requiredPlatform: ExecutionPlatform | null; readonly version: bigint };
 export type TaskMutationState = {
   readonly operation: TaskMutationOperation | null;
   readonly phase: "idle" | "pending" | "confirmed" | "refused" | "conflict" | "unknown" | "reconciled";
@@ -45,6 +45,7 @@ const canMutate = (state: DetailState): boolean => state.detail !== null && stat
   state.mutation.phase !== "pending" && state.mutation.phase !== "unknown" && !state.mutation.reconciling && state.mutation.reconciliationError === null && !state.requiresFreshRead && state.error === null;
 export const canSetStatus = (state: DetailState): boolean => canMutate(state);
 export const canSetAgentPermission = (state: DetailState): boolean => state.detail !== null && state.detail.status !== "in_progress" && canMutate(state);
+export const canSetRequiredPlatform = canSetAgentPermission;
 
 const sameIds = (left: readonly string[], right: readonly string[]): boolean => left.length === right.length && left.every((id) => right.includes(id));
 const preservesMaterials = (before: TaskDetail, after: TaskDetail): boolean => before.title === after.title && before.description === after.description &&
@@ -184,6 +185,11 @@ export class TaskDetailSessions {
     if (!canSetAgentPermission(state) || state.detail!.version !== version || state.detail!.allowAgents === allowAgents) return;
     this.performMutation(projectId, taskId, { action: "allowAgents", allowAgents, version });
   }
+  setRequiredPlatform(projectId: string, taskId: string, requiredPlatform: ExecutionPlatform | null, version: bigint): void {
+    const state = this.entry(projectId, taskId).state;
+    if (!canSetRequiredPlatform(state) || state.detail!.version !== version || state.detail!.requiredPlatform === requiredPlatform) return;
+    this.performMutation(projectId, taskId, { action: "requiredPlatform", requiredPlatform, version });
+  }
   private performMutation(projectId: string, taskId: string, operation: TaskMutationOperation): void {
     const entry = this.entry(projectId, taskId);
     const previous = entry.state.detail!;
@@ -195,11 +201,16 @@ export class TaskDetailSessions {
         const signal = new AbortController().signal;
         const detail = operation.action === "allowAgents"
           ? await setTaskAgentPermission(projectId, taskId, operation.allowAgents, operation.version, signal)
-          : await setTaskStatus(projectId, taskId, operation.status, operation.version, signal);
+          : operation.action === "requiredPlatform"
+            ? await setTaskRequiredPlatform(projectId, taskId, operation.requiredPlatform, operation.version, signal)
+            : await setTaskStatus(projectId, taskId, operation.status, operation.version, signal);
+        const preservesTiming = detail.startedAt === previous.startedAt && detail.completedAt === previous.completedAt;
         const validResult = operation.action === "allowAgents"
-          ? detail.status === previous.status && detail.allowAgents === operation.allowAgents && detail.startedAt === previous.startedAt && detail.completedAt === previous.completedAt
-          : detail.status === operation.status && detail.allowAgents === previous.allowAgents && validStatusTiming(previous, detail, operation.status);
-        const changed = operation.action === "allowAgents" || previous.status !== operation.status;
+          ? detail.status === previous.status && detail.allowAgents === operation.allowAgents && detail.requiredPlatform === previous.requiredPlatform && preservesTiming
+          : operation.action === "requiredPlatform"
+            ? detail.status === previous.status && detail.requiredPlatform === operation.requiredPlatform && detail.allowAgents === previous.allowAgents && preservesTiming
+            : detail.status === operation.status && detail.allowAgents === previous.allowAgents && detail.requiredPlatform === previous.requiredPlatform && validStatusTiming(previous, detail, operation.status);
+        const changed = operation.action !== "status" || previous.status !== operation.status;
         if (detail.projectId !== projectId || detail.id !== taskId || !validResult || !preservesMaterials(previous, detail) ||
           detail.version !== operation.version + (changed ? 1n : 0n)) throw new ApiError("protocol");
         entry.committedVersion = detail.version;

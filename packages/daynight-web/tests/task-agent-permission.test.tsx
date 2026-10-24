@@ -14,10 +14,10 @@ const projectId = '10000000-0000-4000-8000-000000000001';
 const taskId = '20000000-0000-4000-8000-000000000001';
 const time = '2026-10-24T00:00:00Z';
 const project: Project = { id: projectId, name: 'Automatic tasks', repoUrl: 'https://example.com/repo', settings: { version: 1n, executionWarningMinutes: 60 }, createdAt: time, updatedAt: time };
-const detail: TaskDetail = { id: taskId, projectId, title: 'Reviewed task', description: 'Keep this content', allowAgents: false, status: 'todo', version: 9007199254740993n,
+const detail: TaskDetail = { requiredPlatform: null, id: taskId, projectId, title: 'Reviewed task', description: 'Keep this content', allowAgents: false, status: 'todo', version: 9007199254740993n,
   dependsOn: [], externalDependsOn: [], blockedBy: [], ready: true, properties: { pullRequests: [] }, startedAt: null, completedAt: null, createdAt: time, updatedAt: time };
 const graphTask = (value: TaskDetail): GraphTask => ({ id: value.id, titlePreview: value.title, titleTruncated: false, status: value.status,
-  allowAgents: value.allowAgents, dependsOn: value.dependsOn, externalDependsOn: value.externalDependsOn, blockedBy: value.blockedBy, ready: value.ready,
+  requiredPlatform: value.requiredPlatform, allowAgents: value.allowAgents, dependsOn: value.dependsOn, externalDependsOn: value.externalDependsOn, blockedBy: value.blockedBy, ready: value.ready,
   startedAt: value.startedAt, completedAt: value.completedAt, createdAt: value.createdAt, updatedAt: value.updatedAt });
 const snapshot = (value: TaskDetail, revision = 1) => {
   const graph: TaskGraph = { observedAt: time, project, tasks: [graphTask(value)], summary: { total: 1,
@@ -112,7 +112,7 @@ describe('confirmed automatic execution header control', () => {
   it('preserves the checked flag and explains the execution lock', async () => {
     await open({ ...detail, allowAgents: true, status: 'in_progress', ready: false });
     expect(screen.getByRole('switch')).toBeDisabled(); expect(screen.getByRole('switch')).toBeChecked();
-    expect(screen.getByText(/in progress/)).toBeVisible();
+    expect(screen.getByText('This task is in progress. Automatic execution settings cannot change while it remains in progress.')).toBeVisible();
   });
   it('uses bilingual title-row controls and the correct disabling confirmation', async () => {
     await open({ ...detail, allowAgents: true }, 'zh-CN');

@@ -38,7 +38,7 @@ flowchart TD
 
 ## 历史数据、默认值与读取协议
 
-迁移 `013_task_status_assignment.sql` 在现有迁移链后执行。保留 007/008 及其他已应用文件和 checksum。迁移内容为：
+已应用的013_task_required_platform.sql保持不可变；迁移014_task_status_assignment.sql在其后执行。保留 007/008 及其他已应用文件和 checksum。迁移内容为：
 
 ```sql
 ALTER TABLE tasks ALTER COLUMN status SET DEFAULT 'todo';
@@ -56,7 +56,7 @@ ALTER TABLE tasks ADD CONSTRAINT tasks_status_check
 
 [迁移 runner](https://github.com/codetreker/daynight/blob/18c794918ef0506a04bf294dad9cd8058ef2696b/packages/daynight-server/internal/core/store/migrate.go#L79-L115)以事务执行每个迁移和 ledger 写入，ALTER TABLE 的锁保持至提交。默认值、数据与约束原子可见；启动迁移在 listener 开启之前。协调部署时停止旧写入者，避免旧代码显式写入已删除状态。迁移失败正常暴露，不给溢出等错误补默认值。
 
-转换行的状态与 ready 语义真实改变，所以 version 和 updatedAt 必须变化，使迁移前的审阅版本失效。迁移保留已有起止事实、createdAt、allowAgents、属性、Markdown、PR、全部边及外部分类和附件；非 proposed 行全部保留。该归类不调用运行时“退回 todo 清空时间”规则。再次迁移不重复转换或修改 ledger 时间。
+转换行的状态与 ready 语义真实改变，所以 version 和 updatedAt 必须变化，使迁移前的审阅版本失效。迁移保留已有起止事实、createdAt、allowAgents、requiredPlatform、属性、Markdown、PR、全部边及外部分类和附件；非 proposed 行全部保留。该归类不调用运行时“退回 todo 清空时间”规则。再次迁移不重复转换或修改 ledger 时间。
 
 运行时状态类型、创建默认值和读取模型仅包含三状态，summary 不返回 proposed。图统计满足：
 
@@ -153,7 +153,7 @@ startedAt/completedAt 描述当前执行区间，不是不可变尝试历史：
 
 同状态和普通编辑保留时间；缺失历史起点不推算耗时。in_progress→todo→done 的终点已知、耗时未知；done→in_progress 开新一次区间。状态、计时、version、updatedAt 同一 SQL/事务提交，不能因失败留下部分更新。
 
-[现有 UpdateTask](https://github.com/codetreker/daynight/blob/18c794918ef0506a04bf294dad9cd8058ef2696b/packages/daynight-server/internal/core/store/project_tx.go#L100-L124)会替换依赖行，因此完整 plan 必须保留标题、Markdown、properties/PR、allowAgents、dependsOn 和 externalDependsOn。不能只传 status 或空集合。附件独立于任务版本和事务，状态请求不改附件。
+[现有 UpdateTask](https://github.com/codetreker/daynight/blob/18c794918ef0506a04bf294dad9cd8058ef2696b/packages/daynight-server/internal/core/store/project_tx.go#L100-L124)会替换依赖行，因此完整 plan 必须保留标题、Markdown、properties/PR、allowAgents、requiredPlatform、dependsOn 和 externalDependsOn。不能只传 status 或空集合。附件独立于任务版本和事务，状态请求不改附件。
 
 ## CLI 与工作流
 
@@ -170,12 +170,13 @@ allowAgents 仍默认 false，只控制自动发现选择。用户明确安排�
 
 ## Web 组件与会话
 
-将[现有单任务 operation](https://github.com/codetreker/daynight/blob/18c794918ef0506a04bf294dad9cd8058ef2696b/packages/daynight-web/src/features/task-detail/TaskDetailSession.tsx#L6-L50)中的审批分支替换为 status，与 allowAgents 共用一处 controller：
+将[现有单任务 operation](https://github.com/codetreker/daynight/blob/18c794918ef0506a04bf294dad9cd8058ef2696b/packages/daynight-web/src/features/task-detail/TaskDetailSession.tsx#L6-L50)中的审批分支替换为 status，与 allowAgents、requiredPlatform 共用一处 controller：
 
 ```ts
 type TaskMutationOperation =
   | { readonly action: 'status'; readonly status: TaskStatus; readonly version: bigint }
-  | { readonly action: 'allowAgents'; readonly allowAgents: boolean; readonly version: bigint };
+  | { readonly action: 'allowAgents'; readonly allowAgents: boolean; readonly version: bigint }
+  | { readonly action: 'requiredPlatform'; readonly requiredPlatform: TaskPlatform | null; readonly version: bigint };
 
 type TaskConfirmationState =
   | { readonly kind: 'status'; readonly detail: TaskDetail; readonly status: TaskStatus }
@@ -185,9 +186,9 @@ type TaskConfirmationState =
 
 继承紧凑详情布局：实际任务标题位于共享头部，完整 ID 和复制操作位于概览；不恢复重复标题或详情语言选择器。标题右侧按钮显示当前本地化状态、颜色点和箭头。popover 固定三项 menuitemradio，当前项有标记且可选，支持方向键、Home/End、Enter/Space、Escape 与焦点恢复。选择后直接确认完整任务名、当前→目标及时间后果；同状态说明状态与时间不变。初始焦点取消，取消/Escape 不写入，确认才发版本化请求；无乐观持久化状态。
 
-确认保存 reviewed detail，taskReviewKey 包含身份、版本、status、allowAgents、普通/外部边与派生阻塞。实质轮询变化使确认失效并重新审阅，不静默换版本。相同读取不关闭确认。
+确认保存 reviewed detail，taskReviewKey 包含身份、版本、status、allowAgents、requiredPlatform、普通/外部边与派生阻塞。实质轮询变化使确认失效并重新审阅，不静默换版本。相同读取不关闭确认。
 
-一个 project/task 一个写入会话，一个 union 一个确认窗。状态与许可不能并发；陈旧、读取失败、pending、unknown、核对中/失败均阻止二者。in_progress 中禁止实际切换许可的规则保留。资料/附件 tabs 保持挂载，reading key 仍为 project/task，不用状态或版本重新挂载附件。长标题完整换行，320px 控件换行而不横向溢出。
+一个 project/task 一个写入会话，一个 union 一个确认窗。平台保存作为第三种operation共用该写入会话，但选择只维护草稿，明确Save platform才提交，不增加平台确认窗。状态、许可、平台保存不能并发；陈旧、读取失败、pending、unknown、核对中/失败均阻止三类写入。in_progress 中禁止实际切换许可与平台的规则保留。资料/附件 tabs 保持挂载，reading key 仍为 project/task，不用状态或版本重新挂载附件。长标题完整换行，320px 控件换行而不横向溢出。
 
 | 事件 | 行为 |
 |---|---|
@@ -197,7 +198,7 @@ type TaskConfirmationState =
 | version_conflict | GET 读取实际状态，再由操作者决定，不重发 |
 | 网络/协议/服务不确定 | unknown，只 GET 核对 |
 | 核对成功 | 显示实际状态，不归因原请求成功 |
-| 核对失败 | 保留写错与读错，继续阻止两种修改，提供读取重试 |
+| 核对失败 | 保留写错与读错，继续阻止三类修改，提供读取重试 |
 | 关闭或切换详情 | 已提交请求继续归属于原任务；视图取消不证明回滚 |
 
 Transport 检查身份、目标与 version∈{v,v+1}，session 用审阅前态约束精确分支：
@@ -236,7 +237,7 @@ jq --arg request_id 'RESPONSE_REQUEST_ID' \
 
 | 验证组 | 结果 |
 |---|---|
-| 迁移 | 真实 v12→当前版本；旧状态转换一次、其他行不变、物料/时间保全；default/CHECK/ledger 原子、重复启动与失败回滚 |
+| 迁移 | 真实v12→当前版本（013平台后014状态），并独立核对v13→v14状态保全；旧状态转换一次、其他行不变、物料/时间保全；default/CHECK/ledger 原子、重复启动与失败回滚 |
 | 三状态协议 | 九组合；新默认 todo；数据库/HTTP/service/CLI/读取器拒绝旧状态；无 proposed 统计项 |
 | 版本 | >2^53 无损；当前同状态 +0/过期冲突；错误 +0/+1 分支拒绝 |
 | 并发/依赖 | 普通/外部边一致；重开对后继开始/完成、状态对许可/边编辑、锁后失权都保全 |

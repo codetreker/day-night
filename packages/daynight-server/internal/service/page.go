@@ -12,22 +12,24 @@ import (
 )
 
 type listCursor struct {
-	Version     int       `json:"version"`
-	Kind        string    `json:"kind"`
-	ProjectID   string    `json:"projectId"`
-	Status      *string   `json:"status"`
-	Ready       *bool     `json:"ready"`
-	AllowAgents *bool     `json:"allowAgents"`
-	CreatedAt   time.Time `json:"createdAt"`
-	ID          string    `json:"id"`
+	Version            int                `json:"version"`
+	Kind               string             `json:"kind"`
+	ProjectID          string             `json:"projectId"`
+	Status             *string            `json:"status"`
+	Ready              *bool              `json:"ready"`
+	AllowAgents        *bool              `json:"allowAgents"`
+	CompatiblePlatform *core.TaskPlatform `json:"compatiblePlatform"`
+	CreatedAt          time.Time          `json:"createdAt"`
+	ID                 string             `json:"id"`
 }
 
 type listScope struct {
-	Kind        string
-	ProjectID   string
-	Status      *string
-	Ready       *bool
-	AllowAgents *bool
+	Kind               string
+	ProjectID          string
+	Status             *string
+	Ready              *bool
+	AllowAgents        *bool
+	CompatiblePlatform *core.TaskPlatform
 }
 
 func projectListPage(request PageRequest) (store.Page, error) {
@@ -58,7 +60,7 @@ func listPage(request PageRequest, scope listScope) (store.Page, error) {
 	id, err := CanonicalID(cursor.ID)
 	if err != nil || id != cursor.ID || cursor.Version != 1 || cursor.Kind != scope.Kind ||
 		cursor.ProjectID != scope.ProjectID || !equalOptional(cursor.Status, scope.Status) ||
-		!equalOptional(cursor.Ready, scope.Ready) || !equalOptional(cursor.AllowAgents, scope.AllowAgents) || cursor.CreatedAt.IsZero() {
+		!equalOptional(cursor.Ready, scope.Ready) || !equalOptional(cursor.AllowAgents, scope.AllowAgents) || !equalOptional(cursor.CompatiblePlatform, scope.CompatiblePlatform) || cursor.CreatedAt.IsZero() {
 		return store.Page{}, invalidInput("Cursor is invalid for this list.")
 	}
 	page.After = &store.Position{CreatedAt: cursor.CreatedAt, ID: id}
@@ -71,7 +73,7 @@ func encodeProjectCursor(project core.Project) (string, error) {
 
 func encodeListCursor(scope listScope, createdAt time.Time, id string) (string, error) {
 	cursor := listCursor{Version: 1, Kind: scope.Kind, ProjectID: scope.ProjectID, Status: scope.Status,
-		Ready: scope.Ready, AllowAgents: scope.AllowAgents, CreatedAt: createdAt, ID: id}
+		Ready: scope.Ready, AllowAgents: scope.AllowAgents, CompatiblePlatform: scope.CompatiblePlatform, CreatedAt: createdAt, ID: id}
 	data, err := json.Marshal(cursor)
 	if err != nil {
 		return "", err

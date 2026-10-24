@@ -16,6 +16,7 @@ type TaskPropertiesPatch struct {
 }
 
 type CreateTaskRequest struct {
+	RequiredPlatform  *string        `json:"requiredPlatform,omitempty"`
 	ExternalDependsOn []string       `json:"externalDependsOn,omitempty"`
 	Properties        TaskProperties `json:"properties"`
 	Title             string         `json:"title"`
@@ -24,6 +25,7 @@ type CreateTaskRequest struct {
 }
 
 type UpdateTaskRequest struct {
+	RequiredPlatform  **string             `json:"requiredPlatform,omitempty"`
 	ExternalDependsOn *[]string            `json:"externalDependsOn,omitempty"`
 	AllowAgents       *bool                `json:"allowAgents,omitempty"`
 	Properties        *TaskPropertiesPatch `json:"properties,omitempty"`
@@ -53,6 +55,7 @@ type Task struct {
 	DependsOn         []string       `json:"dependsOn"`
 	ExternalDependsOn []string       `json:"externalDependsOn"`
 	BlockedBy         []string       `json:"blockedBy"`
+	RequiredPlatform  *string        `json:"requiredPlatform"`
 	AllowAgents       bool           `json:"allowAgents"`
 	Ready             bool           `json:"ready"`
 }

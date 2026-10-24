@@ -17,7 +17,7 @@ func externalDependencyFacts(t *testing.T, database *Store) map[string]string {
 	facts := make(map[string]string)
 	for name, query := range map[string]string{
 		"projects":     `SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY id),'[]'::jsonb)::text FROM projects t`,
-		"tasks":        `SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY id),'[]'::jsonb)::text FROM tasks t`,
+		"tasks":        `SELECT coalesce(jsonb_agg(to_jsonb(t)-'required_platform' ORDER BY id),'[]'::jsonb)::text FROM tasks t`,
 		"attachments":  `SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY task_id,path),'[]'::jsonb)::text FROM task_attachments t`,
 		"dependencies": `SELECT coalesce(jsonb_agg(to_jsonb(t)-'external' ORDER BY project_id,task_id,depends_on_task_id),'[]'::jsonb)::text FROM task_dependencies t`,
 	} {

@@ -57,8 +57,21 @@ detail with an already confirmed result does not replay it.
 Standalone rows and graph nodes show each task's permission without turning a
 root value into a chain aggregate. Full task and graph decoders require an
 explicit boolean `allowAgents`; missing, null and nonboolean values fail.
-`TaskDetailSessionProvider` owns detail, status and permission
+Task/graph resources require nullable requiredPlatform (null/windows/linux/macos),
+with no missing-key fallback. Rows and nodes display their own platform. The
+detail's platform select has explicit Save platform; selection sends no request
+and Any clears with null. In-progress controls are locked. Platform saves share
+status/permission freshness, request ownership and unknown-result GET reconciliation.
+The left platform badge may wrap without moving automatic execution from the
+first status line's right edge.
+`TaskDetailSessionProvider` owns detail, status, permission and platform
 state within the authenticated branch, keyed by user identity/session generation.
+All three mutations share one task write gate and exact-version freshness
+checks. Pending or unknown platform results block permission and approval writes;
+conflicts require a fresh observation and unknown results require an actual task
+read before another write. Close/reopen and navigation preserve the original
+request owner, so late responses cannot change another task. Platform updates
+preserve status, permission, dependencies, properties and execution times.
 Same-user verification and project navigation retain it; identity replacement,
 logout and anonymous state dispose it so old results cannot reach a new identity. Identity changes invalidate outstanding requests
 and unmount user-owned content; a project 404 stays a resource error. Returning
@@ -325,14 +338,14 @@ current/target states and timing consequences. Cancel is initially focused;
 Cancel/close/Escape submits nothing. Long title and confirmation text have bounded
 native scrolling; 320px retains controls without horizontal page overflow.
 
-Status and allowAgents share one per-task mutation owner and confirmation union.
+Status, allowAgents and requiredPlatform saves share one per-task mutation owner and confirmation union.
 Reviewed identity/status/version and material inputs remain frozen; observed
 changes invalidate confirmation. Exact bigint version survives JSON numeric
 serialization without rounding. Same-state requires +0; actual change requires +1.
 Same-state may return fresh derived readiness at the same version. Generation and
 confirmed-version floor prevent older reads from restoring stale state.
 
-Pending, stale, unknown or failed reconciliation blocks both writes. Closing or
+Pending, stale, unknown or failed reconciliation blocks all three writes. Closing or
 switching details retains original ownership. A confirmed result refreshes the
 matching project graph while keeping panels, attachments, reading and focus.
 Conflict rereads require fresh review. Unknown results keep the write error and
@@ -772,7 +785,7 @@ image identity and full cleanup; the job retains its 20-minute overall bound.
 
 Native functional checks start after the native process and browser are ready.
 Their browser cleanup must pass before an atomic, run/source-bound permission
-releases the container's twenty-seven functional checks. Capacity runs last, after all
+releases the container's twenty-eight functional checks. Capacity runs last, after all
 preparation and coverage commands, container checks, full dev-ci cleanup and
 container browser recovery have finished. Every browser phase retains one
 worker and zero retries. CI runs controlled deployment fixtures before the
@@ -839,7 +852,7 @@ ownership revalidation. Uncertain ownership fails without recursive removal.
 Existing recovery commands remain available without opting into new attachment.
 
 The full CI workflow remains on Linux and retains case-sensitive storage coverage.
-macOS local acceptance runs the same 59 scenarios, additional combined
+macOS local acceptance runs the same 61 scenarios, additional combined
 authentication checks and fixed performance budgets, with native filesystem
 coverage qualified by its recorded capability. A local pass does not establish
 macOS CI coverage. The [filesystem coverage decision](../../.agents/notes/implemented/testing/2026-10-23-native-development-filesystem-coverage.md)
@@ -852,7 +865,7 @@ npm registry unless the build variable is explicitly supplied.
 The command builds real embedded assets and a new Go executable and owns a
 separate PostgreSQL container/volume and ephemeral loopback listener. In parallel,
 the normal dev-ci runner builds and starts the actual production image. Browser
-execution proceeds through twenty-seven native functional scenarios, the same twenty-seven
+execution proceeds through twenty-eight native functional scenarios, the same twenty-eight
 functional scenarios through the production image's stream gateway, then five
 native capacity/limit scenarios. The native process and PostgreSQL remain alive
 through the capacity phase; other preparation commands and the complete
@@ -887,7 +900,7 @@ target's authenticated service with the same Alice identity. Origin, method,
 headers and body pass through the redacting authenticated wrapper unchanged;
 receipts exclude credentials. Status scenarios are task-status, task-status-conflicts,
 task-status-recovery and task-status-transitions; total functional inventory stays
-27 per target, with five additional native capacity/limit checks (59 combined).
+28 per target, with five additional native capacity/limit checks (61 combined).
 
 The journeys exercise direct completion, reopening, all three states, current
 same-state no-op, exact stale conflicts and shared status/permission ownership.
@@ -924,7 +937,7 @@ or an iframe load cannot satisfy this check. The
 owns data-sharing, rendering and independent reading proof.
 
 The additional [combined authentication journey](scripts/acceptance/auth-combined.mts)
-requires a separate receipt on each runtime target, alongside the 59
+requires a separate receipt on each runtime target, alongside the 61
 Playwright cases. It reuses the same installed package and normal Alice/Bob
 identities, records their initial project sets, and crosses browser and CLI data
 through shared/private projects, original-credential service restart, logout/PAT
@@ -984,9 +997,12 @@ permission changes, both confirmations, cancellation/Escape, in-progress
 locking, exact versions, conflicts, actual writes with lost responses and read
 recovery, close/reopen ownership, bilingual narrow layouts and task-local
 list/node indicators. Only registered permission PATCHes and exact request
-counts are permitted; unknown writes are not replayed.
+counts are permitted; unknown writes are not replayed. The `task-platform`
+journey adds explicit set/clear, shared mutation locks, conflicts, unknown-result
+readback, late-response ownership and bilingual 320px/390px platform layouts
+through the real service.
 
-The 59-scenario inventory (32 native, 27 container), current manual/periodic refresh,
+The 61-scenario inventory (33 native, 28 container), current manual/periodic refresh,
 attachment tabs/standalone reader, bilingual/auth boundaries, zero retries, timeouts,
 coverage, size refusals and cleanup remain. PR #143 delivered dependency inspection;
 its receipts bind results to that exact tested source. The authentication/lifecycle
@@ -998,11 +1014,13 @@ The [graph functional scenarios](tests/e2e/workflow.spec.ts),
 [language journeys](tests/e2e/i18n.spec.ts),
 [authentication journeys](tests/e2e/auth.spec.ts),
 [status journeys](tests/e2e/status.spec.ts),
+[permission journey](tests/e2e/task-agent-permission.spec.ts),
+[platform journey](tests/e2e/task-platform.spec.ts),
 [project-settings journey](tests/e2e/project-settings.spec.ts),
 [execution-time journey](tests/e2e/task-execution-time.spec.ts),
 [capacity scenarios](tests/e2e/capacity.spec.ts) and
 [acceptance runner](scripts/acceptance.mts) map to the
-[W1–W13 requirements](../../docs/spec/daynight-web.md) and
+[W1–W15 requirements](../../docs/spec/daynight-web.md) and
 [language requirements](../../docs/spec/daynight-web-i18n.md) and
 [execution-timing requirements](../../docs/spec/daynight-task-timing.md) as follows. Names are stable
 scenario annotations validated in each target's report.
@@ -1019,6 +1037,7 @@ scenario annotations validated in each target's report.
 | W11 | Strict raw Go/V8 coverage reports, validated complete browser/performance receipts and the final `checks` result |
 | W12, TI6–TI7 | `detail-navigation`, `keyboard-focus`, `narrow-layout`, `project-view-tabs`, `refresh-staleness`, `task-attachments`: centered 1440px/320px dialog geometry, independently scrolling content and persistent controls; graph/standalone entry, layered fullscreen Escape, trigger disappearance, inert/scroll release and same-origin frame keys |
 | W13 | `task-status`, `task-status-conflicts`, `task-status-recovery`, `task-status-transitions`: same-data packed-CLI/ordinary-graph lifecycle, three-state transitions, direct completion, reopening and same-state no-op, metadata/attachment preservation, status menu and permission confirmations and tabs, cancel/Escape/focus, invalidation, stale CLI metadata, CLI/Web same-version competition, pending protection, exact int64 digits, real-commit response loss, real graph failure and task/SPA-project identity/focus/browsing preservation |
+| W15 | `task-platform`: explicit set/clear, selection without auto-save, shared status/permission gate, exact versions, stale/unknown GET-only recovery, cross-task late ownership, manual-start lock, field propagation and bilingual narrow layouts |
 | TT3 | `project-settings`: real-service direct entry/reload, administrator save and independent member read, project isolation, exact settings versions above 2^53, stale conflict and demotion, read-only member recovery, actual commit with lost response and failed-read retry without PATCH replay, bilingual 320px/390px form/control/navigation containment and unclipped text |
 | TT1–TT2, TT4–TT6 | `task-execution-time`: real PostgreSQL crossing with graph deliveries held and an incorrect client wall clock, one-second local progress, stable focus/DOM/geometry/edges/viewport, real saved-threshold changes, installed-CLI completion and frozen polling, unknown legacy starts, sub-minute/multi-day/shared/external cards and standalone rows, bilingual 320px/390px layout; browser GET/HEAD only, with fixture mutations through authenticated API or installed CLI |
 | FA1–FA12 | `task-attachments`: installed CLI and production UI share real task/files on native and container targets; exact bytes, file mutations, detail tabs, adjacent panes, unique preview scroll owners, rendered formats and reloadable standalone reading. Independent real-service probes add end-of-document wheel/keyboard, native PDF final-page paint, fault/retry and unchanged task/graph proof |
@@ -1047,14 +1066,14 @@ combined receipts are `native/auth-combined/target.json` and
 They require all eleven named checks, source/browser/installed-package identity,
 old/new restart process identity and passed browser/resource cleanup. They retain
 safe observations and hashes, not credential/configuration bodies or raw logs.
-The 59-case report validator remains independent. `CI` requires a clean checkout matching
+The 61-case report validator remains independent. `CI` requires a clean checkout matching
 `GITHUB_SHA` and the pinned browser for the current Linux or macOS host. Playwright uses one worker and no
 retries; skipped, flaky, duplicate/missing or incomplete scenarios fail validation.
 When selected, the web CI job archives `daynight-web-acceptance` separately from raw
 coverage for 30 days. Inspect the artifact from the exact workflow run and its
 tested checkout identity, which is normally a merge revision for PR runs. A pass
-requires the strict union of twenty-seven native functional and five native capacity/limit
-scenarios (32 native total), plus the twenty-seven container functional scenarios. Every
+requires the strict union of twenty-eight native functional and five native capacity/limit
+scenarios (33 native total), plus the twenty-eight container functional scenarios. Every
 phase and target rejects missing, extra or duplicate scenarios and skipped/flaky/retried results.
 Installed-CLI handoff, container callbacks and recovery require matching source
 commit/tree/dirty state as well as existing package/artifact ownership. A missing

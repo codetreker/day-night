@@ -13,7 +13,7 @@ vi.mock('../src/features/task-detail/attachments/useAttachments', () => ({ useAt
 const projectId = '10000000-0000-4000-8000-000000000001'; const taskId = '20000000-0000-4000-8000-000000000001'; const dependencyId = '20000000-0000-4000-8000-000000000002';
 const time = '2026-10-22T00:00:00Z'; const later = '2026-10-22T00:01:00Z';
 const project: Project = { id: projectId, name: 'Status project', repoUrl: 'https://example.com/repo', settings: { version: 1n, executionWarningMinutes: 60 }, createdAt: time, updatedAt: time };
-const source = (status: TaskStatus = 'todo'): TaskDetail => ({ allowAgents: false, externalDependsOn: [], startedAt: status === 'todo' ? null : time, completedAt: status === 'done' ? time : null, id: taskId, projectId, title: 'Reviewed task', description: 'Reviewed content',
+const source = (status: TaskStatus = 'todo'): TaskDetail => ({ requiredPlatform: null, allowAgents: false, externalDependsOn: [], startedAt: status === 'todo' ? null : time, completedAt: status === 'done' ? time : null, id: taskId, projectId, title: 'Reviewed task', description: 'Reviewed content',
   status, version: 9007199254740993n, properties: { pullRequests: [] }, dependsOn: [dependencyId], blockedBy: [], ready: status === 'todo', createdAt: time, updatedAt: time });
 const result = (detail: TaskDetail, status: TaskStatus): TaskDetail => detail.status === status ? detail : ({ ...detail, status, version: detail.version + 1n, ready: status === 'todo', updatedAt: later,
   startedAt: status === 'in_progress' ? later : status === 'todo' || detail.status === 'todo' ? null : detail.startedAt, completedAt: status === 'done' ? later : null });
@@ -62,8 +62,8 @@ describe('status menu and reviewed confirmation', () => {
     expect(setTaskStatus).toHaveBeenCalledExactlyOnceWith(projectId, taskId, to, detail.version, expect.any(AbortSignal)); expect(screen.queryByRole('alertdialog')).toBeNull(); expect(within(dialog).getByRole('button', { name: labels[from] })).toBeDisabled();
     await act(async () => pending.resolve(saved)); await within(dialog).findByText('Task status confirmed.'); expect(within(dialog).getByRole('button', { name: labels[to] })).toBeEnabled();
   });
-  it.each(['version', 'external classification'] as const)('invalidates a confirmation after a fresh read changes %s', async (change) => {
-    const detail = source(); const fresh = change === 'version' ? { ...detail, title: 'Revised task', version: detail.version + 1n, updatedAt: later } : { ...detail, externalDependsOn: [dependencyId] };
+  it.each(['version', 'external classification', 'execution platform'] as const)('invalidates a confirmation after a fresh read changes %s', async (change) => {
+    const detail = source(); const fresh = change === 'version' ? { ...detail, title: 'Revised task', version: detail.version + 1n, updatedAt: later } : change === 'execution platform' ? { ...detail, requiredPlatform: 'linux' as const } : { ...detail, externalDependsOn: [dependencyId] };
     const { dialog, props, rerender } = await open(detail); const confirmation = select(dialog, 'todo', 'in_progress'); const oldConfirm = within(confirmation).getByRole('button', { name: 'Confirm status' });
     vi.mocked(getTask).mockResolvedValueOnce(fresh); rerender(<TaskDetailDialog {...props} snapshot={snapshot(fresh, 2)} />); await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull()); fireEvent.click(oldConfirm); expect(setTaskStatus).not.toHaveBeenCalled();
     await waitFor(() => expect(within(dialog).getByRole('button', { name: 'To do' })).toBeEnabled()); select(dialog, 'todo', 'in_progress'); expect(screen.getByText(fresh.title, { selector: '.task-confirmation-task' })).toBeVisible();

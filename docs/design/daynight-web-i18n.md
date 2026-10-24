@@ -108,8 +108,8 @@ Provider 使用一份当前 issue 状态，初始值来自 `initial.issue`。选
 | `language-state-preservation` | 图节点/边/视口、全屏与模态焦点、PR 页码、附件输入/iframe 身份及内容；待完成上传、覆盖和删除期间切换，每项写入只执行一次。 |
 | `language-errors-and-narrow` | 读/无效值/写入故障与重试、真实隔离数据库故障下错误重译及相同 request ID，两种语言的 1440px/320px 图、对话框与附件布局。 |
 
-三个场景使用现有受监控页面与场景级 `en-US` 浏览器 locale，继续由单一 Playwright project 执行一次、零 retry。需要精确比较语言切换前后业务请求数量的隔离阶段控制浏览器时钟，排除独立项目定时器触发；真实周期刷新由 `refresh-staleness` 单独验证。滚动恢复读取实际 `scrollTop`，以测试进程单调时钟观察其连续稳定状态，不依赖受控浏览器定时器。functional inventory、报告聚合与严格预期测试使用相同 annotation；当前每目标 27 个功能场景，
-原生另有五个容量/超限场景，共 32 个；容器 27 个，总计 59 个。三状态使用 task-status、
+三个场景使用现有受监控页面与场景级 `en-US` 浏览器 locale，继续由单一 Playwright project 执行一次、零 retry。需要精确比较语言切换前后业务请求数量的隔离阶段控制浏览器时钟，排除独立项目定时器触发；真实周期刷新由 `refresh-staleness` 单独验证。滚动恢复读取实际 `scrollTop`，以测试进程单调时钟观察其连续稳定状态，不依赖受控浏览器定时器。functional inventory、报告聚合与严格预期测试使用相同 annotation；当前每目标 28 个功能场景，
+原生另有五个容量/超限场景，共 33 个；容器 28 个，总计 61 个。三状态使用 task-status、
 task-status-conflicts、task-status-recovery、task-status-transitions，状态浏览器写入只允许登记资源的
 精确 PUT status。容量、性能、覆盖率与清理规则保持，当前 inventory 由生产验收脚本验证。
 

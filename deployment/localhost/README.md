@@ -136,7 +136,7 @@ external edges. Materials and unrelated fields remain unchanged.
 
 Entering in_progress starts a new interval, return to todo clears both endpoints,
 in-progress to done preserves a nullable start and writes the real end, and
-todo to done records only an end. Migration 013 converts legacy proposed rows to
+todo to done records only an end. Migration 014 converts legacy proposed rows to
 todo once, changing only their state/version/update time and preserving historical
 timing and other fields. Default, data, CHECK and ledger change atomically.
 Coordinate service/Web deployment and CLI upgrades; old action routes have no aliases.

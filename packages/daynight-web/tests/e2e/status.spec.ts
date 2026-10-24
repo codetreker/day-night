@@ -66,7 +66,7 @@ const expectConfirmed = async (page: Page): Promise<void> => {
   await expect(detail(page).locator('.task-status-error')).toHaveCount(0);
 };
 const invariant = (task: TaskDetail) => ({ id: task.id, projectId: task.projectId, title: task.title, description: task.description,
-  properties: task.properties, allowAgents: task.allowAgents, dependsOn: task.dependsOn, externalDependsOn: task.externalDependsOn, createdAt: task.createdAt });
+  properties: task.properties, allowAgents: task.allowAgents, requiredPlatform: task.requiredPlatform, dependsOn: task.dependsOn, externalDependsOn: task.externalDependsOn, createdAt: task.createdAt });
 const read = async (api: AuthenticatedAPI, project: string, task: string): Promise<TaskDetail> => {
   const response = await api.get(taskPath(project, task)); expect(response.status()).toBe(200);
   return parseTaskDetail(parseApiJson(await response.text()), project, task);
@@ -105,8 +105,8 @@ test('task-status', { annotation: { type: 'scenario', description: 'task-status'
   const lifecycle = await actor(page, info, 'task-status');
   try {
     const project = resourceId(await lifecycle.success(['project', 'create', `Status ${randomUUID()}`, '--repo', `https://example.com/status/${randomUUID()}`]));
-    const id = resourceId(await lifecycle.success(['task', 'create', '--project', project, '--title', '完整任务标题 '.repeat(20), '--description', '# 状态交付\n\n保留正文、PR、附件与阅读位置。', '--pull-request-url', 'https://example.com/pull/1', '--pull-request-title', 'Preserved reference']));
-    const created = await lifecycle.show(project, id, 'created'); expect(created).toMatchObject({ status: 'todo', version: 1n, ready: true, allowAgents: false, startedAt: null, completedAt: null });
+    const id = resourceId(await lifecycle.success(['task', 'create', '--project', project, '--title', '完整任务标题 '.repeat(20), '--description', '# 状态交付\n\n保留正文、PR、附件与阅读位置。', '--pull-request-url', 'https://example.com/pull/1', '--pull-request-title', 'Preserved reference', '--required-platform', 'macos']));
+    const created = await lifecycle.show(project, id, 'created'); expect(created).toMatchObject({ status: 'todo', version: 1n, ready: true, allowAgents: false, requiredPlatform: 'macos', startedAt: null, completedAt: null });
     const content = Buffer.from('状态修改前后的附件内容一致。\n');
     const attachment = attachmentDownloadUrl(project, id, 'plan.md');
     expect((await api.put(attachment, { data: content, headers: { 'Content-Type': 'text/markdown' } })).status()).toBe(201);
@@ -237,6 +237,7 @@ test('task-status-recovery', { annotation: { type: 'scenario', description: 'tas
   try {
     await open(page, project.id, task.id); await select(page, 'in_progress'); await confirm(page);
     await expect(trigger(page)).toBeDisabled(); await expect(detail(page).getByRole('switch')).toBeDisabled();
+    await expect(detail(page).getByRole('combobox', { name: /^(执行平台|Execution platform)$/, exact: true })).toBeDisabled();
     const retry = detail(page).getByRole('button', { name: /^(检查任务状态|Check task state)$/ });
     await expect(retry).toBeEnabled(); expect(lifecycle.evidence.writes).toHaveLength(1);
     const actual = await lifecycle.show(project.id, task.id, 'committed-with-lost-response'); expect(actual.status).toBe('in_progress');
@@ -245,6 +246,7 @@ test('task-status-recovery', { annotation: { type: 'scenario', description: 'tas
     await expect(detail(page).getByRole('switch')).toBeDisabled();
     mode = 'pending'; await select(page, 'done'); await confirm(page); await pending.promise;
     await expect(trigger(page)).toBeDisabled(); await expect(detail(page).getByRole('switch')).toBeDisabled();
+    await expect(detail(page).getByRole('combobox', { name: /^(执行平台|Execution platform)$/, exact: true })).toBeDisabled();
     await detail(page).getByRole('button', { name: '关闭任务详情', exact: true }).click();
     await open(page, project.id, other.id); await expect(trigger(page)).toHaveText(/待处理/);
     release.resolve(); await expect.poll(() => lifecycle.show(project.id, task.id, 'pending-original-task')).toMatchObject({ status: 'done' });

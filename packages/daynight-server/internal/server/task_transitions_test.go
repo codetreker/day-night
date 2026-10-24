@@ -67,7 +67,7 @@ func TestTaskHTTPStatusStrictBodiesQueriesAndMethods(t *testing.T) {
 		`{"version":1,"status":null}`, `{"version":1,"status":1}`, `{"version":1,"status":[]}`, `{"version":1,"status":{}}`,
 		`{"version":1,"status":"proposed"}`, `{"version":1,"status":"Todo"}`, `{"version":1,"status":" todo"}`, `{"version":1,"status":""}`,
 		`{"version":1,"Status":"todo"}`, `{"version":1,"status":"todo","status":"todo"}`, `{"version":1,"status":"todo","sta\u0074us":"todo"}`, `{"version":1,"status":"todo","title":"changed"}`,
-		`{"version":1,"status":"todo","unknown":"private-body-secret"}`, `{"version":1,"status":"todo","dependsOn":[]}`,
+		`{"version":1,"status":"todo","unknown":"private-body-secret"}`, `{"version":1,"status":"todo","dependsOn":[]}`, `{"version":1,"status":"todo","requiredPlatform":null}`,
 	} {
 		t.Run(body, func(t *testing.T) {
 			assertProjectError(t, projectRequest(handler, http.MethodPut, path, body), http.StatusBadRequest, "invalid_input")

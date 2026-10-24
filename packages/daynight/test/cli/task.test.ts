@@ -17,17 +17,17 @@ const secondId = "b1b2c3d4-1111-4222-8333-123456789abd";
 const thirdId = "b1b2c3d4-1111-4222-8333-123456789abe";
 const time = "2026-10-20T00:00:00.123456789Z";
 const project: Project = { id: projectId, name: "Project 中文", repoUrl: "git@git.example:Org/Repo.git", settings: { version: 1n, executionWarningMinutes: 60 }, createdAt: time, updatedAt: time };
-const task = (partial: Partial<Task> = {}): Task => ({ id: taskId, projectId, title: "Task 中文", description: "", properties: { pullRequests: [] }, status: "todo", allowAgents: false, version: 1n, startedAt: null, completedAt: null, createdAt: time, updatedAt: time, dependsOn: [], externalDependsOn: [], blockedBy: [], ready: true, ...partial });
+const task = (partial: Partial<Task> = {}): Task => ({ id: taskId, projectId, title: "Task 中文", description: "", properties: { pullRequests: [] }, status: "todo", allowAgents: false, requiredPlatform: null, version: 1n, startedAt: null, completedAt: null, createdAt: time, updatedAt: time, dependsOn: [], externalDependsOn: [], blockedBy: [], ready: true, ...partial });
 const taskListItem = (value: Task): Omit<Task, "description"> => ({
   id: value.id, projectId: value.projectId, title: value.title, properties: value.properties,
-  status: value.status, allowAgents: value.allowAgents, version: value.version, startedAt: value.startedAt, completedAt: value.completedAt, createdAt: value.createdAt, updatedAt: value.updatedAt,
+  status: value.status, allowAgents: value.allowAgents, requiredPlatform: value.requiredPlatform, version: value.version, startedAt: value.startedAt, completedAt: value.completedAt, createdAt: value.createdAt, updatedAt: value.updatedAt,
   dependsOn: value.dependsOn, externalDependsOn: value.externalDependsOn, blockedBy: value.blockedBy, ready: value.ready,
 });
 const graph = (): TaskGraph => ({
   observedAt: time,
   project,
   summary: { total: 1, todo: 1, inProgress: 0, done: 0, ready: 1, blocked: 0 },
-  tasks: [{ id: taskId, titlePreview: "Task 中文", titleTruncated: false, allowAgents: false, status: "todo", dependsOn: [], externalDependsOn: [], blockedBy: [], ready: true, startedAt: null, completedAt: null, createdAt: time, updatedAt: time }],
+  tasks: [{ id: taskId, titlePreview: "Task 中文", titleTruncated: false, allowAgents: false, requiredPlatform: null, status: "todo", dependsOn: [], externalDependsOn: [], blockedBy: [], ready: true, startedAt: null, completedAt: null, createdAt: time, updatedAt: time }],
 });
 const taskPath = `/api/v1/projects/${projectId}/tasks`;
 const projectPath = `/api/v1/projects/${projectId}`;
@@ -385,7 +385,7 @@ describe("compiled task commands", () => {
   it("sets all three statuses with precise observed or supplied versions and same-status no-ops", async () => {
     const f = await fixture();
     try {
-      let current = task({ description: "Status details", version: 9_007_199_254_740_993n });
+      let current = task({ requiredPlatform: "windows", description: "Status details", version: 9_007_199_254_740_993n });
       const { requests } = await f.serve((request, response) => {
         if (request.method === "PUT") {
           const { status } = request.body as { status: Task["status"] };
@@ -406,6 +406,7 @@ describe("compiled task commands", () => {
         expect(result.stdout).toContain(`Status: ${status}`);
         expect(result.stdout).toContain(`Version: ${expectedVersion}`);
         expect(result.stdout).toContain("Description: Status details");
+        expect(result.stdout).toContain("Required platform: windows");
         expect(requests.slice(before).map(({ method, pathname }) => `${method} ${pathname}`)).toEqual([`GET ${projectPath}`, ...(explicitVersion ? [] : [`GET ${taskPath}/${taskId}`]), `PUT ${taskPath}/${taskId}/status`]);
         expect(requests.at(-1)!.body).toEqual({ version, status });
         expect(requests.at(-1)!.bodyText).toBe(`{"version":${version},"status":"${status}"}`);

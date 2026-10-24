@@ -57,7 +57,7 @@ func (s *Tasks) SetStatus(ctx context.Context, principal core.Principal, project
 				return taskMutation{}, &Fault{Code: "dependency_unsatisfied", Message: "Task dependents must return to todo before reopening this prerequisite.", TaskIDs: dependents}
 			}
 		}
-		values := store.TaskWrite{AllowAgents: current.AllowAgents, Title: current.Title, Description: current.Description, Properties: current.Properties, Status: input.Status, DependsOn: current.DependsOn, ExternalDependsOn: current.ExternalDependsOn}
+		values := store.TaskWrite{RequiredPlatform: current.RequiredPlatform, AllowAgents: current.AllowAgents, Title: current.Title, Description: current.Description, Properties: current.Properties, Status: input.Status, DependsOn: current.DependsOn, ExternalDependsOn: current.ExternalDependsOn}
 		return taskMutation{id: id, current: current, values: values, changed: true}, nil
 	})
 }

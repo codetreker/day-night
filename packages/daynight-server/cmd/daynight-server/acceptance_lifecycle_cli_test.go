@@ -43,6 +43,8 @@ type acceptanceLifecycleMigration struct {
 	BeforeLedger       []acceptanceMigrationEntry `json:"beforeLedger"`
 	AfterLedger        []acceptanceMigrationEntry `json:"afterLedger"`
 	BeforeRows         []acceptanceHistoricalRow  `json:"beforeRows"`
+	StatusBeforeLedger []acceptanceMigrationEntry `json:"statusBeforeLedger"`
+	StatusBeforeRows   []acceptanceHistoricalRow  `json:"statusBeforeRows"`
 	AfterRows          []acceptanceHistoricalRow  `json:"afterRows"`
 	RestartRows        []acceptanceHistoricalRow  `json:"restartRows"`
 	BeforeEdges        string                     `json:"beforeEdges"`
@@ -263,8 +265,11 @@ func acceptanceStatusMigrationRows(t *testing.T, before, after []acceptanceHisto
 		if old.ID != current.ID || json.Unmarshal([]byte(old.Data), &left) != nil || json.Unmarshal([]byte(current.Data), &right) != nil {
 			t.Fatal("cannot compare historical migration rows")
 		}
+		if _, exists := left["required_platform"]; !exists {
+			left["required_platform"] = json.RawMessage("null")
+		}
 		if string(left["status"]) != `"proposed"` {
-			if old != current {
+			if !reflect.DeepEqual(left, right) {
 				t.Fatal("status migration changed a non-legacy row")
 			}
 			continue
@@ -335,15 +340,32 @@ Preserve the full Markdown and PR reference.',$4,$5,$6,$7,$8,$9,$10,$11)`, ids[i
 		}
 		failed := fixture.launch(t, nil)
 		failed.stopped(t, 1)
-		if !reflect.DeepEqual(acceptanceHistoricalRows(t, fixture, ids), beforeFailure) || !reflect.DeepEqual(acceptanceMigrationLedger(t, fixture), beforeLedger) {
-			t.Fatal("failed status migration left changed rows or migration ledger")
+		afterPlatform := acceptanceHistoricalRows(t, fixture, ids)
+		platformLedger := acceptanceMigrationLedger(t, fixture)
+		if len(platformLedger) != 13 || !reflect.DeepEqual(platformLedger[:12], beforeLedger) || platformLedger[12].Version != 13 {
+			t.Fatal("failed status migration changed prior ledger or retained its own entry")
+		}
+		for index, before := range beforeFailure {
+			var expected, actual map[string]json.RawMessage
+			if before.ID != afterPlatform[index].ID || json.Unmarshal([]byte(before.Data), &expected) != nil || json.Unmarshal([]byte(afterPlatform[index].Data), &actual) != nil {
+				t.Fatal("cannot compare the committed platform migration with failed status migration")
+			}
+			expected["required_platform"] = json.RawMessage("null")
+			if !reflect.DeepEqual(actual, expected) {
+				t.Fatal("failed status migration changed task data beyond the committed nullable platform column")
+			}
 		}
 		var defaultValue string
 		if err := fixture.admin.QueryRow(context.Background(), `SELECT column_default FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='tasks' AND column_name='status'`).Scan(&defaultValue); err != nil || defaultValue != "'proposed'::text" {
 			t.Fatal("failed status migration did not roll back the SQL default")
 		}
 		fixture.exec(t, "UPDATE tasks SET status='proposed',version=18 WHERE id=$1", ids[1])
-		migration := &acceptanceLifecycleMigration{BeforeLedger: beforeLedger, BeforeRows: acceptanceHistoricalRows(t, fixture, ids), BeforeEdges: beforeEdges, BeforeAttachments: beforeAttachments}
+		platforms := []*string{nil, new("windows"), new("linux"), new("macos"), nil}
+		for index, platform := range platforms {
+			fixture.exec(t, "UPDATE tasks SET required_platform=$1 WHERE id=$2", platform, ids[index])
+		}
+		beforeStatus := acceptanceHistoricalRows(t, fixture, ids)
+		migration := &acceptanceLifecycleMigration{BeforeLedger: beforeLedger, BeforeRows: beforeFailure, StatusBeforeLedger: platformLedger, StatusBeforeRows: beforeStatus, BeforeEdges: beforeEdges, BeforeAttachments: beforeAttachments}
 		if err := binaryAcceptance.update(func() { evidence.Migration = migration }); err != nil {
 			t.Fatal("cannot persist genuine pre-upgrade snapshots")
 		}
@@ -357,16 +379,16 @@ Preserve the full Markdown and PR reference.',$4,$5,$6,$7,$8,$9,$10,$11)`, ids[i
 		}); err != nil {
 			t.Fatal("cannot persist migrated schema and resource snapshots")
 		}
-		if len(migration.AfterLedger) != 13 || !reflect.DeepEqual(migration.AfterLedger[:12], migration.BeforeLedger) || migration.AfterLedger[12].Version != 13 || migration.AfterEdges != beforeEdges || migration.AfterAttachments != beforeAttachments {
-			t.Fatal("startup did not atomically append the status migration while preserving ledger, dependencies and attachments")
+		if len(migration.AfterLedger) != 14 || !reflect.DeepEqual(migration.AfterLedger[:12], migration.BeforeLedger) || migration.AfterLedger[12].Version != 13 || migration.AfterLedger[13].Version != 14 || !reflect.DeepEqual(migration.AfterLedger[:13], migration.StatusBeforeLedger) || migration.AfterEdges != beforeEdges || migration.AfterAttachments != beforeAttachments {
+			t.Fatal("startup did not append the platform and status migrations while preserving prior ledger, dependencies and attachments")
 		}
-		acceptanceStatusMigrationRows(t, migration.BeforeRows, migration.AfterRows)
+		acceptanceStatusMigrationRows(t, migration.StatusBeforeRows, migration.AfterRows)
 		user := acceptanceDecode[api.User](t, process.request(context.Background(), http.MethodGet, "/api/v1/me", nil, ""), http.StatusOK)
 		fixture.exec(t, "INSERT INTO project_members (project_id,user_id,role) VALUES ($1,$2,'admin')", projectID, user.ID)
 		old := make([]api.Task, len(ids))
 		for index, id := range ids {
 			old[index] = acceptanceCLITaskResource(t, cli.run(t, cli.caller, "task", "show", id, "--project", projectID, "--json"))
-			if old[index].Status != []string{"todo", "todo", "todo", "in_progress", "done"}[index] || old[index].Version != []int64{18, 19, 19, 20, 21}[index] || !reflect.DeepEqual(old[index].Properties, properties) || old[index].AllowAgents != (index%2 == 1) {
+			if old[index].Status != []string{"todo", "todo", "todo", "in_progress", "done"}[index] || old[index].Version != []int64{18, 19, 19, 20, 21}[index] || !reflect.DeepEqual(old[index].Properties, properties) || old[index].AllowAgents != (index%2 == 1) || !reflect.DeepEqual(old[index].RequiredPlatform, platforms[index]) {
 				t.Fatal("installed CLI did not expose the preserved and converted historical resources")
 			}
 		}

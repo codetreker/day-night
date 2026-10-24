@@ -231,6 +231,7 @@ describe('production status fixture', () => {
         expect(current.status).toBe(target);
         expect(current.description).toBe(before.description);
         expect(current.properties).toEqual(before.properties);
+        expect(current.requiredPlatform).toBe(before.requiredPlatform);
         expect(current.dependsOn).toEqual(before.dependsOn);
         if (target === before.status) expect(current).toEqual(before);
         else if (target === 'todo') expect(current).toMatchObject({ startedAt: null, completedAt: null });

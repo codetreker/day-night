@@ -14,7 +14,7 @@ a mismatched image or cleanup failures unless its receipts are validated.
 
 The [status assignment decision](../architecture/2026-10-24-task-status-assignment.md) owns the current three-state
 protocol. Status journeys use exact registered PUT status writes; current
-inventory is 32 native and 27 container results. The rollout counts below retain
+inventory is 33 native and 28 container results. The rollout counts below retain
 their original delivery context; repeatable current commands and mappings belong
 to the Web README.
 

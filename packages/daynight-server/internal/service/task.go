@@ -22,6 +22,7 @@ func NewTasks(database *store.Store) *Tasks {
 }
 
 type CreateTask struct {
+	RequiredPlatform  *core.TaskPlatform
 	ExternalDependsOn []string
 	Title             string
 	Description       string
@@ -30,6 +31,7 @@ type CreateTask struct {
 }
 
 type UpdateTask struct {
+	RequiredPlatform  **core.TaskPlatform
 	ExternalDependsOn *[]string
 	AllowAgents       *bool
 	Version           int64
@@ -41,9 +43,10 @@ type UpdateTask struct {
 
 type TaskListRequest struct {
 	PageRequest
-	Status      *core.TaskStatus
-	Ready       *bool
-	AllowAgents *bool
+	Status             *core.TaskStatus
+	Ready              *bool
+	AllowAgents        *bool
+	CompatiblePlatform *core.TaskPlatform
 }
 
 type TaskPage struct {
@@ -71,7 +74,7 @@ func (s *Tasks) Create(ctx context.Context, principal core.Principal, projectID 
 	if err != nil {
 		return core.Task{}, fmt.Errorf("generate task ID: %w", err)
 	}
-	values := store.TaskWrite{AllowAgents: false, Title: input.Title, Description: input.Description, Status: core.TaskTodo, Properties: core.TaskProperties{PullRequests: append([]core.PullRequestProperty{}, input.Properties.PullRequests...)}}
+	values := store.TaskWrite{RequiredPlatform: input.RequiredPlatform, AllowAgents: false, Title: input.Title, Description: input.Description, Status: core.TaskTodo, Properties: core.TaskProperties{PullRequests: append([]core.PullRequestProperty{}, input.Properties.PullRequests...)}}
 	values.DependsOn, err = canonicalDependencies(input.DependsOn, id.String())
 	if err != nil {
 		return core.Task{}, err
@@ -80,7 +83,7 @@ func (s *Tasks) Create(ctx context.Context, principal core.Principal, projectID 
 	if err != nil {
 		return core.Task{}, err
 	}
-	if err := validateTaskText(values); err != nil {
+	if err := validateTaskValues(values); err != nil {
 		return core.Task{}, err
 	}
 	return s.write(ctx, principal, projectID, func(tx *store.ProjectTx) (taskMutation, error) {
@@ -106,7 +109,7 @@ func (s *Tasks) Update(ctx context.Context, principal core.Principal, projectID,
 	if input.Version < 1 {
 		return core.Task{}, invalidInput("Version must be a positive integer.")
 	}
-	if input.Title == nil && input.Description == nil && input.DependsOn == nil && input.ExternalDependsOn == nil && input.Properties.PullRequests == nil && input.AllowAgents == nil {
+	if input.Title == nil && input.Description == nil && input.DependsOn == nil && input.ExternalDependsOn == nil && input.Properties.PullRequests == nil && input.AllowAgents == nil && input.RequiredPlatform == nil {
 		return core.Task{}, invalidInput("At least one task field must be provided.")
 	}
 	return s.write(ctx, principal, projectID, func(tx *store.ProjectTx) (taskMutation, error) {
@@ -127,10 +130,13 @@ func (s *Tasks) Update(ctx context.Context, principal core.Principal, projectID,
 		if current.AllowAgents != values.AllowAgents && current.Status == core.TaskInProgress {
 			return taskMutation{}, &Fault{Code: "invalid_transition", Message: "Automatic execution permission cannot change while the task is in progress."}
 		}
+		if !equalOptional(current.RequiredPlatform, values.RequiredPlatform) && current.Status == core.TaskInProgress {
+			return taskMutation{}, &Fault{Code: "invalid_transition", Message: "Execution platform cannot change while the task is in progress."}
+		}
 		if err := validateCandidate(ctx, tx, id, values); err != nil {
 			return taskMutation{}, err
 		}
-		changed := current.AllowAgents != values.AllowAgents || current.Title != values.Title || current.Description != values.Description ||
+		changed := !equalOptional(current.RequiredPlatform, values.RequiredPlatform) || current.AllowAgents != values.AllowAgents || current.Title != values.Title || current.Description != values.Description ||
 			!slices.Equal(current.DependsOn, values.DependsOn) || !slices.Equal(current.ExternalDependsOn, values.ExternalDependsOn) || !slices.Equal(current.Properties.PullRequests, values.Properties.PullRequests)
 		return taskMutation{id: id, current: current, values: values, changed: changed}, nil
 	})
@@ -177,7 +183,10 @@ func (s *Tasks) write(ctx context.Context, principal core.Principal, projectID s
 }
 
 func taskCandidate(current core.Task, input UpdateTask) (store.TaskWrite, error) {
-	values := store.TaskWrite{AllowAgents: current.AllowAgents, Title: current.Title, Description: current.Description, Status: current.Status, DependsOn: current.DependsOn, ExternalDependsOn: current.ExternalDependsOn, Properties: current.Properties}
+	values := store.TaskWrite{RequiredPlatform: current.RequiredPlatform, AllowAgents: current.AllowAgents, Title: current.Title, Description: current.Description, Status: current.Status, DependsOn: current.DependsOn, ExternalDependsOn: current.ExternalDependsOn, Properties: current.Properties}
+	if input.RequiredPlatform != nil {
+		values.RequiredPlatform = *input.RequiredPlatform
+	}
 	if input.AllowAgents != nil {
 		values.AllowAgents = *input.AllowAgents
 	}
@@ -207,13 +216,16 @@ func taskCandidate(current core.Task, input UpdateTask) (store.TaskWrite, error)
 	if input.Properties.PullRequests != nil {
 		values.Properties.PullRequests = append([]core.PullRequestProperty{}, (*input.Properties.PullRequests)...)
 	}
-	if err := validateTaskText(values); err != nil {
+	if err := validateTaskValues(values); err != nil {
 		return store.TaskWrite{}, err
 	}
 	return values, nil
 }
 
-func validateTaskText(values store.TaskWrite) error {
+func validateTaskValues(values store.TaskWrite) error {
+	if values.RequiredPlatform != nil && !values.RequiredPlatform.Valid() {
+		return invalidInput("Execution platform must be windows, linux, macos or null.")
+	}
 	if strings.TrimSpace(values.Title) == "" || !utf8.ValidString(values.Title) || strings.ContainsRune(values.Title, 0) {
 		return invalidInput("Task title must be nonempty UTF-8 text without NUL characters.")
 	}

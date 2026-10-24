@@ -12,6 +12,7 @@ import { TaskStatusFeedback, TaskStatusMenu } from './TaskStatus';
 import { matchesAgentPermissionReview, TaskAgentPermissionConfirmation, TaskAgentPermissionFeedback, TaskAgentPermissionSwitch, type AgentPermissionConfirmation } from './TaskAgentPermission';
 import { matchesStatusReview, TaskStatusConfirmation, type StatusConfirmation } from './TaskStatusConfirmation';
 import { TaskDetailReading } from './TaskDetailReading';
+import { TaskPlatform, TaskPlatformBadge, TaskPlatformFeedback } from './TaskPlatform';
 import { TaskId } from './TaskId';
 import { TaskPullRequests } from './TaskPullRequests';
 import '../../styles/task-detail.css';
@@ -155,6 +156,7 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
           )}
           {detail === null && task.mutation.phase !== 'idle' && <div className="task-detail-status-feedback">
             <TaskStatusFeedback detail={null} mutation={task.mutation} onReconcile={task.reconcile} />
+            <TaskPlatformFeedback mutation={task.mutation} onReconcile={task.reconcile} />
           </div>}
           {detail !== null && (
             <>
@@ -162,6 +164,7 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
                 <div className="task-detail-status-row">
                   <div className="task-detail-badges">
                     {detail.status === 'todo' && <span className={detail.ready ? 'task-detail-ready' : 'task-detail-blocked'}>{detail.ready ? m.ready : m.blocked}</span>}
+                    <TaskPlatformBadge requiredPlatform={detail.requiredPlatform} />
                   </div>
                   <TaskAgentPermissionSwitch detail={detail} disabled={!task.canSetAgentPermission} describedBy={automationFeedbackId}
                     onClick={() => setConfirmation({ kind: 'allowAgents', detail, allowAgents: !detail.allowAgents })} />
@@ -171,7 +174,7 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
                 {retainedDetail && <p className="task-detail-retained" role="status">{m.retainedDetail}</p>}
                 {stale && (
                   <div className="task-detail-stale" role="status">
-                    <p>{task.mutation.phase === 'confirmed' && task.mutation.operation?.action !== 'allowAgents' ? messages.inspection.status.confirmedSnapshot : m.stale}</p>
+                    <p>{task.mutation.phase === 'confirmed' && task.mutation.operation?.action === 'status' ? messages.inspection.status.confirmedSnapshot : m.stale}</p>
                     <button className="button" type="button" onClick={onRefreshGraph}>{m.refreshGraph}</button>
                   </div>
                 )}
@@ -183,6 +186,7 @@ const TaskDetailView = ({ projectId, taskId, snapshot, onSelectTask, onClose, on
                       <h4>{m.description}</h4>
                       {description}
                     </section>
+                    <TaskPlatform detail={detail} disabled={!task.canSetRequiredPlatform} mutation={task.mutation} onSave={task.setRequiredPlatform} onReconcile={task.reconcile} />
                     <TaskPullRequests pullRequests={detail.properties.pullRequests} />
                   </div>
                   <aside className="task-detail-aside" aria-label={m.relationsMetadata}>

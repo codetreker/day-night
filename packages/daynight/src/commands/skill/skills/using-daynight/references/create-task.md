@@ -156,6 +156,10 @@ New tasks have `allowAgents=false`; creation cannot enable the permission.
 Automatic workers and agent workflows must not turn it on themselves. Execution
 authorization and automatic-discovery permission remain separate decisions.
 
+Tasks without `--required-platform` are unrestricted. Set windows, linux or macos
+only when the confirmed task needs that execution environment. Platform requirements
+do not start tasks or enable automatic execution; they survive all status changes.
+
 Reuse the established project and suitable tasks. Create new tasks in `todo`,
 retaining each confirmed ID. Set concrete descriptions and actual ordinary and
 external prerequisites using the handbook's full CLI replacement rule. Upload each task's own primary Markdown and required

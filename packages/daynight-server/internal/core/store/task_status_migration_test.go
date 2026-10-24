@@ -49,7 +49,7 @@ func statusMigrationRelatedFacts(t *testing.T, database *Store) map[string]strin
 		"projects":     `SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY id),'[]'::jsonb)::text FROM projects t`,
 		"attachments":  `SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY task_id,path),'[]'::jsonb)::text FROM task_attachments t`,
 		"dependencies": `SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY project_id,task_id,depends_on_task_id),'[]'::jsonb)::text FROM task_dependencies t`,
-		"ledger":       `SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY version),'[]'::jsonb)::text FROM schema_migrations t WHERE version<=12`,
+		"ledger":       `SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY version),'[]'::jsonb)::text FROM schema_migrations t WHERE version<=13`,
 	} {
 		var value string
 		if err := database.Pool.QueryRow(context.Background(), query).Scan(&value); err != nil {
@@ -63,7 +63,7 @@ func statusMigrationRelatedFacts(t *testing.T, database *Store) map[string]strin
 func TestTaskStatusMigrationConvertsOnlyLegacyStatesAndPreservesMaterials(t *testing.T) {
 	ctx := context.Background()
 	pool := emptyPool(t)
-	if err := migrate(ctx, pool, schemaMigrations[:12]); err != nil {
+	if err := migrate(ctx, pool, schemaMigrations[:13]); err != nil {
 		t.Fatal(err)
 	}
 	database := &Store{Pool: pool}
@@ -76,10 +76,10 @@ func TestTaskStatusMigrationConvertsOnlyLegacyStatesAndPreservesMaterials(t *tes
 			start, end := stamp.Add(time.Minute), stamp.Add(2*time.Minute)
 			started, completed = &start, &end
 		}
-		mustQueryExec(t, database, `INSERT INTO tasks(id,project_id,title,description,status,version,created_at,updated_at,started_at,completed_at,allow_agents,properties)
-			VALUES($1,$2,'Preserved title','## Complete Markdown\nPreserved body',$3,$4,$5,$6,$7,$8,$9,
+		mustQueryExec(t, database, `INSERT INTO tasks(id,project_id,title,description,status,version,created_at,updated_at,started_at,completed_at,allow_agents,required_platform,properties)
+			VALUES($1,$2,'Preserved title','## Complete Markdown\nPreserved body',$3,$4,$5,$6,$7,$8,$9,$10,
 			'{"pullRequests":[{"url":"https://example.com/pr/1","title":"Preserved PR"}]}')`,
-			queryID(index+10), project.ID, status, int64(9007199254740993)+int64(index), stamp, stamp.Add(time.Hour), started, completed, index%2 == 1)
+			queryID(index+10), project.ID, status, int64(9007199254740993)+int64(index), stamp, stamp.Add(time.Hour), started, completed, index%2 == 1, []any{nil, "windows", "linux", "macos", nil, "windows", "linux"}[index])
 		mustQueryExec(t, database, `INSERT INTO task_attachments(project_id,task_id,path,content_type,size_bytes,created_at,updated_at)
 			VALUES($1,$2,'plan.md','text/markdown',123,$3,$4)`, project.ID, queryID(index+10), stamp, stamp.Add(time.Hour))
 	}
@@ -127,18 +127,18 @@ func TestTaskStatusMigrationConvertsOnlyLegacyStatesAndPreservesMaterials(t *tes
 		t.Fatalf("converted readiness lost ordinary or external prerequisites: ready %#v blocked %#v", ready, blocked)
 	}
 	var applied, repeated time.Time
-	if err := pool.QueryRow(ctx, `SELECT applied_at FROM schema_migrations WHERE version=13`).Scan(&applied); err != nil {
+	if err := pool.QueryRow(ctx, `SELECT applied_at FROM schema_migrations WHERE version=14`).Scan(&applied); err != nil {
 		t.Fatal(err)
 	}
 	if err := migrate(ctx, pool, schemaMigrations); err != nil {
 		t.Fatal(err)
 	}
-	if err := pool.QueryRow(ctx, `SELECT applied_at FROM schema_migrations WHERE version=13`).Scan(&repeated); err != nil || !applied.Equal(repeated) || !reflect.DeepEqual(statusMigrationRows(t, database), after) || !reflect.DeepEqual(statusMigrationRelatedFacts(t, database), facts) {
+	if err := pool.QueryRow(ctx, `SELECT applied_at FROM schema_migrations WHERE version=14`).Scan(&repeated); err != nil || !applied.Equal(repeated) || !reflect.DeepEqual(statusMigrationRows(t, database), after) || !reflect.DeepEqual(statusMigrationRelatedFacts(t, database), facts) {
 		t.Fatalf("repeated migration changed ledger or resources: %v", err)
 	}
 	mustQueryExec(t, database, `INSERT INTO tasks(id,project_id,title) VALUES($1,$2,'Default todo')`, queryID(30), project.ID)
 	created := snapshotTask(t, database, project.ID, queryID(30))
-	if created.Status != core.TaskTodo || !created.Ready || created.AllowAgents || created.Version != 1 || created.StartedAt != nil || created.CompletedAt != nil || !created.CreatedAt.Equal(created.UpdatedAt) {
+	if created.Status != core.TaskTodo || !created.Ready || created.AllowAgents || created.RequiredPlatform != nil || created.Version != 1 || created.StartedAt != nil || created.CompletedAt != nil || !created.CreatedAt.Equal(created.UpdatedAt) {
 		t.Fatalf("current database defaults are not an unstarted todo: %#v", created)
 	}
 	for _, query := range []string{
@@ -158,18 +158,18 @@ func TestTaskStatusMigrationRollsBackDefaultRowsConstraintAndLedger(t *testing.T
 		t.Run(failure, func(t *testing.T) {
 			ctx := context.Background()
 			pool := emptyPool(t)
-			if err := migrate(ctx, pool, schemaMigrations[:12]); err != nil {
+			if err := migrate(ctx, pool, schemaMigrations[:13]); err != nil {
 				t.Fatal(err)
 			}
 			database := &Store{Pool: pool}
 			project := queryProject(t, database, 1)
 			version := int64(17)
-			code := "P1013"
+			code := "P1014"
 			if failure == "version overflow" {
 				version, code = math.MaxInt64, "22003"
 			} else {
 				mustQueryExec(t, database, `CREATE FUNCTION reject_status_ledger() RETURNS trigger LANGUAGE plpgsql AS $$
-					BEGIN IF NEW.version=13 THEN RAISE EXCEPTION USING ERRCODE='P1013', MESSAGE='status ledger rejection'; END IF; RETURN NEW; END $$;
+					BEGIN IF NEW.version=14 THEN RAISE EXCEPTION USING ERRCODE='P1014', MESSAGE='status ledger rejection'; END IF; RETURN NEW; END $$;
 					CREATE TRIGGER reject_status_ledger BEFORE INSERT ON schema_migrations FOR EACH ROW EXECUTE FUNCTION reject_status_ledger()`)
 			}
 			mustQueryExec(t, database, `INSERT INTO tasks(id,project_id,title,version) VALUES($1,$2,'Legacy default',$3)`, queryID(10), project.ID, version)
@@ -183,7 +183,7 @@ func TestTaskStatusMigrationRollsBackDefaultRowsConstraintAndLedger(t *testing.T
 				t.Fatal("failed migration partially changed rows or related resources")
 			}
 			var count int
-			if err := pool.QueryRow(ctx, `SELECT count(*) FROM schema_migrations WHERE version=13`).Scan(&count); err != nil || count != 0 {
+			if err := pool.QueryRow(ctx, `SELECT count(*) FROM schema_migrations WHERE version=14`).Scan(&count); err != nil || count != 0 {
 				t.Fatalf("failed migration retained its ledger: %d %v", count, err)
 			}
 			mustQueryExec(t, database, `INSERT INTO tasks(id,project_id,title) VALUES($1,$2,'Old default remains')`, queryID(11), project.ID)

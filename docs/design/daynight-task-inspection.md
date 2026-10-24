@@ -55,9 +55,9 @@ ProjectPage保持详情资源和入口/关闭恢复所有权。当前画布拥�
 ## 状态与详情会话
 
 创建默认为 todo，专用 set-status 设置三状态并使用观察版本，全部实际前置及受保护后继仍由服务核验。
-图节点无 task version，检查不发起写请求。共享 TaskDetailSession、状态/许可互斥、冲突与未知 GET 核对及
+图节点无 task version，检查不发起写请求。共享 TaskDetailSession、状态/许可/平台互斥、冲突与未知 GET 核对及
 身份隔离由[状态设计](daynight-web.md#版本化状态设置与任务会话)与[三状态架构](daynight-task-status.md)拥有。
-状态及许可刷新保留选择、S、视口、详情页签和附件 controller；404/身份变化按会话规则清除私有内容。
+状态、许可及平台刷新保留选择、S、视口、详情页签和附件 controller；404/身份变化按会话规则清除私有内容。
 图检查与 Details 入口保持独立。
 
 ## Markdown 与附件链接

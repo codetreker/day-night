@@ -594,7 +594,7 @@ Web 新增 `task-attachments` 功能场景，在原生和实际生产容器上�
 另有 `project-view-tabs` 验证项目内任务视图；[双语界面](daynight-web-i18n.md)增加三个功能场景，
 [三状态架构](daynight-task-status.md)拥有当前状态设置。状态、冲突、恢复与组合场景只允许
 登记资源和精确次数的 PUT status；附件写入保持自己的 fixture-scoped allowlist。
-当前严格 inventory 为原生 32 个、容器 27 个，共 59 个结果，任务描述阅读、鉴权、设置、
+当前严格 inventory 为原生 33 个、容器 28 个，共 61 个结果，任务描述阅读、鉴权、设置、
 许可和计时场景仍保有独立的写入边界。
 
 运行回执校验 Git SHA/dirty 标记及实际 tarball/entry 摘要；dirty 标记不是脏源码内容

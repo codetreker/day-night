@@ -21,7 +21,7 @@ chain fallback. A later [approval lifecycle](2026-10-22-task-approval-lifecycle.
 enabled proposed creation and dedicated writes after all readers were ready.
 
 The [three-state assignment decision](../architecture/2026-10-24-task-status-assignment.md)
-supersedes this fourth state. Migration 013 reclassifies every proposed row to
+supersedes this fourth state. Migration 014 reclassifies every proposed row to
 todo once, retaining all other facts and advancing only converted revisions and
 update time. Current service/CLI/Web readers reject proposed, expose six summary
 counts, order unfinished work without a fourth group and use the three-state

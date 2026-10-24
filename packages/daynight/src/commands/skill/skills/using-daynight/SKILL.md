@@ -94,10 +94,15 @@ and completing `run-task` never activate it.
   the same chain; mark a verified prerequisite from another chain as external.
   Both kinds block execution. CLI dependency options replace the full relationship
   set; preserve needed ordinary and external edges as the handbook requires.
-- Automatic task selection requires `allowAgents=true` as well as readiness.
+- Automatic task selection requires `allowAgents=true`, readiness, and
+  `requiredPlatform` compatibility with the actual current execution environment.
+  Follow autopilot's runtime mapping, filter both ready and supplemental inventory
+  before pagination, and carry automatic selection and its platform into run-task
+  for a full-task recheck before version-bound `set-status in_progress`.
   Automated workers and agent workflows must not enable this permission themselves.
-  An explicitly user-selected task may follow the manual execution path regardless
-  of the flag; dependency and execution authorization still apply.
+  Only an explicitly user-selected task or fixed Goal queue may follow the manual
+  execution path regardless of the flag or platform compatibility; dependency,
+  stage inputs and execution authorization still apply.
 - Preserve the exact version observed when deciding a metadata update or
   `task set-status` change. Generic updates cannot change status. Confirm writes,
   reconcile uncertain results before further mutations, and preserve actual

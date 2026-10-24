@@ -17,7 +17,7 @@ needed to use them correctly.
 | `task ready` | Read a bounded candidate page of todo tasks with completed prerequisites. |
 | `task list` | Read every matching page; defaults to unfinished tasks. |
 | `task show` | Read one task's complete details and exact version. |
-| `task update` | Change metadata, automatic-execution permission, dependencies, or PR references; status is not writable. |
+| `task update` | Change metadata, automatic-execution permission, platform requirements, dependencies, or PR references; status is not writable. |
 | `task set-status` | Set todo, in_progress, or done using an observed exact version. |
 | `task graph` | Inspect the project's dependency graph and summary. |
 | `task attachment put` | Upload or replace one attachment file. |
@@ -92,6 +92,28 @@ themselves. An explicitly user-selected task may still use manual execution rega
 of the flag. Permission does not grant execution, publication or merge authority.
 A lost permission PATCH response is an unconfirmed write: read actual task state
 before reconsidering the operation, without resubmitting automatically.
+
+**Execution platform.** Complete tasks, inventory items and graph nodes expose
+`requiredPlatform` as `null`, `windows`, `linux` or `macos`; null means unrestricted.
+Set a requirement with `task create --required-platform <platform>` or
+`task update <task-id> --required-platform <platform> --if-version <version>`.
+Clear it with `task update <task-id> --clear-required-platform --if-version <version>`;
+setting and clearing in one command is invalid. Omitting both update options
+preserves the requirement. Existing and new tasks without a requirement are
+unrestricted. Actual changes are locked during in_progress; an exact-version
+same-value request keeps version and timestamps, while stale versions conflict.
+Explicitly user-selected tasks and fixed queues retain their manual execution
+path independently of platform compatibility. Automatic selections keep their
+actual-platform context and recheck full-task eligibility before set-status.
+
+`task list` and `task ready` accept `--compatible-platform <platform>`. The
+server includes unrestricted tasks and exact matches, combining this condition
+with status, readiness and `--allow-agents` before pagination or the ready limit.
+Platform compatibility does not change readiness or enable automatic execution.
+Preserve the filter when requesting additional candidate inventory; do not filter
+a bounded unfiltered ready page locally. A query option selects a candidate
+platform and does not establish the actual execution environment. Worker runtime
+must identify its own platform; a Linux runtime in WSL is Linux.
 
 **Task concurrency.** Bind each metadata update and status change to
 the exact version read for that decision using `--if-version`; the CLI's default

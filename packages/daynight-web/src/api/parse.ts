@@ -1,6 +1,7 @@
 import type {
   Attachment,
   AttachmentPage,
+  ExecutionPlatform,
   GraphLimitDetails,
   GraphTask,
   Project,
@@ -78,6 +79,13 @@ const ids = (value: unknown): string[] => {
   return values;
 };
 
+export const executionPlatform = (value: unknown): ExecutionPlatform => {
+  if (value !== "windows" && value !== "linux" && value !== "macos") return malformed();
+  return value;
+};
+
+const requiredPlatform = (value: unknown): ExecutionPlatform | null => value === null ? null : executionPlatform(value);
+
 const status = (value: unknown): TaskStatus => {
   if (value !== "todo" && value !== "in_progress" && value !== "done") return malformed();
   return value;
@@ -129,6 +137,7 @@ const graphTask = (value: unknown): GraphTask => {
     blockedBy: ids(data.blockedBy),
     ready: boolean(data.ready),
     allowAgents: boolean(data.allowAgents),
+    requiredPlatform: requiredPlatform(data.requiredPlatform),
     startedAt: nullableTimestamp(data.startedAt),
     completedAt: nullableTimestamp(data.completedAt),
     createdAt: timestamp(data.createdAt),
@@ -185,6 +194,7 @@ export const parseTaskDetail = (value: unknown, projectId: string, taskId: strin
     blockedBy: ids(data.blockedBy),
     ready: boolean(data.ready),
     allowAgents: boolean(data.allowAgents),
+    requiredPlatform: requiredPlatform(data.requiredPlatform),
     startedAt: nullableTimestamp(data.startedAt),
     completedAt: nullableTimestamp(data.completedAt),
     createdAt: timestamp(data.createdAt),

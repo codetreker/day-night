@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { test as base, expect } from '@playwright/test';
 import { command } from '../../scripts/acceptance/process.mts';
 import { recordBrowserOwnership } from '../../scripts/acceptance/browser.mts';
-import type { TaskProperties } from '../../src/api/types';
+import type { ExecutionPlatform, TaskProperties } from '../../src/api/types';
 import { attachmentDownloadUrl } from '../../src/api/client';
 import { bearerContext, browserAuthentication, type AuthenticatedAPI } from './authentication';
 
@@ -129,7 +129,7 @@ export const test = base.extend<{
 export type Project = { id: string; name: string; repoUrl: string; createdAt: string; updatedAt: string };
 export type Task = {
   id: string; projectId: string; title: string; description: string; status: 'todo' | 'in_progress' | 'done';
-  version: number; dependsOn: string[]; externalDependsOn: readonly string[]; blockedBy: string[]; ready: boolean; allowAgents: boolean; createdAt: string; updatedAt: string;
+  version: number; dependsOn: string[]; externalDependsOn: readonly string[]; blockedBy: string[]; ready: boolean; allowAgents: boolean; requiredPlatform: ExecutionPlatform | null; createdAt: string; updatedAt: string;
   properties: TaskProperties;
 };
 
@@ -142,15 +142,16 @@ export const createProject = async (request: AuthenticatedAPI, input: { name?: s
 };
 
 export const createTask = async (request: AuthenticatedAPI, projectId: string, input: {
-  title: string; description?: string; dependsOn?: string[]; properties?: TaskProperties;
+  title: string; description?: string; dependsOn?: string[]; properties?: TaskProperties; requiredPlatform?: ExecutionPlatform | null;
 }): Promise<Task> => {
   const response = await request.post(`/api/v1/projects/${projectId}/tasks`, {
-    data: { title: input.title, description: input.description ?? '', dependsOn: input.dependsOn ?? [], properties: input.properties },
+    data: { title: input.title, description: input.description ?? '', dependsOn: input.dependsOn ?? [], properties: input.properties, requiredPlatform: input.requiredPlatform },
   });
   expect(response.status(), 'Task fixture creation succeeds').toBe(201);
   const task = await response.json() as Task;
   expect(task.status, 'Task fixture creation registers a to-do task').toBe('todo');
   expect(task.version).toBe(1);
+  expect(task.requiredPlatform).toBe(input.requiredPlatform === undefined ? null : input.requiredPlatform);
   return task;
 };
 
@@ -169,7 +170,7 @@ export const executeTask = async (request: AuthenticatedAPI, projectId: string, 
   finishTask(request, projectId, await startTask(request, projectId, task));
 
 export const updateTask = async (request: AuthenticatedAPI, projectId: string, taskId: string, input: {
-  version: number; title?: string; description?: string; dependsOn?: string[]; properties?: TaskProperties;
+  version: number; title?: string; description?: string; dependsOn?: string[]; properties?: TaskProperties; requiredPlatform?: ExecutionPlatform | null;
 }): Promise<Task> => {
   const response = await request.patch(`/api/v1/projects/${projectId}/tasks/${taskId}`, { data: input });
   expect(response.status(), 'Task fixture update succeeds').toBe(200);

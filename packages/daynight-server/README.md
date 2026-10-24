@@ -436,11 +436,13 @@ version/status input. Every project member can write tasks; administrator role
 additionally manages members, invitations and project settings. Status PUT and
 method-refusal handlers authenticate, require exact Cookie Origin and use no-store.
 
-Creation uses todo, version 1, nullable execution endpoints and allowAgents=false.
-It rejects caller-supplied status, timing and permission. Properties/PRs and both
+Creation uses todo, version 1, nullable execution endpoints, allowAgents=false
+and unrestricted requiredPlatform=null unless explicitly supplied.
+It rejects caller-supplied status, timing and permission; platform creation accepts
+null or windows/linux/macos. PATCH retains field presence separately from nullable value. Properties/PRs and both
 dependency collections have explicit empty defaults. Updates require a positive
 expected int64 version and at least one mutable field; omitted pointers preserve
-values, while empty description/dependency/PR lists clear them. JSON null is rejected.
+values, while empty description/dependency/PR lists clear them. Only requiredPlatform accepts null to clear; other JSON null input is rejected.
 Dependencies are canonical sorted UUIDs, checked for duplicate identity,
 self-reference, missing/cross-project tasks and cycles. Active/done metadata
 candidates require all predecessors done; todo may have unfinished predecessors.
@@ -451,7 +453,7 @@ version and only then handles same-state. A current same-state request returns
 the full current Task without a stored write; stale same-state conflicts. Actual
 change increments once. Entering active/done requires all direct predecessors
 done, including external edges; reopening done refuses sorted direct active/done
-dependent IDs. No dependent is changed. Status preserves all other fields,
+dependent IDs. No dependent is changed. Status preserves requiredPlatform and all other fields,
 properties, dependency classifications and attachments. The old four routes are removed.
 
 Execution timing describes the current attempt. Actual entry into in_progress
@@ -461,10 +463,20 @@ todo to done records an end with null start. Metadata and same-state preserve ti
 No missing historical start is inferred. State, timing, version and update time
 commit atomically. Details are owned by the [status architecture](../../docs/design/daynight-task-status.md).
 
-Migration 013 converts historical proposed rows to todo, advancing only their
+Migration 014 converts historical proposed rows to todo, advancing only their
 version/update time and preserving every other field, including timing. It
 atomically changes the default, rows, CHECK and ledger; restart does not rerun it.
 Applied historical migrations are immutable. Runtime input and readers reject proposed.
+
+Migration 013_task_required_platform.sql adds nullable required_platform with its
+enum CHECK, preserving old versions, timestamps and other fields. Full tasks and
+graph nodes always expose requiredPlatform as null/windows/linux/macos. PATCH
+distinguishes omitted/set/null; exact-version same-value preserves version/time,
+stale values conflict and actual in-progress changes reject the whole edit.
+Platform, permission and status changes preserve each other. TaskPlatform.Valid
+and PlatformCompatible(required, actual) own null/exact compatibility without
+inferring worker identity from the server OS. Explicit manual status setting
+remains available regardless of automatic eligibility.
 
 Permission PATCH distinguishes omission from false, rejects null/nonboolean,
 checks version before same-value handling and rejects actual changes while
@@ -475,8 +487,10 @@ remain significant. Readiness changes do not advance dependent task revisions.
 
 Expected refusals are returned only after the lock-only transaction succeeds;
 transaction/cleanup failures preserve operational errors. Reads use an RR snapshot.
-Task cursors bind project and optional status/ready/allowAgents filters, with SQL
-permission filtering before ordering, limit and lookahead.
+Task cursors bind project and optional status/ready/allowAgents/compatiblePlatform
+filters, retaining absent/false and absent/each-enum distinctions. Compatibility
+includes unrestricted and exact-platform tasks; all filters run in SQL before
+ordering, limit and lookahead, so a bounded page cannot hide later compatible work.
 
 ## Complete task graph
 
@@ -498,7 +512,8 @@ all direct prerequisites are done. Task/get/list/graph and status filters accept
 only three states. Graph reads do not change stored status, revisions or time.
 
 Nodes contain `id`, `titlePreview`, `titleTruncated`, `status`, `dependsOn`,
-`externalDependsOn`, `blockedBy`, `ready`, required boolean `allowAgents`, UTC creation/update timestamps and explicit nullable
+`externalDependsOn`, `blockedBy`, `ready`, required boolean `allowAgents`,
+required nullable enum `requiredPlatform`, UTC creation/update timestamps and explicit nullable
 `startedAt`/`completedAt`. SQL produces at most 160 Unicode code
 points of each title without selecting descriptions, properties or full titles. Use the
 existing task detail endpoint for complete content. Node order is `(createdAt,
@@ -535,8 +550,8 @@ receipts and fixed-capacity gates are in the
 | `PUT` | `/api/v1/projects/{projectId}/tasks/{taskId}/status` | `200`, exact-version three-state assignment; full Task response |
 
 Creation accepts required `title`, optional `description`, `dependsOn`,
-`externalDependsOn` and `properties`; omitted optional values mean empty text,
-empty complete/external dependency sets
+`externalDependsOn`, `requiredPlatform` and `properties`; omitted optional values
+mean empty text, empty complete/external dependency sets, unrestricted platform
 and an empty PR list. Status, version and identity are server-owned on creation.
 The external subset must belong to the final complete dependency set. On PATCH,
 omitting both fields preserves relationships; dependsOn-only replaces IDs and
@@ -546,9 +561,11 @@ Removing an edge removes its marker. Metadata and status updates
 preserve unrelated classification and execution timing. Exact write examples
 belong to the [external dependency design](../../docs/design/daynight-external-dependencies.md).
 PATCH accepts a positive integer `version` and at least one mutation of `title`,
-`description`, `dependsOn`, `externalDependsOn`, `allowAgents` or `properties.pullRequests`; a status field is rejected
+`description`, `dependsOn`, `externalDependsOn`, `allowAgents`,
+`requiredPlatform` or `properties.pullRequests`; a status field is rejected
 even alongside otherwise valid metadata. Omitted fields
-stay unchanged; explicit null (including null dependency or PR elements) fails.
+stay unchanged; explicit `requiredPlatform: null` clears the requirement. Null
+for other fields, including dependency or PR elements, fails.
 Empty description, `dependsOn: []` or `properties: {"pullRequests": []}` clears
 that value. `properties: {}` has no mutation intent and is accepted only with
 another mutable field. Fractions, exponents, strings and out-of-range versions fail.
@@ -565,16 +582,18 @@ additional count or string-length limits. The complete API behavior is owned by
 the [task properties requirements](../../docs/spec/daynight-task-properties.md).
 
 Task responses contain identity, project, title, description, status, required
-boolean `allowAgents`, version,
+boolean `allowAgents`, nullable enum `requiredPlatform`, version,
 UTC creation/update timestamps, explicit nullable execution timestamps
 `startedAt`/`completedAt`, sorted `dependsOn`/`externalDependsOn`/`blockedBy` arrays, `ready` and complete
 `properties` with an initialized `pullRequests` array. A missing
 project or a task outside the specified project returns 404. The initialized
 empty project returns `items: []`, `nextCursor: null`.
 
-Lists support `limit`, `cursor`, `status`, `ready` and `allowAgents`, once each.
-Both boolean filters accept literal `true` or `false`; filters combine with AND
-before pagination and remain bound to the
+Lists support `limit`, `cursor`, `status`, `ready`, `allowAgents` and
+`compatiblePlatform`, once each.
+Both boolean filters accept literal `true` or `false`; compatibility accepts
+`windows`, `linux` or `macos` and includes null requirements and exact matches.
+Filters combine with AND before ordering, pagination and lookahead and remain bound to the
 cursor's canonical project scope. HTTP input uses the same strict JSON and
 query rules as project operations.
 
@@ -695,7 +714,9 @@ The [status scenarios](cmd/daynight-server/acceptance_lifecycle_cli_test.go)
 reuse the packed installation and actual-process fixture.
 `TestInstalledCLIStatusMigrationAcceptance` runs installed_cli_v12_status_migration_restart
 against genuine checked-in migrations 001–012, then lets the current service apply
-013. It compares raw historical rows and checksum ledgers: proposed changes to todo
+013 platform followed by 014 status. The status-only preservation oracle separately starts
+from genuine prefix13 and compares non-null platform requirements across14;
+v12 rows first gain the expected nullable platform column. It compares raw historical rows and checksum ledgers: proposed changes to todo
 once with version/update-time advancement; non-proposed rows and all other fields,
 timing, permission, properties, ordinary/external edges and attachment bytes survive.
 Database defaults/CHECK, overflow rollback and restart idempotence are separate
