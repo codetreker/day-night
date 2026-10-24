@@ -379,6 +379,9 @@ test('task-attachments', { annotation: { type: 'scenario', description: 'task-at
     const downloadedPath = await binaryDownload.path();
     if (downloadedPath === null) throw new Error('The standalone unsupported-file download was not saved.');
     expect(await readFile(downloadedPath)).toEqual(binary);
+    // The lower-page PDF marker needs a tall paint viewport; compact sizing and
+    // native scroll ownership are verified independently in the viewport matrix.
+    await reader.setViewportSize(openerViewport);
     await reader.goto(attachmentPageUrl(project.id, task.id, 'reports/brief.pdf'));
     await paintedPdf(reader, reader.getByTitle('PDF 预览：reports/brief.pdf'), info, pdf, new URL(attachmentPreviewUrl(project.id, task.id, 'reports/brief.pdf'), origin).href, 'standalone-attachments');
     await reader.getByRole('combobox', { name: '语言 / Language', exact: true }).selectOption('en');
