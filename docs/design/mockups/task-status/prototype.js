@@ -1,5 +1,6 @@
 const $ = (id) => document.getElementById(id);
 const statuses = ['todo', 'in_progress', 'done'];
+const tabs = ['overview', 'attachments'];
 const fixtures = ['normal', 'blocked', 'blocked-ordinary', 'successor', 'conflict', 'unknown', 'readback-failure', 'retained', 'loading', 'read-error', 'empty', 'empty-attachments', 'long'];
 const copy = {
   zh: {
@@ -13,6 +14,7 @@ let language = 'zh';
 let scenario = 'normal';
 let activeTab = 'overview';
 let activeFile = 'plan.md';
+let attachmentNotice = false;
 let confirmation = null;
 let priorFocus = null;
 let detailOpen = true;
@@ -50,13 +52,32 @@ const now = () => '2026-10-24T09:46:00Z';
 const renderStatusOptions = (id, selected) => { $(id).innerHTML = statuses.map((s) => `<option value="${s}">${m().status[s]}</option>`).join(''); $(id).value = selected; };
 const setTab = (tab) => {
   activeTab = tab;
-  for (const name of ['overview', 'attachments']) {
+  for (const name of tabs) {
     $(`${name}-tab`).setAttribute('aria-selected', String(tab === name));
     $(`${name}-tab`).tabIndex = tab === name ? 0 : -1;
     $(`${name}-panel`).hidden = tab !== name;
+    $(`${name}-panel`).inert = tab !== name;
   }
 };
+const activateTab = (tab) => {
+  setTab(tab);
+  $(`${tab}-tab`).focus();
+};
+const navigateTabs = (event, tab) => {
+  let next;
+  if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') next = tabs[(tabs.indexOf(tab) + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length];
+  else if (event.key === 'Home') next = 'overview';
+  else if (event.key === 'End') next = 'attachments';
+  else return;
+  event.preventDefault();
+  activateTab(next);
+};
+const renderAttachmentFeedback = () => {
+  $('attachment-feedback').hidden = !attachmentNotice;
+  $('attachment-feedback').textContent = attachmentNotice ? m().separateRead : '';
+};
 const renderAttachment = () => {
+  renderAttachmentFeedback();
   if (scenario === 'empty-attachments') {
     text('attachment-name', m().attachments);
     $('attachment-preview').innerHTML = `<p class="attachment-state">${escape(m().emptyPreview)}</p>`;
@@ -69,13 +90,14 @@ const renderAttachment = () => {
 const relation = (name, status, kind) => `<li><button type="button" class="task-detail-relation"><span class="task-detail-relation-dot task-detail-dot-${status}" aria-hidden="true"></span><span>${escape(name)}</span><span class="task-detail-relation-kind${kind === 'external' ? ' task-detail-relation-external' : ''}">${m()[kind]}</span><span class="task-detail-relation-arrow" aria-hidden="true">↗</span></button></li>`;
 const renderFeedback = () => {
   const root = $('feedback');
-  root.dataset.tone = feedbackKind === 'changed' || feedbackKind === 'unchanged' || feedbackKind === 'permissionChanged' || feedbackKind === 'reconciled' ? 'success' : feedbackKind === 'dependencyError' || feedbackKind === 'successorError' ? 'error' : 'warning';
-  if (feedbackKind === null || feedbackKind === 'permissionChanged') { root.innerHTML = ''; return; }
-  let content = `<p>${escape(m()[feedbackKind])}</p>`;
+  const kind = phase === 'unknown' ? 'uncertainty' : phase === 'readback-failed' ? 'readbackFailure' : phase === 'checking' ? 'checking' : feedbackKind;
+  root.dataset.tone = kind === 'changed' || kind === 'unchanged' || kind === 'permissionChanged' || kind === 'reconciled' ? 'success' : kind === 'dependencyError' || kind === 'successorError' ? 'error' : 'warning';
+  if (kind === null || kind === 'permissionChanged') { root.innerHTML = ''; return; }
+  let content = `<p>${escape(m()[kind])}</p>`;
   if (phase === 'pending') content += `<p>${escape(m().busyHelp)}</p>`;
-  if (feedbackKind === 'dependencyError') content += `<p><code>dependency_unsatisfied</code> · ${escape(scenario === 'blocked-ordinary' ? m().baseDependency : m().externalDependency)}</p>`;
-  if (feedbackKind === 'successorError') content += `<p><code>dependency_unsatisfied</code> · ${escape(m().successorTask)}</p>`;
-  if (feedbackKind === 'conflict') content += `<p><code>version_conflict</code></p>`;
+  if (kind === 'dependencyError') content += `<p><code>dependency_unsatisfied</code> · ${escape(scenario === 'blocked-ordinary' ? m().baseDependency : m().externalDependency)}</p>`;
+  if (kind === 'successorError') content += `<p><code>dependency_unsatisfied</code> · ${escape(m().successorTask)}</p>`;
+  if (kind === 'conflict') content += `<p><code>version_conflict</code></p>`;
   if (phase === 'unknown' || phase === 'readback-failed' || phase === 'checking') content += `<button class="button" id="reconcile" type="button"${phase === 'checking' ? ' disabled' : ''}>${escape(phase === 'checking' ? m().checking : m().check)}</button>`;
   root.innerHTML = content;
   $('reconcile')?.addEventListener('click', reconcile);
@@ -157,11 +179,13 @@ const render = () => {
   if (emptyAttachments && !$('no-files')) $('attachment-files').insertAdjacentHTML('afterend', '<p id="no-files" class="task-status-empty-files"></p>');
   if ($('no-files')) { $('no-files').hidden = !emptyAttachments; $('no-files').textContent = t.noFiles; }
   renderFeedback();
+  renderAttachmentFeedback();
   setTab(activeTab);
 };
 const loadScenario = (next, source = sourceState()) => {
   cancelConfirmation(false);
   scenario = next;
+  attachmentNotice = false;
   if (scenario === 'successor') source = 'done';
   if (isBlocked() && ['in_progress', 'done'].includes(source)) source = 'todo';
   task = makeTask(source);
@@ -322,9 +346,12 @@ const closeDetail = () => {
 };
 $('close-detail').addEventListener('click', closeDetail);
 $('open-detail').addEventListener('click', () => { detailOpen = true; render(); $('close-detail').focus(); });
-for (const tab of ['overview', 'attachments']) $(`${tab}-tab`).addEventListener('click', () => setTab(tab));
-for (const button of document.querySelectorAll('[data-file]')) button.addEventListener('click', () => { activeFile = button.dataset.file; renderAttachment(); $('attachment-scroll').scrollTop = 0; });
-$('new-tab').addEventListener('click', () => { feedbackKind = null; $('attachment-preview').insertAdjacentHTML('afterbegin', `<p class="task-status-attachment-note">${escape(m().separateRead)}</p>`); });
+for (const tab of tabs) {
+  $(`${tab}-tab`).addEventListener('click', () => activateTab(tab));
+  $(`${tab}-tab`).addEventListener('keydown', (event) => navigateTabs(event, tab));
+}
+for (const button of document.querySelectorAll('[data-file]')) button.addEventListener('click', () => { activeFile = button.dataset.file; attachmentNotice = false; renderAttachment(); $('attachment-scroll').scrollTop = 0; });
+$('new-tab').addEventListener('click', () => { attachmentNotice = true; renderAttachmentFeedback(); });
 document.addEventListener('keydown', (event) => {
   if (menuOpen) {
     const items = [...$('status-menu').querySelectorAll('[role=menuitemradio]')];

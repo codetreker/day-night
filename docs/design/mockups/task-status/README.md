@@ -21,13 +21,15 @@ The toolbar changes the fixture scenario or initial status, opens/closes details
 - Separate unfinished ordinary and external prerequisite fixtures refuse entry into execution or completion. Both edge kinds participate equally.
 - An active direct successor prevents reopening its completed prerequisite. Status assignment does not cascade to other tasks.
 - A conflict reads the current task. A concurrent update during confirmation invalidates the reviewed decision.
-- A lost response blocks status and automatic-execution writes until GET-only readback. The failed-readback fixture fails the first read, retains the write block, and permits another read. It never repeats the write.
+- A lost response blocks status and automatic-execution writes until GET-only readback. The failed-readback fixture fails the first read, retains the write block, and permits another read. Attachment reading has independent feedback and cannot remove mutation feedback or its recovery action, including across detail closure/reopening. Readback never repeats the write.
 - Initial loading, initial failure, retained refresh failure, unavailable task, empty attachments, and long content cover reading states. Loading/error titles use the shared header. The selected attachment and its scroll position survive status writes.
 - Entry into `in_progress` records a new start and clears completion. Return to `todo` clears both endpoints. Completion records an end and retains a start only when completing an execution interval. Direct `todo → done` has an unknown start. Same-status writes preserve timing.
 - Automatic execution permission uses the same confirmation and per-task write session. It remains independent of status and cannot change while execution is in progress.
 - Task ID copying uses the browser clipboard, retains selectable ID text, and reports copy success or failure without changing the task.
 
 ## Keyboard and narrow layouts
+
+Overview and Attachments use one active tab and roving tab index. ArrowLeft/ArrowRight wrap between them, Home/End select the first/last tab, and activation moves focus to the selected tab. Inactive panels are hidden and inert; switching tabs retains the mounted attachment panel, file selection, and scroll position.
 
 The status menu marks the current item and keeps it selectable. Arrow keys, Home/End, Enter/Space, Escape, and focus restoration follow the existing attachment-menu pattern. Confirmation initially focuses Cancel, traps focus, closes on Escape, makes its detail owner inert, and restores the opener on cancellation. Submitted writes outlive detail closure.
 
