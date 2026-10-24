@@ -166,7 +166,8 @@ authorized PR merge, require real successful checks and a linear mainline.
 directories. Keep these relative links intact so tools use the same workflow.
 When updating `using-daynight`, modify only its source under
 `packages/daynight/src/commands/skill/skills/using-daynight/`. Do not edit installed
-copies. After upgrading Daynight, installed copies are refreshed by rerunning
-`daynight skill install` for the relevant Agents and scopes, then following its
+copies. `daynight update` refreshes existing User and current-worktree Project
+copies automatically. For first installation or copies in other projects, run
+`daynight skill install` for the relevant Agents and scopes, then follow the
 reload instructions.
 

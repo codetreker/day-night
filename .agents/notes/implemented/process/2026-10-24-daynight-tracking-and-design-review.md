@@ -41,11 +41,13 @@ configured service and intended project; failed writes retain their actual cause
 and do not establish readable review material.
 
 Updates to `using-daynight` are made only in
-`packages/daynight/src/commands/skill/skills/using-daynight/`. Installed copies
-are refreshed by rerunning `daynight skill install` after upgrading Daynight,
-selecting the relevant Agents and scopes and following its reload instructions.
-The package updater replaces the npm package; the installer owns the independent
-Agent copies, as established by the
+`packages/daynight/src/commands/skill/skills/using-daynight/`. Existing User and
+current-worktree Project copies are refreshed during `daynight update` under the
+[automatic synchronization decision](../feature/2026-10-24-update-installed-agent-skills.md).
+First installation and refresh in another project use `daynight skill install`
+with the relevant Agents and scope, followed by its reload instructions.
+The installer still owns the independent Agent copies and complete replacement,
+as established by the
 [distribution decision](../architecture/2026-10-21-public-agent-skill-design.md). The
 [skill requirements](../../../../docs/spec/daynight-agent-skill.md) and
 [design](../../../../docs/design/daynight-agent-skill.md) own the public workflow;

@@ -1,6 +1,6 @@
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runUpdateCommand, updateSelf } from "../../../src/commands/update/updater.js";
 import type { UpdateCommand, UpdateOptions } from "../../../src/commands/update/updater.js";
@@ -26,6 +26,7 @@ const fixture = (platform: NodeJS.Platform = "linux", version = "1.0.0", latest:
     if (command.arguments[1] === "view") return JSON.stringify(latest);
     if (command.arguments[1] === "install") { contents.set(paths.join(root, "package.json"), manifest(targetVersion)); return ""; }
     if (command.arguments[0] === main) return `${executableVersion}\n`;
+    if (command.arguments[0] === paths.join(root, "dist", "commands", "skill", "refresh-installed.js")) return "";
     throw new Error("Unexpected update command.");
   });
   const options: UpdateOptions = {
@@ -48,6 +49,7 @@ describe("npm global self-update", () => {
       { executable: f.node, arguments: [f.npm, "view", "@codetreker/daynight@latest", "version", "--json", "--global", "--prefix", f.prefix, "--prefer-online"], cwd: f.prefix, environment: f.options.environment, timeoutMs: 60_000, output: "capture" },
       { executable: f.node, arguments: [f.npm, "install", "@codetreker/daynight@2.0.0", "--global", "--prefix", f.prefix, "--engine-strict", "--force=false", "--no-audit", "--no-fund"], cwd: f.prefix, environment: f.options.environment, timeoutMs: 600_000, output: "inherit" },
       { executable: f.node, arguments: [f.main, "--version"], cwd: f.prefix, environment: f.options.environment, timeoutMs: 30_000, output: "capture" },
+      { executable: f.node, arguments: [f.paths.join(f.root, "dist", "commands", "skill", "refresh-installed.js")], cwd: f.prefix, environment: f.options.environment, timeoutMs: 60_000, output: "inherit", cleanupProcessGroup: true },
     ]);
   });
 
@@ -57,7 +59,21 @@ describe("npm global self-update", () => {
     const f = fixture("linux", current, latest);
     f.options.workingDirectory = f.root;
     await expect(updateSelf(f.options)).resolves.toEqual({ status, previousVersion: current, targetVersion: latest });
-    expect(f.commands).toHaveLength(1);
+    expect(f.commands).toHaveLength(2);
+    expect(f.commands[1]!.cwd).toBe(f.root);
+    expect(f.commands[1]!.arguments).toEqual([f.paths.join(f.root, "dist", "commands", "skill", "refresh-installed.js")]);
+  });
+
+  it("reports a completed npm update separately when skill refresh fails", async () => {
+    const f = fixture();
+    const run = f.options.operations!.run;
+    const denied = new Error("skill parent access denied");
+    f.options.operations!.run = async (command) => {
+      if (command.arguments[0] === f.paths.join(f.root, "dist", "commands", "skill", "refresh-installed.js")) throw denied;
+      return run(command);
+    };
+    await expect(updateSelf(f.options)).rejects.toMatchObject({ message: expect.stringContaining("package was updated from 1.0.0 to 2.0.0"), cause: denied });
+    expect(JSON.parse(f.contents.get(f.paths.join(f.root, "package.json"))!).version).toBe("2.0.0");
   });
 
   it("resolves an exact prerelease target before installing", async () => {
@@ -252,6 +268,84 @@ if(process.connected)process.disconnect();`;
       }
     }
   }, 30_000);
+
+  it.skipIf(process.platform === "win32").each(["SIGINT", "SIGTERM", "timeout"] as const)("stops Git launched by a skill refresh on %s", async (interruption) => {
+    const temporary = path.resolve(import.meta.dirname, "../../../../../.tmp/update-refresh-supervision");
+    await mkdir(temporary, { recursive: true });
+    const directory = await mkdtemp(path.join(temporary, "Refresh Git 中文 "));
+    directories.push(directory);
+    const bin = path.join(directory, "bin");
+    const home = path.join(directory, "home");
+    await mkdir(bin); await mkdir(home); await mkdir(path.join(directory, ".git"));
+    const marker = path.join(directory, "git pid");
+    const heartbeat = path.join(directory, "heartbeat");
+    const fakeGit = path.join(bin, "git");
+    await writeFile(fakeGit, `#!${process.execPath}\nconst fs = require('node:fs');fs.writeFileSync(${JSON.stringify(marker)}, String(process.pid));setInterval(() => fs.appendFileSync(${JSON.stringify(heartbeat)}, 'tick\\n'), 10);`);
+    await chmod(fakeGit, 0o755);
+    const helper = path.resolve(import.meta.dirname, "../../../dist/commands/skill/refresh-installed.js");
+    const command = { executable: process.execPath, arguments: [helper], cwd: directory, timeoutMs: interruption === "timeout" ? 3_000 : 10_000, output: "capture", cleanupProcessGroup: true };
+    const moduleUrl = new URL("../../../src/commands/update/updater.ts", import.meta.url).href;
+    const driver = `import {runUpdateCommand} from ${JSON.stringify(moduleUrl)};process.on('message',signal=>process.emit(signal));try { await runUpdateCommand({...${JSON.stringify(command)},environment:process.env});process.exitCode=1; } catch(error) { process.stdout.write(error.message); }if(process.connected)process.disconnect();`;
+    const child = spawn(process.execPath, ["--input-type=module", "--eval", driver], {
+      cwd: directory, env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}`, HOME: home, USERPROFILE: home },
+      stdio: ["ignore", "pipe", "pipe", "ipc"], windowsHide: true,
+    });
+    let output = "";
+    child.stdout!.setEncoding("utf8").on("data", (chunk: string) => { output += chunk; });
+    child.stderr!.setEncoding("utf8").on("data", (chunk: string) => { output += chunk; });
+    const closed = new Promise<number | null>((resolve, reject) => { child.once("error", reject); child.once("close", resolve); });
+    let gitPid: number | undefined;
+    const ticks = (): Promise<string> => readFile(heartbeat, "utf8").catch((cause: unknown) => {
+      if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") return "";
+      throw cause;
+    });
+    try {
+      const deadline = Date.now() + 5_000;
+      while (gitPid === undefined || (await ticks()).length < 10) {
+        try { gitPid = Number(await readFile(marker, "utf8")); }
+        catch (cause) { if (!(cause instanceof Error && "code" in cause && cause.code === "ENOENT")) throw cause; }
+        if (Date.now() >= deadline) throw new Error(`The refresh Git fixture did not start: ${output}`);
+        await new Promise((resolve) => { setTimeout(resolve, 20); });
+      }
+      if (interruption !== "timeout") child.send(interruption);
+      expect(await closed, output).toBe(0);
+      expect(output).toContain(interruption === "timeout" ? "timed out after 3 seconds" : `interrupted by ${interruption}`);
+      const stopped = await ticks();
+      await new Promise((resolve) => { setTimeout(resolve, 100); });
+      expect(await ticks()).toBe(stopped);
+    } finally {
+      if (child.exitCode === null && child.signalCode === null && child.connected) { child.send("SIGTERM"); await closed; }
+      if (gitPid !== undefined) {
+        try { process.kill(gitPid, "SIGKILL"); }
+        catch (cause) { if (!(cause instanceof Error && "code" in cause && cause.code === "ESRCH")) throw cause; }
+      }
+    }
+  }, 15_000);
+
+  it.skipIf(process.platform === "win32")("cleans inherited descendants after a supervised helper exits", async () => {
+    const temporary = path.resolve(import.meta.dirname, "../../../../../.tmp/update-refresh-supervision");
+    await mkdir(temporary, { recursive: true });
+    const directory = await mkdtemp(path.join(temporary, "Helper close 中文 "));
+    directories.push(directory);
+    const heartbeat = path.join(directory, "heartbeat");
+    const leaf = path.join(directory, "leaf.cjs");
+    const helper = path.join(directory, "helper.cjs");
+    await writeFile(leaf, `const fs=require('node:fs');setInterval(()=>fs.appendFileSync(${JSON.stringify(heartbeat)},'tick\\n'),10);`);
+    await writeFile(helper, `const fs=require('node:fs');const {spawn}=require('node:child_process');const child=spawn(process.execPath,[${JSON.stringify(leaf)}],{stdio:'ignore'});child.unref();process.stdout.write(String(child.pid));const timer=setInterval(()=>{if(fs.existsSync(${JSON.stringify(heartbeat)})){clearInterval(timer);process.exit(0);}},10);`);
+    let pid: number | undefined;
+    try {
+      const output = await runUpdateCommand({ executable: process.execPath, arguments: [helper], cwd: directory, environment: process.env, timeoutMs: 5_000, output: "capture", cleanupProcessGroup: true });
+      pid = Number(output);
+      const stopped = await readFile(heartbeat, "utf8");
+      await new Promise((resolve) => { setTimeout(resolve, 100); });
+      expect(await readFile(heartbeat, "utf8")).toBe(stopped);
+    } finally {
+      if (pid !== undefined) {
+        try { process.kill(pid, "SIGKILL"); }
+        catch (cause) { if (!(cause instanceof Error && "code" in cause && cause.code === "ESRCH")) throw cause; }
+      }
+    }
+  });
 
   it("removes interruption handlers after successful and failed commands", async () => {
     const before = [process.listenerCount("SIGINT"), process.listenerCount("SIGTERM")];

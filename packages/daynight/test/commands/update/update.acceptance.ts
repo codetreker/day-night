@@ -12,7 +12,13 @@ const packageName = "@codetreker/daynight";
 type Manifest = { name: string; version: string; [key: string]: unknown };
 type Result = { status: number | null; stdout: string; stderr: string };
 
-it("replaces its real npm global installation and preserves npm configuration and review state", async () => {
+const skillTree = (directory: string): Record<string, string> => Object.fromEntries(
+  readdirSync(directory, { withFileTypes: true }).flatMap((entry) => entry.isDirectory()
+    ? Object.entries(skillTree(path.join(directory, entry.name))).map(([relative, contents]) => [`${entry.name}/${relative}`, contents])
+    : [[entry.name, readFileSync(path.join(directory, entry.name)).toString("base64")]]),
+);
+
+it("replaces its real npm global installation, refreshes existing agent skills and preserves configuration and review state", async () => {
   const temporary = path.join(workspace, ".tmp");
   mkdirSync(temporary, { recursive: true });
   const evidenceFile = path.join(temporary, "update-evidence.json");
@@ -49,10 +55,23 @@ it("replaces its real npm global installation and preserves npm configuration an
     const prefix = path.join(directory, "original npm prefix 中文");
     const unrelatedPrefix = path.join(directory, "unrelated default prefix 中文");
     const caller = path.join(directory, "caller project 中文");
+    const callerSubdirectory = path.join(caller, "nested commands 中文");
     const artifacts = path.join(directory, "packed artifacts");
     const cache = path.join(directory, "npm cache 中文");
     const state = path.join(home, ".daynight");
-    for (const location of [home, prefix, caller, artifacts, state]) mkdirSync(location, { recursive: true });
+    const agentLaunchers = path.join(directory, "agent launchers");
+    const agentSentinel = path.join(directory, "agent-executed.txt");
+    for (const location of [home, prefix, callerSubdirectory, artifacts, state, agentLaunchers]) mkdirSync(location, { recursive: true });
+    const launcherSource = `import("node:fs").then(({ writeFileSync }) => { writeFileSync(${JSON.stringify(agentSentinel)}, "Agent launcher executed."); process.exitCode = 87; });\n`;
+    const launcherModule = path.join(agentLaunchers, "fail-if-executed.cjs");
+    writeFileSync(launcherModule, launcherSource);
+    for (const agent of ["codex", "copilot", "claude"]) {
+      const filename = path.join(agentLaunchers, process.platform === "win32" ? `${agent}.cmd` : agent);
+      const contents = process.platform === "win32"
+        ? `@echo off\r\n"${process.execPath}" "${launcherModule}"\r\n`
+        : `#!/usr/bin/env node\n${launcherSource}`;
+      writeFileSync(filename, contents, { mode: 0o755 });
+    }
     const userConfiguration = path.join(directory, "user.npmrc");
     const globalConfiguration = path.join(directory, "global.npmrc");
     writeFileSync(globalConfiguration, "");
@@ -72,7 +91,7 @@ it("replaces its real npm global installation and preserves npm configuration an
       HOME: home, USERPROFILE: home, XDG_CONFIG_HOME: path.join(home, "config"),
       XDG_CACHE_HOME: path.join(home, "cache"), APPDATA: path.join(home, "AppData", "Roaming"),
       LOCALAPPDATA: path.join(home, "AppData", "Local"),
-      PATH: `${path.dirname(process.execPath)}${path.delimiter}${process.env.PATH ?? process.env.Path ?? ""}`,
+      PATH: `${agentLaunchers}${path.delimiter}${path.dirname(process.execPath)}${path.delimiter}${process.env.PATH ?? process.env.Path ?? ""}`,
       NPM_CONFIG_USERCONFIG: userConfiguration, NPM_CONFIG_GLOBALCONFIG: globalConfiguration,
       NPM_CONFIG_PREFIX: unrelatedPrefix, NO_COLOR: "1",
     });
@@ -106,6 +125,7 @@ it("replaces its real npm global installation and preserves npm configuration an
       expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
       return result;
     };
+    success(await run("git", ["init", "--quiet", caller], directory));
     await new Promise<void>((resolve, reject) => {
       server.once("error", reject);
       server.listen(0, "127.0.0.1", () => { server.removeListener("error", reject); resolve(); });
@@ -125,6 +145,10 @@ it("replaces its real npm global installation and preserves npm configuration an
     const sourceSkillContents = readFileSync(path.join(packageDirectory, "src", skillRelativeFile), "utf8");
     expect(readFileSync(path.join(packageDirectory, "dist", skillRelativeFile), "utf8")).toBe(sourceSkillContents);
     const fixtureSkills = new Map<string, string>();
+    const publicSkillRelativeDirectory = "commands/skill/skills/using-daynight";
+    const publicSkillEntrypoint = path.join(publicSkillRelativeDirectory, "SKILL.md");
+    const sourcePublicSkill = readFileSync(path.join(packageDirectory, "src", publicSkillEntrypoint), "utf8");
+    const fixturePublicSkills = new Map<string, Record<string, string>>();
     const versions: Record<string, Manifest> = {};
     const tarballs = new Map<string, Buffer>();
     const requests: { pathname: string; status: number }[] = [];
@@ -162,6 +186,8 @@ it("replaces its real npm global installation and preserves npm configuration an
       const skillContents = `${sourceSkillContents}\n<!-- Npm update acceptance: package ${version}. -->\n`;
       writeFileSync(path.join(fixture, "dist", skillRelativeFile), skillContents);
       fixtureSkills.set(version, skillContents);
+      writeFileSync(path.join(fixture, "dist", publicSkillEntrypoint), `${sourcePublicSkill}\n<!-- Public skill package ${version}. -->\n`);
+      fixturePublicSkills.set(version, skillTree(path.join(fixture, "dist", publicSkillRelativeDirectory)));
       const manifest = { ...sourceManifest, version };
       writeFileSync(path.join(fixture, "package.json"), JSON.stringify(manifest, null, 2));
       const packed = success(await npm(["pack", "--ignore-scripts", "--pack-destination", artifacts], fixture));
@@ -180,9 +206,27 @@ it("replaces its real npm global installation and preserves npm configuration an
     const installedPackage = process.platform === "win32" ? path.join(prefix, "node_modules", packageName) : path.join(prefix, "lib/node_modules", packageName);
     const installedBin = process.platform === "win32" ? path.join(prefix, "daynight.cmd") : path.join(prefix, "bin/daynight");
     const shortBin = process.platform === "win32" ? path.join(prefix, "dn.cmd") : path.join(prefix, "bin/dn");
-    const shortCli = (args: string[]): Promise<Result> => run(shortBin, args, caller);
+    const shortCli = (args: string[]): Promise<Result> => run(shortBin, args, callerSubdirectory);
     const installedSkill = path.join(installedPackage, "dist", skillRelativeFile);
-    const cli = (args: string[], commandEnvironment = environment): Promise<Result> => run(installedBin, args, caller, commandEnvironment);
+    const cli = (args: string[], commandEnvironment = environment): Promise<Result> => run(installedBin, args, callerSubdirectory, commandEnvironment);
+    const userSkill = path.join(home, ".agents", "skills", "using-daynight");
+    const projectSkill = path.join(caller, ".claude", "skills", "using-daynight");
+    const missingUserSkill = path.join(home, ".claude", "skills", "using-daynight");
+    const missingProjectSkill = path.join(caller, ".agents", "skills", "using-daynight");
+    const sibling = path.join(home, ".agents", "skills", "unrelated", "SKILL.md");
+    mkdirSync(path.dirname(sibling), { recursive: true });
+    writeFileSync(sibling, "Preserve this unrelated skill.\n");
+    for (const target of [userSkill, projectSkill]) {
+      cpSync(path.join(installedPackage, "dist", publicSkillRelativeDirectory), target, { recursive: true });
+      writeFileSync(path.join(target, "SKILL.md"), "Local skill customization.\n");
+      writeFileSync(path.join(target, "obsolete.md"), "Remove this obsolete resource.\n");
+    }
+    const expectPublicSkills = (version: string): void => {
+      for (const target of [userSkill, projectSkill]) expect(skillTree(target)).toEqual(fixturePublicSkills.get(version));
+      expect(existsSync(missingUserSkill)).toBe(false);
+      expect(existsSync(missingProjectSkill)).toBe(false);
+      expect(readFileSync(sibling, "utf8")).toBe("Preserve this unrelated skill.\n");
+    };
     expect(success(await cli(["--version"])).stdout.trim()).toBe("1.0.0");
     expect(success(await shortCli(["--version"])).stdout.trim()).toBe("1.0.0");
     expect(readFileSync(installedSkill, "utf8")).toBe(fixtureSkills.get("1.0.0"));
@@ -202,14 +246,23 @@ it("replaces its real npm global installation and preserves npm configuration an
     expect((JSON.parse(readFileSync(path.join(installedPackage, "package.json"), "utf8")) as Manifest).version).toBe("1.0.1");
     expect(readFileSync(installedSkill, "utf8")).toBe(fixtureSkills.get("1.0.1"));
     expect(readFileSync(installedSkill, "utf8")).not.toBe(fixtureSkills.get("1.0.0"));
+    expectPublicSkills("1.0.1");
+    expect(upgraded.stdout).toContain(userSkill);
+    expect(upgraded.stdout).toContain(projectSkill);
     expect(requests.filter((item) => item.pathname === "/tarballs/daynight-1.0.1.tgz" && item.status === 200)).toHaveLength(1);
     const downloads = requests.filter((item) => item.pathname.startsWith("/tarballs/")).length;
     latest = "1.0.1";
-    expect(success(await cli(["update"], { ...environment, HOME: emptyHome, USERPROFILE: emptyHome })).stdout).toBe("daynight 1.0.1 is already up to date.\n");
+    writeFileSync(path.join(projectSkill, "SKILL.md"), "Repair an interrupted project skill refresh.\n");
+    expect(success(await cli(["update"], { ...environment, HOME: emptyHome, USERPROFILE: emptyHome })).stdout).toContain("daynight 1.0.1 is already up to date.\n");
+    expectPublicSkills("1.0.1");
     expect(existsSync(path.join(emptyHome, ".daynight"))).toBe(false);
+    expect(existsSync(path.join(emptyHome, ".agents"))).toBe(false);
+    expect(existsSync(path.join(emptyHome, ".claude"))).toBe(false);
     expect(requests.filter((item) => item.pathname.startsWith("/tarballs/"))).toHaveLength(downloads);
     latest = "1.0.0";
-    expect(success(await cli(["update"])).stdout).toBe("daynight 1.0.1 is newer than latest 1.0.0.\n");
+    writeFileSync(path.join(userSkill, "SKILL.md"), "Repair the installed skill without downgrading.\n");
+    expect(success(await cli(["update"])).stdout).toContain("daynight 1.0.1 is newer than latest 1.0.0.\n");
+    expectPublicSkills("1.0.1");
     expect(requests.filter((item) => item.pathname.startsWith("/tarballs/"))).toHaveLength(downloads);
     metadataFailure = true;
     const unavailable = await cli(["update"]);
@@ -226,6 +279,23 @@ it("replaces its real npm global installation and preserves npm configuration an
     expect(success(await cli(["--version"])).stdout.trim()).toBe("1.0.1");
     expect(readFileSync(path.join(state, "config.yml"), "utf8")).toBe(configurationContents);
     expect(readFileSync(installedSkill, "utf8")).toBe(fixtureSkills.get("1.0.1"));
+    expectPublicSkills("1.0.1");
+    tarballFailure = false;
+    const blockedParent = path.join(home, ".claude");
+    writeFileSync(blockedParent, "A regular file cannot be a skill parent.\n");
+    const failedRefresh = await cli(["update"]);
+    expect(failedRefresh.status).toBe(1);
+    expect(failedRefresh.stderr).toMatch(/skill/iu);
+    expect(failedRefresh.stderr).toContain(blockedParent);
+    expect(success(await cli(["--version"])).stdout.trim()).toBe("1.0.2");
+    expect(readFileSync(installedSkill, "utf8")).toBe(fixtureSkills.get("1.0.2"));
+    expectPublicSkills("1.0.1");
+    rmSync(blockedParent);
+    const downloadsBeforeRetry = requests.filter((item) => item.pathname.startsWith("/tarballs/")).length;
+    const recovered = success(await cli(["update"]));
+    expect(recovered.stdout).toContain("daynight 1.0.2 is already up to date.\n");
+    expectPublicSkills("1.0.2");
+    expect(requests.filter((item) => item.pathname.startsWith("/tarballs/"))).toHaveLength(downloadsBeforeRetry);
     expect(readFileSync(path.join(state, "state.sqlite"))).toEqual(databaseContents);
     expect(readdirSync(state).sort()).toEqual(["config.yml", "state.sqlite"]);
     expect(readFileSync(userConfiguration, "utf8")).toBe(npmConfigurationContents);
@@ -233,6 +303,7 @@ it("replaces its real npm global installation and preserves npm configuration an
     expect(readFileSync(projectConfiguration, "utf8")).toBe(projectContents);
     expect(existsSync(unrelatedPrefix)).toBe(false);
     expect(existsSync(path.join(caller, "node_modules"))).toBe(false);
+    expect(existsSync(agentSentinel)).toBe(false);
     expect(requests.every((item) => item.pathname === `/${packageName}` || item.pathname.startsWith("/tarballs/"))).toBe(true);
     const npmVersion = success(await npm(["--version"])).stdout.trim();
     writeFileSync(evidenceFile, JSON.stringify({
@@ -246,14 +317,17 @@ it("replaces its real npm global installation and preserves npm configuration an
       scenarios: ["dn-before-update", "dn-update", "dn-after-update", "npm-global-shim-before-update", "spaces-and-unicode-prefix", "same-installation-replacement", "resolved-target-pinned-after-latest-moves", "npm-global-shim-after-update",
         "configured-scoped-registry", "conflicting-default-prefix", "conflicting-caller-project-npmrc", "update-help-without-state",
         "invalid-review-state-untouched", "already-current-without-install", "ahead-without-downgrade", "metadata-failure-visible", "installation-failure-visible",
-        "bundled-skill-in-installed-npm-tarball", "self-update-replaces-skill-bytes", "failed-update-preserves-installed-skill"],
-      receipts: { previousVersion: "1.0.0", updatedVersion: "1.0.1", finalVersion: "1.0.1", currentSkippedInstall: true,
+        "bundled-skill-in-installed-npm-tarball", "self-update-replaces-skill-bytes", "failed-update-preserves-installed-skill",
+        "existing-user-and-project-public-skills-refreshed", "project-skill-found-from-subdirectory", "absent-skills-remain-absent", "public-skill-stale-resources-removed",
+        "current-refresh-without-install", "ahead-refresh-without-downgrade", "skill-refresh-failure-preserves-updated-package", "current-retry-recovers-public-skills", "agent-launchers-never-executed"],
+      receipts: { previousVersion: "1.0.0", updatedVersion: "1.0.1", finalVersion: "1.0.2", currentSkippedInstall: true,
         aheadSkippedInstall: true, resolvedTargetPinnedAfterLatestMoves: true, metadataFailureExitCode: unavailable.status, installFailureExitCode: failedInstall.status,
         metadataRequests: requests.filter((item) => item.pathname === `/${packageName}`).length,
         successfulUpdateTarballRequests: requests.filter((item) => item.pathname === "/tarballs/daynight-1.0.1.tgz" && item.status === 200).length,
         previousSkillSha256: createHash("sha256").update(fixtureSkills.get("1.0.0")!).digest("hex"),
         updatedSkillSha256: createHash("sha256").update(fixtureSkills.get("1.0.1")!).digest("hex"),
-        bundledSkillUpdated: true, failedUpdatePreservesInstalledSkill: true },
+        bundledSkillUpdated: true, failedUpdatePreservesInstalledSkill: true, installedPublicSkillsUpdated: true,
+        publicSkillRefreshFailureExitCode: failedRefresh.status, currentRetryRepairsSkillsWithoutInstall: true, agentLaunchersExecuted: false },
     }, null, 2));
   } finally {
     await Promise.all([...children].map(terminate));

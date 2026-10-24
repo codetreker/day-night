@@ -21,6 +21,7 @@ export type UpdateCommand = {
   environment: NodeJS.ProcessEnv;
   timeoutMs: number;
   output: "capture" | "inherit";
+  cleanupProcessGroup?: boolean;
 };
 
 type UpdateOperations = {
@@ -109,6 +110,7 @@ export const runUpdateCommand = async (command: UpdateCommand): Promise<string> 
     child.once("error", (cause) => { if (failure === undefined) failure = cause; });
     child.once("close", async (code, signal) => {
       clearTimeout(timer);
+      if (command.cleanupProcessGroup === true && process.platform !== "win32") terminate();
       if (termination !== undefined) await termination;
       process.removeListener("SIGINT", interruptByInt);
       process.removeListener("SIGTERM", interruptByTerm);
@@ -139,7 +141,7 @@ const parseVersion = (value: unknown, subject: string): string => {
 
 const isMissing = (cause: unknown): boolean => cause instanceof Error && "code" in cause && (cause.code === "ENOENT" || cause.code === "ENOTDIR");
 
-/** Updates only the npm global installation containing this module; no configuration or review state is opened. */
+/** Updates the owning npm global installation and refreshes its existing skills without opening review state. */
 export const updateSelf = async (options: UpdateOptions): Promise<UpdateResult> => {
   const operations = options.operations === undefined ? defaultOperations : options.operations;
   const platform = options.platform === undefined ? process.platform : options.platform;
@@ -207,8 +209,20 @@ export const updateSelf = async (options: UpdateOptions): Promise<UpdateResult> 
   catch (cause) { throw new Error("npm returned invalid JSON for the latest package version.", { cause }); }
   const targetVersion = parseVersion(Array.isArray(latest) && latest.length === 1 ? latest[0] : latest, "The latest npm package version");
   const order = compare(previousVersion, targetVersion);
-  if (order >= 0) return { status: order === 0 ? "current" : "ahead", previousVersion, targetVersion };
   const workingDirectory = await operations.realpath(options.workingDirectory === undefined ? process.cwd() : options.workingDirectory);
+  const refresh = async (status: UpdateResult["status"]): Promise<UpdateResult> => {
+    try {
+      await operations.run({
+        executable: nodeExecutable, arguments: [paths.join(packageDirectory, "dist", "commands", "skill", "refresh-installed.js")],
+        cwd: workingDirectory, environment, timeoutMs: 60_000, output: "inherit", cleanupProcessGroup: true,
+      });
+    } catch (cause) {
+      const outcome = status === "updated" ? `The daynight package was updated from ${previousVersion} to ${targetVersion}` : `The daynight package remains at ${previousVersion}`;
+      throw new Error(`${outcome}, but refreshing installed using-daynight skills failed. Resolve the reported error and run daynight update again.`, { cause });
+    }
+    return { status, previousVersion, targetVersion };
+  };
+  if (order >= 0) return refresh(order === 0 ? "current" : "ahead");
   if (contains(packageDirectory, workingDirectory)) throw new Error("Run daynight update from a directory outside its installation so npm can replace the package.");
   await execute(["install", `${packageName}@${targetVersion}`, "--global", "--prefix", prefix, "--engine-strict", "--force=false", "--no-audit", "--no-fund"], "inherit", 10 * 60_000);
   const installedManifest = await manifestAt(packageDirectory);
@@ -218,5 +232,5 @@ export const updateSelf = async (options: UpdateOptions): Promise<UpdateResult> 
   await verifyLauncher();
   const installedVersion = (await operations.run({ executable: nodeExecutable, arguments: [main, "--version"], cwd: prefix, environment, timeoutMs: 30_000, output: "capture" })).trim();
   if (installedVersion !== targetVersion) throw new Error(`The updated executable returned version ${JSON.stringify(installedVersion)}; expected ${targetVersion}.`);
-  return { status: "updated", previousVersion, targetVersion };
+  return refresh("updated");
 };

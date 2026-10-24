@@ -18,15 +18,12 @@ const contains = (parent: string, child: string): boolean => {
   return relative !== "" && relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
 };
 
-export const planSkillTargets = async (base: string, agents: readonly SkillAgent[]): Promise<SkillTarget[]> => {
+export const mergeSkillTargets = (candidates: readonly SkillTarget[]): SkillTarget[] => {
   const targets: SkillTarget[] = [];
-  for (const agent of agents) {
-    const parent = await resolvePhysicalDirectory(path.join(base, agent.directory, "skills"));
-    const physicalParent = path.join(parent.ancestorPath, ...parent.missingComponents);
-    const targetPath = path.join(physicalParent, "using-daynight");
-    const existing = targets.find((target) => comparisonPath(target.path) === comparisonPath(targetPath));
-    if (existing !== undefined) existing.agents.push(agent);
-    else targets.push({ path: targetPath, legacyPath: path.join(physicalParent, "daynight"), parent: physicalParent, ancestor: parent.ancestorPath, missingParents: parent.missingComponents, agents: [agent] });
+  for (const candidate of candidates) {
+    const existing = targets.find((target) => comparisonPath(target.path) === comparisonPath(candidate.path));
+    if (existing === undefined) targets.push({ ...candidate, agents: [...candidate.agents] });
+    else for (const agent of candidate.agents) if (!existing.agents.some(({ id }) => id === agent.id)) existing.agents.push(agent);
   }
   for (const [index, first] of targets.entries()) {
     for (const second of targets.slice(index + 1)) {
@@ -43,4 +40,14 @@ export const planSkillTargets = async (base: string, agents: readonly SkillAgent
     }
   }
   return targets;
+};
+
+export const planSkillTargets = async (base: string, agents: readonly SkillAgent[]): Promise<SkillTarget[]> => {
+  const targets: SkillTarget[] = [];
+  for (const agent of agents) {
+    const parent = await resolvePhysicalDirectory(path.join(base, agent.directory, "skills"));
+    const physicalParent = path.join(parent.ancestorPath, ...parent.missingComponents);
+    targets.push({ path: path.join(physicalParent, "using-daynight"), legacyPath: path.join(physicalParent, "daynight"), parent: physicalParent, ancestor: parent.ancestorPath, missingParents: parent.missingComponents, agents: [agent] });
+  }
+  return mergeSkillTargets(targets);
 };
