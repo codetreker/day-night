@@ -59,7 +59,11 @@ afterEach(async () => {
 });
 
 describe("Windows Git process-tree confirmation", () => {
-  it.each(["confirmed", "uncertain"] as const)("preserves the %s taskkill outcome after the real wrapper closes", async (outcome) => {
+  it.each([
+    { outcome: "confirmed", heartbeatDelayMs: 0 },
+    { outcome: "uncertain", heartbeatDelayMs: 0 },
+    { outcome: "uncertain", heartbeatDelayMs: 250 },
+  ] as const)("preserves the $outcome taskkill outcome after the real wrapper closes with a $heartbeatDelayMs ms heartbeat delay", async ({ outcome, heartbeatDelayMs }) => {
     const scratch = path.resolve(import.meta.dirname, "../../../../.tmp/repository-git-cleanup-tests");
     await mkdir(scratch, { recursive: true });
     const directory = await mkdtemp(path.join(scratch, "Cleanup 中文 ")); directories.push(directory);
@@ -68,7 +72,7 @@ describe("Windows Git process-tree confirmation", () => {
     const ticks = path.join(directory, "ticks");
     const descendant = path.join(directory, "descendant.mjs");
     const wrapper = path.join(directory, "wrapper.mjs");
-    await writeFile(descendant, `import { appendFileSync, writeFileSync } from 'node:fs';\nwriteFileSync(${JSON.stringify(marker)}, JSON.stringify({ pid: process.pid }));\nsetInterval(() => appendFileSync(${JSON.stringify(ticks)}, 'tick\\n'), 10);\n`);
+    await writeFile(descendant, `import { appendFileSync, writeFileSync } from 'node:fs';\nwriteFileSync(${JSON.stringify(marker)}, JSON.stringify({ pid: process.pid }));\nsetTimeout(() => setInterval(() => appendFileSync(${JSON.stringify(ticks)}, 'tick\\n'), 10), ${heartbeatDelayMs});\n`);
     // The descendant's working directory must outlive the per-case control files: Windows locks a process's current directory.
     // https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-setcurrentdirectory#remarks
     await writeFile(wrapper, `import { spawn } from 'node:child_process';\nimport { writeFileSync } from 'node:fs';\nconst child = spawn(process.execPath, [${JSON.stringify(descendant)}], { cwd: ${JSON.stringify(scratch)}, detached: true, windowsHide: true, stdio: 'ignore' });\nwriteFileSync(${JSON.stringify(childPidFile)}, JSON.stringify({ pid: child.pid }));\nchild.once('exit', () => process.exit(0));\nsetInterval(() => {}, 1000);\n`);
@@ -109,8 +113,8 @@ describe("Windows Git process-tree confirmation", () => {
         expect((error as AggregateError).errors[0]).toBe(uncertainty);
         expect((error as AggregateError).cause).toBe(op.signal.reason);
         expect(nativeProcess.kill(ownedPid!, 0)).toBe(true);
-        const running = await readTicks(ticks); await new Promise((resolve) => { setTimeout(resolve, 50); });
-        expect((await readTicks(ticks)).length).toBeGreaterThan(running.length);
+        const running = await readTicks(ticks);
+        await expect.poll(async () => (await readTicks(ticks)).length, { timeout: 1000, interval: 10 }).toBeGreaterThan(running.length);
       }
     } finally {
       controller.abort(new Error("Clean up the owned Git wrapper"));
