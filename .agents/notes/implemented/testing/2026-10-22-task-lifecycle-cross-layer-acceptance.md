@@ -53,6 +53,16 @@ Native service/HTTP cases separately order ordinary/external reopening against
 successor start/done. One observed process scheduling outcome does not prove
 every interleaving.
 
+The installed platform/status matrix runs independently as
+`TestInstalledCLIPlatformAcceptance` / `installed_cli_platform_status_workflow`.
+It retains all four platform values across nine status pairs and the original
+project/task workflow retains its assertions. Separate owned database, installed
+CLI workspace and server fixtures give each scenario the existing 45-second
+server lifetime; the matrix does not consume the main workflow's process budget.
+The platform scenario requires graceful SIGTERM exit 0 and normal cleanup evidence.
+Its source-bound runtime receipt remains distinct from source inspection or this
+scenario description.
+
 ### One task graph across CLI and browser
 
 Production annotations task-status, task-status-conflicts, task-status-recovery

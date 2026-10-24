@@ -36,7 +36,7 @@ test('task-platform', scenario, async ({ page, api, allowBrowserWrites }, info) 
   if (typeof base !== 'string') throw new Error('Platform acceptance requires the actual service origin.');
   const endpoint = new URL(taskPath(own.id, task.id), base).href;
   allowBrowserWrites([{ method: 'PATCH', url: endpoint, count: 6 }]);
-  const writes: { version: string; requiredPlatform: Task['requiredPlatform']; result: number; requestId: string | null }[] = [];
+  const writes: { version: string; requiredPlatform: Task['requiredPlatform']; result: number; requestId: string }[] = [];
   let mode: 'ordinary' | 'conflict' | 'unknown' | 'pending' = 'ordinary';
   let rejectReconciliation = false;
   const pendingReached = deferred(); const releasePending = deferred();
@@ -60,8 +60,9 @@ test('task-platform', scenario, async ({ page, api, allowBrowserWrites }, info) 
     const before = parseTaskDetail(parseApiJson(await beforeResponse.text()), own.id, task.id);
     const response = await authenticatedAPI(page.context().request).fetch(route.request(), { timeout: 15_000, maxRetries: 0 });
     const responseBody = await response.text();
-    const requestId = response.status() === 409 ? parseServerError(JSON.parse(responseBody)).requestId : response.headers()['x-request-id'] ?? null;
-    expect(requestId).toMatch(/^[0-9a-f-]{36}$/);
+    const requestId = response.headers()['x-request-id'];
+    if (requestId === undefined) throw new Error('Platform responses require a correlation ID.');
+    expect(requestId).toMatch(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/);
     writes.push({ version: String(data.version), requiredPlatform: data.requiredPlatform, result: response.status(), requestId });
     if (response.status() === 200) {
       expect(before.version).toBe(data.version);
@@ -70,7 +71,10 @@ test('task-platform', scenario, async ({ page, api, allowBrowserWrites }, info) 
         ...before, requiredPlatform: data.requiredPlatform, version: before.version + 1n, updatedAt: after.updatedAt,
       });
     } else {
-      expect(response.status()).toBe(409); expect(parseServerError(JSON.parse(responseBody)).code).toBe('version_conflict');
+      expect(response.status()).toBe(409);
+      const refusal = parseServerError(parseApiJson(responseBody));
+      expect(refusal.code).toBe('version_conflict');
+      expect(refusal.requestId).toBe(requestId);
     }
     if (mode === 'unknown') { rejectReconciliation = true; mode = 'ordinary'; await route.abort('connectionfailed'); return; }
     if (mode === 'pending') { mode = 'ordinary'; pendingReached.resolve(); await releasePending.promise; }
@@ -88,6 +92,7 @@ test('task-platform', scenario, async ({ page, api, allowBrowserWrites }, info) 
     mode = 'conflict'; await platform(page).selectOption('windows'); await save(page).click();
     await expect(detail(page).getByText('任务已发生变化，请检查当前平台后重新保存修改。')).toBeVisible();
     await expect(platform(page)).toHaveValue(''); await expect(save(page)).toBeDisabled(); expect(writes).toHaveLength(3);
+    await expect(detail(page).locator('.task-platform-error .request-id code')).toHaveText(writes[2]!.requestId);
     await platform(page).selectOption('windows'); await save(page).click(); await expect(detail(page).locator('.task-detail-badges .task-platform')).toHaveText('Windows');
 
     mode = 'unknown'; await platform(page).selectOption('linux'); await save(page).click();

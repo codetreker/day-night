@@ -49,7 +49,7 @@ afterEach(() => {
 });
 
 describe("packaged skill resource copy", () => {
-  it.each([{ name: "LF", lineEnding: "\n" }, { name: "CRLF", lineEnding: "\r\n" }])("retains platform-filtered automatic selection and the full-task claim recheck with $name line endings", async ({ lineEnding }) => {
+  it.each([{ name: "LF", lineEnding: "\n" }, { name: "CRLF", lineEnding: "\r\n" }])("retains platform-filtered automatic selection and the full-task status recheck with $name line endings", async ({ lineEnding }) => {
     const f = fixture();
     const source = f.source(bundles[1]);
     for (const name of files(source).filter((name) => name.endsWith(".md"))) {
@@ -66,7 +66,7 @@ describe("packaged skill resource copy", () => {
     const mutations = [
       { resource: "references/autopilot.md", before: "task ready --allow-agents true --compatible-platform <actual-platform>", after: "task ready --allow-agents true" },
       { resource: "references/autopilot.md", before: "task list --allow-agents true --compatible-platform <actual-platform>", after: "task list --allow-agents true" },
-      { resource: "references/run-task.md", before: "Immediately before claim, reread the full task and", after: "Use the previously selected candidate and" },
+      { resource: "references/run-task.md", before: "Immediately before\nsetting in_progress, reread the full task and", after: "Use the previously selected candidate and" },
       { resource: "references/run-task.md", before: "An automatically selected ID passed here remains automatic\nselection, even though run-task receives a concrete ID.", after: "A task ID always uses manual selection." },
     ];
     for (const mutation of mutations) {

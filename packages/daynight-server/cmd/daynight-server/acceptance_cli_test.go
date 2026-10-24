@@ -828,7 +828,6 @@ func TestInstalledCLIProjectTaskAcceptance(t *testing.T) {
 			t.Fatal("installed graph included full-resource properties")
 		}
 		acceptanceCLIAllowAgents(t, cli, process)
-		acceptanceCLIPlatforms(t, cli, process)
 		firstBefore, targetBefore := cli.task(t, first), cli.task(t, target)
 		process.signal(t)
 		process.stopped(t, 0)

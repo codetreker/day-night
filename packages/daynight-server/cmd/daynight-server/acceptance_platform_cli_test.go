@@ -10,6 +10,19 @@ import (
 	"github.com/codetreker/daynight/packages/daynight-server/api"
 )
 
+func TestInstalledCLIPlatformAcceptance(t *testing.T) {
+	receipt := readAcceptanceCLI(t)
+	acceptanceCase(t, "installed_cli_platform_status_workflow", []string{"PT.V1", "PT.V3", "PT.V7", "TS1", "TS3", "TS5"}, func(t *testing.T, scenario *acceptanceScenario) {
+		fixture := newAcceptanceFixture(t, scenario)
+		cli := newAcceptanceCLI(t, receipt, scenario)
+		process := fixture.launch(t, nil).started(t)
+		cli.configure(t, process)
+		acceptanceCLIPlatforms(t, cli, process)
+		process.signal(t)
+		process.stopped(t, 0)
+	})
+}
+
 func acceptanceCLIPlatforms(t *testing.T, cli *acceptanceCLI, process *acceptanceProcess) {
 	t.Helper()
 	project := acceptanceDecode[api.Project](t, process.request(context.Background(), http.MethodPost, "/api/v1/projects", api.CreateProjectRequest{Name: "Installed task platforms", RepoURL: "https://github.com/example/platforms"}, "platform-installed-project"), http.StatusCreated)

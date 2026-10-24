@@ -696,6 +696,18 @@ status, readiness, dependencies and escaped PR references while omitting
 description, version and timestamps; `task show` retains those detail fields.
 Both detail and all-status list output preserve visible PR control-character
 escaping without emitting raw terminal controls.
+
+The independent [platform/status scenario](cmd/daynight-server/acceptance_platform_cli_test.go),
+`TestInstalledCLIPlatformAcceptance` / `installed_cli_platform_status_workflow`,
+owns a separate PostgreSQL fixture, installed CLI workspace and server process.
+It checks all four required-platform values across nine status pairs, exact +0/+1,
+platform and material preservation, compatibility-filtered candidates, explicit
+clear, stale/no-op behavior and in-progress platform refusals. It requires graceful
+SIGTERM exit 0 and the fixture's normal cleanup receipt. The original project/task
+workflow retains its assertions; the platform matrix has its own unchanged
+45-second server lifetime. Runtime success remains established by source-bound
+acceptance receipts, separately from this scenario inventory.
+
 The [attachment scenario](cmd/daynight-server/acceptance_attachment_cli_test.go)
 reuses the same packed/installed CLI and real-process fixture. It checks exact
 text, empty and multi-chunk binary bytes above 1 MiB; nested/special paths,
